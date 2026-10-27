@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="416" viewBox="165 173 1120 416" role="img" aria-labelledby="titre">
+<title id="titre">Veyra — horizontal — blanc</title>
+<defs>
+<linearGradient id="left" gradientUnits="userSpaceOnUse" x1="229" y1="292" x2="391" y2="462"><stop stop-color="#8139ff"/><stop offset=".48" stop-color="#813eff"/><stop offset="1" stop-color="#3429e8"/></linearGradient>
+<linearGradient id="top" gradientUnits="userSpaceOnUse" x1="225" y1="288" x2="379" y2="260"><stop stop-color="#241052"/><stop offset=".52" stop-color="#6130ad"/><stop offset=".82" stop-color="#9449f2"/><stop offset="1" stop-color="#c58afb"/></linearGradient>
+<linearGradient id="right" gradientUnits="userSpaceOnUse" x1="407" y1="424" x2="568" y2="289"><stop stop-color="#2534ae"/><stop offset=".42" stop-color="#3777ff"/><stop offset="1" stop-color="#68e2f5"/></linearGradient>
+<linearGradient id="turn" gradientUnits="userSpaceOnUse" x1="395" y1="408" x2="408" y2="541"><stop stop-color="#c7c5ff"/><stop offset=".48" stop-color="#91b4ff"/><stop offset="1" stop-color="#529eff"/></linearGradient>
+<radialGradient id="shine" gradientUnits="userSpaceOnUse" cx="387" cy="393" r="114"><stop stop-color="#e4a5ff" stop-opacity=".96"/><stop offset=".65" stop-color="#bb6bff" stop-opacity=".12"/><stop offset="1" stop-color="#bb6bff" stop-opacity="0"/></radialGradient>
+</defs>
+<g id="icone-veyra">
+<path id="branche-droite" fill="#FFFFFF" d="M398 409 L437 320 Q443 303 462 295 L529 265 C553 254 573 274 566 298 C562 311 487 452 462 496 L398 498 Z"/>
+<path id="ruban-gauche" fill="#FFFFFF" d="M223 286 C214 269 211 252 223 237 C235 220 254 218 274 226 L370 280 Q393 292 394 315 L396 408 L376 500 C373 517 365 529 353 525 Q342 523 333 506 Z"/>
+<path id="reflet-violet" fill="#FFFFFF" d="M223 286 C214 269 211 252 223 237 C235 220 254 218 274 226 L370 280 Q393 292 394 315 L396 408 L376 500 C373 517 365 529 353 525 Q342 523 333 506 Z"/>
+<path id="pli-superieur" fill="#FFFFFF" d="M223 286 C210 263 213 247 223 237 C235 220 254 218 274 226 L370 280 Q393 292 394 315 L396 408 C357 386 300 358 266 337 C244 324 233 307 223 286 Z"/>
+<path id="retour-bleu" fill="#FFFFFF" d="M396 408 C422 419 449 439 460 461 C469 477 467 485 462 496 C447 522 419 540 390 540 C373 540 357 535 347 523 C362 532 372 515 376 500 Z"/>
+</g><g id="lettrage-veyra" fill="#FFFFFF">
+<path id="lettre-v" d="M600 303 H638 L695 427 L754 303 H795 L715 465 Q711 478 696 478 Q682 478 677 466 Z"/>
+<path id="lettre-e" fill-rule="evenodd" d="M905 422 H799 C804 441 817 453 838 453 C854 453 867 448 877 440 L896 459 C880 473 862 479 839 479 C796 479 766 452 766 413 C766 375 796 346 835 346 C879 346 907 376 905 422 Z M800 400 H872 C869 383 855 373 837 373 C818 373 805 383 800 400 Z"/>
+<path id="lettre-y" d="M897 348 H932 L968 433 L1005 348 H1039 L984 475 C968 513 951 529 917 529 H904 V500 H918 C937 500 945 490 952 469 Z"/>
+<path id="lettre-r" d="M1038 477 V405 C1038 365 1060 347 1096 347 H1114 V377 H1101 C1080 377 1069 386 1069 407 V477 Z"/>
+<path id="lettre-a" fill-rule="evenodd" d="M1132 347 H1180 C1217 347 1235 364 1235 397 V477 H1205 V462 C1195 474 1181 479 1164 479 C1132 479 1110 464 1110 439 C1110 412 1133 397 1170 397 C1182 397 1193 397 1205 399 V394 C1205 379 1194 373 1175 373 C1158 373 1144 376 1132 378 Z M1205 420 C1196 419 1187 419 1177 419 C1154 419 1142 424 1142 437 C1142 448 1152 454 1168 454 C1189 454 1205 442 1205 426 Z"/>
+</g>
+</svg>

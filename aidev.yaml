@@ -1,0 +1,23 @@
+# ai-devkit project configuration (see the ai-devkit documentation for each field).
+schemaVersion: 1
+project:
+  name: veyra
+  type: saas
+starter:
+  version: 0.1.0
+  profile: sveltekit
+documentation:
+  mode: adaptive
+  traceability: true
+quality:
+  level: standard
+  tests: true
+  aiReview: risk-based
+  humanApproval: critical
+memory:
+  enabled: true
+  updateOnHandoff: true
+integrations:
+  claudeCode:
+    enabled: true
+    plugins: []

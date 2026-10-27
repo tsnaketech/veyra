@@ -1,0 +1,12 @@
+VEYRA — PREMIER LOGO
+
+15 variantes : icône seule, logo horizontal et logo vertical.
+Chaque disposition existe en couleur, couleur sur fond sombre, noir, blanc et gris.
+
+SVG : fichiers vectoriels éditables, lettrage converti en tracés, aucune police requise.
+PNG : exports haute définition, transparents sauf les variantes sur fond sombre.
+Les versions blanches se placent sur un fond foncé.
+
+Base : retracé manuel du premier logo V en ruban fourni en référence.
+Il ne s’agit pas du symbole de lecture triangulaire de la seconde proposition.
+Les tracés et dégradés peuvent présenter de légères différences avec l’image source.

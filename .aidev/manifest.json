@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "engine": {
+    "version": "0.1.0"
+  },
+  "profile": {
+    "name": "sveltekit",
+    "version": "0.1.0"
+  },
+  "files": {
+    ".editorconfig": {
+      "template": "editorconfig",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "5cdb921d7708768f7298b2442b612bf251664273567d633e1f4cf349debfd914"
+    },
+    "AGENTS.md": {
+      "template": "agents",
+      "templateVersion": 2,
+      "ownership": "project",
+      "sha256": "019b44184477a10eb564d7e1a1f65e1a45d59605ccbea9040cdd5279fcb24c67"
+    },
+    "CLAUDE.md": {
+      "template": "claude",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "98ec56759331f5e84907c78c358695661e86777f372d75f903c0e936c8b27f62"
+    },
+    "aidev.yaml": {
+      "template": "config",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "255a1a4118d354bb79533b34ae12d90c54184965f4685c18fb9b6052b7f0b5ef"
+    },
+    "docs/API.md": {
+      "template": "doc-api",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "01f36d0e3034c332f54eb62015d1386d579574ed89639b09de87abe98e14a2e4"
+    },
+    "docs/ARCHITECTURE.md": {
+      "template": "doc-architecture",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "f0c068cd8f412e09c862fa931f7b63a93b71475887f3a549a1f0c88e1174db8c"
+    },
+    "docs/DATA-MODEL.md": {
+      "template": "doc-data-model",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "288ccc58ba023322bd6dcbc791413ccd8d2da5e1945d861fe02ae692430e1826"
+    },
+    "docs/DATABASE-SETUP.md": {
+      "template": "doc-database-setup",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "358465f09c93b581264d9c8cc297969fe85ac9549644c4576b895fdd98e36793"
+    },
+    "docs/DECISIONS.md": {
+      "template": "doc-decisions",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "37b3344e78a19400e5290620e466b9cdbf860c99dfbfa102eb998e3ac31d3ecb"
+    },
+    "docs/DEPLOYMENT.md": {
+      "template": "doc-deployment",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "21872af893f929bd4f15fe047e9ceef0c3adaaa43a6a07d87c8751f55d309d75"
+    },
+    "docs/DESIGN.md": {
+      "template": "doc-design",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "2fc224e6db60c825e72a6a94f777821e78f7f7d88a121811c167029593b803e2"
+    },
+    "docs/GUIDE.md": {
+      "template": "doc-guide",
+      "templateVersion": 2,
+      "ownership": "project",
+      "sha256": "6e4084cd637d0bc707ca21da4e85bd1074564343f41e2e2cd202f538e1053d8b"
+    },
+    "docs/PRD.md": {
+      "template": "doc-prd",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "2d57cf56f1be750018c24a1ba4fcc54c916036d35806b0d106c6f490ab61af98"
+    },
+    "docs/ROADMAP.md": {
+      "template": "doc-roadmap",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "07672ef8f034f813851a32f6e68e10d18dbbde53ac004e7706772fabe23fc718"
+    },
+    "docs/RUNBOOK.md": {
+      "template": "doc-runbook",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "1c80185fa2c3092ef89a9d46c4a79ff9201d2ebb2de84e1b68258d6dd6006698"
+    },
+    "docs/SCHEMA.md": {
+      "template": "doc-schema",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "dd4c7e8b99d252ea864f75d7ae262ae720ccb6398cdfb1534bab5b6b4d9e194a"
+    },
+    "docs/SECURITY.md": {
+      "template": "doc-security",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "97a63f127e9c9f1b216d925cc98d3be7a9a8c41ffc485c3aac0b9ad77f58844a"
+    },
+    "docs/TASKS.md": {
+      "template": "doc-tasks",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "21579d9ed30f106fbf95a8eb696cd15bdb3de054311128c601022f648ff80af9"
+    },
+    "docs/TESTING.md": {
+      "template": "doc-testing",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "e77137da7104cc27a8687f96e15af702fde045aff58c995abeed330227a3f649"
+    },
+    "docs/TRD.md": {
+      "template": "doc-trd",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "35e04a22070da26d44dcb324ecfb40bb07804e5b37d87bdd6a6c7d94efa76b97"
+    },
+    "memory/MEMORY.md": {
+      "template": "memory",
+      "templateVersion": 1,
+      "ownership": "project",
+      "sha256": "65182c0a6a00950c499b4dea63a6a889c119d46c084460b7ddc090e762cf6d8f"
+    }
+  }
+}

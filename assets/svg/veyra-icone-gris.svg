@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="190 181 400 400" role="img" aria-labelledby="titre">
+<title id="titre">Veyra — icone — gris</title>
+<defs>
+<linearGradient id="left" gradientUnits="userSpaceOnUse" x1="229" y1="292" x2="391" y2="462"><stop stop-color="#8139ff"/><stop offset=".48" stop-color="#813eff"/><stop offset="1" stop-color="#3429e8"/></linearGradient>
+<linearGradient id="top" gradientUnits="userSpaceOnUse" x1="225" y1="288" x2="379" y2="260"><stop stop-color="#241052"/><stop offset=".52" stop-color="#6130ad"/><stop offset=".82" stop-color="#9449f2"/><stop offset="1" stop-color="#c58afb"/></linearGradient>
+<linearGradient id="right" gradientUnits="userSpaceOnUse" x1="407" y1="424" x2="568" y2="289"><stop stop-color="#2534ae"/><stop offset=".42" stop-color="#3777ff"/><stop offset="1" stop-color="#68e2f5"/></linearGradient>
+<linearGradient id="turn" gradientUnits="userSpaceOnUse" x1="395" y1="408" x2="408" y2="541"><stop stop-color="#c7c5ff"/><stop offset=".48" stop-color="#91b4ff"/><stop offset="1" stop-color="#529eff"/></linearGradient>
+<radialGradient id="shine" gradientUnits="userSpaceOnUse" cx="387" cy="393" r="114"><stop stop-color="#e4a5ff" stop-opacity=".96"/><stop offset=".65" stop-color="#bb6bff" stop-opacity=".12"/><stop offset="1" stop-color="#bb6bff" stop-opacity="0"/></radialGradient>
+</defs>
+<g id="icone-veyra">
+<path id="branche-droite" fill="#707584" d="M398 409 L437 320 Q443 303 462 295 L529 265 C553 254 573 274 566 298 C562 311 487 452 462 496 L398 498 Z"/>
+<path id="ruban-gauche" fill="#707584" d="M223 286 C214 269 211 252 223 237 C235 220 254 218 274 226 L370 280 Q393 292 394 315 L396 408 L376 500 C373 517 365 529 353 525 Q342 523 333 506 Z"/>
+<path id="reflet-violet" fill="#707584" d="M223 286 C214 269 211 252 223 237 C235 220 254 218 274 226 L370 280 Q393 292 394 315 L396 408 L376 500 C373 517 365 529 353 525 Q342 523 333 506 Z"/>
+<path id="pli-superieur" fill="#707584" d="M223 286 C210 263 213 247 223 237 C235 220 254 218 274 226 L370 280 Q393 292 394 315 L396 408 C357 386 300 358 266 337 C244 324 233 307 223 286 Z"/>
+<path id="retour-bleu" fill="#707584" d="M396 408 C422 419 449 439 460 461 C469 477 467 485 462 496 C447 522 419 540 390 540 C373 540 357 535 347 523 C362 532 372 515 376 500 Z"/>
+</g>
+</svg>
