@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "defaultProvider": null,
+  "models": ["claude-opus-5-5", "claude-sonnet-5-5"],
+  "apiKeyEnv": "ANTHROPIC_API_KEY",
+  "claudeSubscribe": { "mode": "assisted", "command": "claude" },
+  "fake": { "provider": "fake", "usage": "test-only" }
+}

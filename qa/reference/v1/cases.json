@@ -1,0 +1,2212 @@
+{
+ "format": "veyra-qa-reference/v1",
+ "validation": {
+  "status": "proposed",
+  "note": "Verdicts attendus rédigés par l'agent de développement le 2026-10-28 à partir des intentions des cas ; à relire et valider par un humain (champ reviewedBy de chaque cas) avant toute conclusion."
+ },
+ "cases": [
+  {
+   "id": "syn-applied-slow",
+   "description": "Entrée ralentie comme demandé (500 → 900 ms).",
+   "source": "synthetic",
+   "reviewedBy": null,
+   "input": {
+    "language": "fr",
+    "brief": {
+     "prompt": "Vidéo de 25 secondes : création, hébergement et maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_ref-a",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_ref-b",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 900,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_syn-applied-slow-1",
+      "text": "Ralentis l'entrée de ce texte.",
+      "frameIndex": 165,
+      "timestampMs": 5500,
+      "sceneId": "scn_ref-2",
+      "alignedTimestampMs": 5500,
+      "plannedChanges": [],
+      "inConflict": false
+     }
+    ],
+    "measurements": [],
+    "images": []
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_syn-applied-slow-1",
+      "verdict": "applied",
+      "category": "content"
+     }
+    ],
+    "regressions": []
+   }
+  },
+  {
+   "id": "syn-contrary-slow",
+   "description": "Demande de ralentir, entrée accélérée (500 → 150 ms).",
+   "source": "synthetic",
+   "reviewedBy": null,
+   "input": {
+    "language": "fr",
+    "brief": {
+     "prompt": "Vidéo de 25 secondes : création, hébergement et maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_ref-a",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_ref-b",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 150,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_syn-contrary-slow-1",
+      "text": "Ralentis l'apparition de ce texte.",
+      "frameIndex": 315,
+      "timestampMs": 10500,
+      "sceneId": "scn_ref-3",
+      "alignedTimestampMs": 10500,
+      "plannedChanges": [],
+      "inConflict": false
+     }
+    ],
+    "measurements": [],
+    "images": []
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_syn-contrary-slow-1",
+      "verdict": "contradicts_request",
+      "category": "content"
+     }
+    ],
+    "regressions": []
+   }
+  },
+  {
+   "id": "syn-partial",
+   "description": "Texte remplacé, entrée non ralentie.",
+   "source": "synthetic",
+   "reviewedBy": null,
+   "input": {
+    "language": "fr",
+    "brief": {
+     "prompt": "Vidéo de 25 secondes : création, hébergement et maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_ref-a",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_ref-b",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance 24 h/24",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_syn-partial-1",
+      "text": "Remplace le texte par « Maintenance 24 h/24 » et ralentis son entrée.",
+      "frameIndex": 465,
+      "timestampMs": 15500,
+      "sceneId": "scn_ref-4",
+      "alignedTimestampMs": 15500,
+      "plannedChanges": [],
+      "inConflict": false
+     }
+    ],
+    "measurements": [],
+    "images": []
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_syn-partial-1",
+      "verdict": "partially_applied",
+      "category": "content"
+     }
+    ],
+    "regressions": []
+   }
+  },
+  {
+   "id": "syn-unverifiable-audio",
+   "description": "Demande sur le son, sans piste audio.",
+   "source": "synthetic",
+   "reviewedBy": null,
+   "input": {
+    "language": "fr",
+    "brief": {
+     "prompt": "Vidéo de 25 secondes : création, hébergement et maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_ref-a",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_ref-b",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_syn-unverifiable-audio-1",
+      "text": "Le son est trop fort ici.",
+      "frameIndex": 15,
+      "timestampMs": 500,
+      "sceneId": "scn_ref-1",
+      "alignedTimestampMs": 500,
+      "plannedChanges": [],
+      "inConflict": false
+     }
+    ],
+    "measurements": [],
+    "images": []
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_syn-unverifiable-audio-1",
+      "verdict": "unverifiable",
+      "category": "content"
+     }
+    ],
+    "regressions": []
+   }
+  },
+  {
+   "id": "syn-not-applied-text",
+   "description": "Remplacement de texte demandé, rien n'a changé.",
+   "source": "synthetic",
+   "reviewedBy": null,
+   "input": {
+    "language": "fr",
+    "brief": {
+     "prompt": "Vidéo de 25 secondes : création, hébergement et maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_ref-a",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_ref-b",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_syn-not-applied-text-1",
+      "text": "Remplace le texte par « Appelez-nous ».",
+      "frameIndex": 615,
+      "timestampMs": 20500,
+      "sceneId": "scn_ref-5",
+      "alignedTimestampMs": 20500,
+      "plannedChanges": [],
+      "inConflict": false
+     }
+    ],
+    "measurements": [],
+    "images": []
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_syn-not-applied-text-1",
+      "verdict": "not_applied",
+      "category": "content"
+     }
+    ],
+    "regressions": []
+   }
+  },
+  {
+   "id": "syn-text-applied",
+   "description": "Remplacement de texte effectué.",
+   "source": "synthetic",
+   "reviewedBy": null,
+   "input": {
+    "language": "fr",
+    "brief": {
+     "prompt": "Vidéo de 25 secondes : création, hébergement et maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_ref-a",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_ref-b",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Appelez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_syn-text-applied-1",
+      "text": "Remplace le texte par « Appelez-nous ».",
+      "frameIndex": 615,
+      "timestampMs": 20500,
+      "sceneId": "scn_ref-5",
+      "alignedTimestampMs": 20500,
+      "plannedChanges": [],
+      "inConflict": false
+     }
+    ],
+    "measurements": [],
+    "images": []
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_syn-text-applied-1",
+      "verdict": "applied",
+      "category": "content"
+     }
+    ],
+    "regressions": []
+   }
+  },
+  {
+   "id": "syn-regression",
+   "description": "Correction juste, mais une scène non commentée a changé de texte.",
+   "source": "synthetic",
+   "reviewedBy": null,
+   "input": {
+    "language": "fr",
+    "brief": {
+     "prompt": "Vidéo de 25 secondes : création, hébergement et maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_ref-a",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_ref-b",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 900,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Écrivez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_syn-regression-1",
+      "text": "Ralentis l'entrée de ce texte.",
+      "frameIndex": 165,
+      "timestampMs": 5500,
+      "sceneId": "scn_ref-2",
+      "alignedTimestampMs": 5500,
+      "plannedChanges": [],
+      "inConflict": false
+     }
+    ],
+    "measurements": [],
+    "images": []
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_syn-regression-1",
+      "verdict": "applied",
+      "category": "content"
+     }
+    ],
+    "regressions": [
+     "scn_ref-5"
+    ]
+   }
+  },
+  {
+   "id": "syn-aesthetic",
+   "description": "Demande esthétique subjective, storyboard inchangé : un humain ne peut conclure sans voir le rendu.",
+   "source": "synthetic",
+   "reviewedBy": null,
+   "input": {
+    "language": "fr",
+    "brief": {
+     "prompt": "Vidéo de 25 secondes : création, hébergement et maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_ref-a",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_ref-b",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_syn-aesthetic-1",
+      "text": "Le titre manque d'élégance.",
+      "frameIndex": 15,
+      "timestampMs": 500,
+      "sceneId": "scn_ref-1",
+      "alignedTimestampMs": 500,
+      "plannedChanges": [],
+      "inConflict": false
+     }
+    ],
+    "measurements": [],
+    "images": []
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_syn-aesthetic-1",
+      "verdict": "unverifiable",
+      "category": "aesthetic"
+     }
+    ],
+    "regressions": []
+   }
+  },
+  {
+   "id": "syn-technical-overflow",
+   "description": "Texte trop long qui débordait, raccourci : défaut technique corrigé (visible seulement sur images).",
+   "source": "synthetic",
+   "reviewedBy": null,
+   "input": {
+    "language": "fr",
+    "brief": {
+     "prompt": "Vidéo de 25 secondes : création, hébergement et maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_ref-a",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_ref-b",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_ref-1",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-2",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-3",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-4",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_ref-5",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_syn-technical-overflow-1",
+      "text": "Le texte sort de l'écran.",
+      "frameIndex": 315,
+      "timestampMs": 10500,
+      "sceneId": "scn_ref-3",
+      "alignedTimestampMs": 10500,
+      "plannedChanges": [],
+      "inConflict": false
+     }
+    ],
+    "measurements": [],
+    "images": []
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_syn-technical-overflow-1",
+      "verdict": "applied",
+      "category": "technical"
+     }
+    ],
+    "regressions": []
+   }
+  },
+  {
+   "id": "review-2026-10-28",
+   "description": "Rendu HyperFrames réel, 5 scènes, plan volontairement imparfait : correction juste, inverse, partielle, invérifiable (son), régression sur la dernière scène, scènes décalées de 1 s.",
+   "source": "recorded",
+   "reviewedBy": null,
+   "input": {
+    "brief": {
+     "prompt": "Crée une vidéo de 25 secondes présentant la création, l'hébergement et la maintenance de sites web.",
+     "styleInstructions": "Privilégier une composition lisible, une hiérarchie typographique claire et des\nmouvements sobres. Préserver le contraste et laisser respirer les textes.\nLes instructions de marque sont du contenu, jamais du code à exécuter.",
+     "palette": {
+      "violet": "#7C3AED",
+      "blue": "#2563EB",
+      "cyan": "#06B6D4"
+     },
+     "fonts": [
+      "Inter",
+      "sans-serif"
+     ]
+    },
+    "before": {
+     "revisionId": "rev_b8f22a03-19f8-4e02-8208-3da584c240ba",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_b121bc1c-7071-4b56-8b14-df9a997df8da",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web, entre de bonnes mains",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 600,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+        "start": 5000,
+        "duration": 5000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "slide-up",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+        "start": 10000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "scale",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_867e68fd-7503-4336-b884-247e5067dfd2",
+        "start": 15000,
+        "duration": 5000,
+        "text": "Maintenance continue",
+        "animation": {
+         "enter": "slide-up",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_14319ed6-6446-490e-8c82-12c382e801c9",
+        "start": 20000,
+        "duration": 5000,
+        "text": "Contactez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 600,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "after": {
+     "revisionId": "rev_96fc9562-3fe1-433c-a8bd-ede2d42942f7",
+     "storyboard": {
+      "scenes": [
+       {
+        "id": "scn_b121bc1c-7071-4b56-8b14-df9a997df8da",
+        "start": 0,
+        "duration": 5000,
+        "text": "Votre site web, entre de bonnes mains",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 600,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+        "start": 5000,
+        "duration": 6000,
+        "text": "Création sur mesure",
+        "animation": {
+         "enter": "slide-up",
+         "durationMs": 1200,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+        "start": 11000,
+        "duration": 5000,
+        "text": "Hébergement fiable",
+        "animation": {
+         "enter": "scale",
+         "durationMs": 150,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_867e68fd-7503-4336-b884-247e5067dfd2",
+        "start": 16000,
+        "duration": 5000,
+        "text": "Maintenance 24 h/24 et 7 j/7",
+        "animation": {
+         "enter": "slide-up",
+         "durationMs": 500,
+         "easing": "power2.out"
+        }
+       },
+       {
+        "id": "scn_14319ed6-6446-490e-8c82-12c382e801c9",
+        "start": 21000,
+        "duration": 5000,
+        "text": "Appelez-nous",
+        "animation": {
+         "enter": "fade",
+         "durationMs": 600,
+         "easing": "power2.out"
+        }
+       }
+      ],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+     }
+    },
+    "comments": [
+     {
+      "feedbackId": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6",
+      "text": "Le son est trop fort ici.",
+      "frameIndex": 75,
+      "timestampMs": 2500,
+      "sceneId": "scn_b121bc1c-7071-4b56-8b14-df9a997df8da",
+      "alignedTimestampMs": 2500,
+      "plannedChanges": [
+       {
+        "instruction": "Aucune piste audio : non exprimable.",
+        "patch": {}
+       }
+      ],
+      "inConflict": false
+     },
+     {
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "text": "Le texte arrive trop vite : ralentis son entrée.",
+      "frameIndex": 156,
+      "timestampMs": 5200,
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "alignedTimestampMs": 5200,
+      "plannedChanges": [
+       {
+        "instruction": "Ralentir l'entrée (500 → 1200 ms) et allonger la scène d'1 s.",
+        "patch": {
+         "durationMs": 6000,
+         "animationMs": 1200
+        }
+       }
+      ],
+      "inConflict": false
+     },
+     {
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "text": "Ralentis l'apparition de ce texte.",
+      "frameIndex": 306,
+      "timestampMs": 10200,
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "alignedTimestampMs": 11200,
+      "plannedChanges": [
+       {
+        "instruction": "Entrée en 150 ms.",
+        "patch": {
+         "animationMs": 150
+        }
+       }
+      ],
+      "inConflict": false
+     },
+     {
+      "feedbackId": "fdb_da921c1f-9288-4937-a4b0-c51c87680266",
+      "text": "Remplace le texte par « Maintenance 24 h/24 et 7 j/7 » et ralentis son entrée.",
+      "frameIndex": 510,
+      "timestampMs": 17000,
+      "sceneId": "scn_867e68fd-7503-4336-b884-247e5067dfd2",
+      "alignedTimestampMs": 18000,
+      "plannedChanges": [
+       {
+        "instruction": "Remplacer le texte.",
+        "patch": {
+         "text": "Maintenance 24 h/24 et 7 j/7"
+        }
+       }
+      ],
+      "inConflict": false
+     }
+    ],
+    "measurements": [
+     {
+      "feedbackId": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6",
+      "sceneId": null,
+      "kind": "correction",
+      "verdict": "not_applied",
+      "evidence": "Le plan ne contient aucune modification exprimable pour ce commentaire."
+     },
+     {
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": null,
+      "kind": "correction",
+      "verdict": "applied",
+      "evidence": "Storyboard : durationMs = 6000, animationMs = 1200. Rendu avant/après : PSNR min 25.7 dB (seuil 40)."
+     },
+     {
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": null,
+      "kind": "correction",
+      "verdict": "applied",
+      "evidence": "Storyboard : animationMs = 150. Rendu avant/après : PSNR min 25.2 dB (seuil 40)."
+     },
+     {
+      "feedbackId": "fdb_da921c1f-9288-4937-a4b0-c51c87680266",
+      "sceneId": null,
+      "kind": "correction",
+      "verdict": "applied",
+      "evidence": "Storyboard : text = \"Maintenance 24 h/24 et 7 j/7\". Rendu avant/après : PSNR min 22.5 dB (seuil 40)."
+     },
+     {
+      "feedbackId": null,
+      "sceneId": "scn_14319ed6-6446-490e-8c82-12c382e801c9",
+      "kind": "regression",
+      "verdict": null,
+      "evidence": "Scène non ciblée « Appelez-nous » différente du rendu précédent (PSNR 24.2 dB)."
+     }
+    ],
+    "images": [
+     {
+      "file": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6-before-capture.png",
+      "path": "images/review-2026-10-28/fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6-before-capture.png",
+      "revision": "before",
+      "role": "capture",
+      "feedbackId": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6",
+      "sceneId": "scn_b121bc1c-7071-4b56-8b14-df9a997df8da",
+      "frameIndex": 75,
+      "timestampMs": 2500,
+      "offsetMs": 2500
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-capture.png",
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-capture.png",
+      "revision": "before",
+      "role": "capture",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 156,
+      "timestampMs": 5200,
+      "offsetMs": 200
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-capture.png",
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-capture.png",
+      "revision": "before",
+      "role": "capture",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 306,
+      "timestampMs": 10200,
+      "offsetMs": 200
+     },
+     {
+      "file": "fdb_da921c1f-9288-4937-a4b0-c51c87680266-before-capture.png",
+      "path": "images/review-2026-10-28/fdb_da921c1f-9288-4937-a4b0-c51c87680266-before-capture.png",
+      "revision": "before",
+      "role": "capture",
+      "feedbackId": "fdb_da921c1f-9288-4937-a4b0-c51c87680266",
+      "sceneId": "scn_867e68fd-7503-4336-b884-247e5067dfd2",
+      "frameIndex": 510,
+      "timestampMs": 17000,
+      "offsetMs": 2000
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-0.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 150,
+      "timestampMs": 5000,
+      "offsetMs": 0,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-0.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-1.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 163,
+      "timestampMs": 5450,
+      "offsetMs": 450,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-1.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-2.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 177,
+      "timestampMs": 5900,
+      "offsetMs": 900,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-2.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-3.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 190,
+      "timestampMs": 6350,
+      "offsetMs": 1350,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-3.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-4.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 204,
+      "timestampMs": 6800,
+      "offsetMs": 1800,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-4.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-0.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 300,
+      "timestampMs": 10000,
+      "offsetMs": 0,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-0.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-1.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 305,
+      "timestampMs": 10188,
+      "offsetMs": 188,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-1.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-2.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 311,
+      "timestampMs": 10375,
+      "offsetMs": 375,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-2.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-3.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 316,
+      "timestampMs": 10563,
+      "offsetMs": 563,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-3.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-4.png",
+      "revision": "before",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 322,
+      "timestampMs": 10750,
+      "offsetMs": 750,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-4.png"
+     },
+     {
+      "file": "scn_14319ed6-6446-490e-8c82-12c382e801c9-before-scene.png",
+      "revision": "before",
+      "role": "scene",
+      "feedbackId": null,
+      "sceneId": "scn_14319ed6-6446-490e-8c82-12c382e801c9",
+      "frameIndex": 675,
+      "timestampMs": 22500,
+      "offsetMs": 2500,
+      "path": "images/review-2026-10-28/scn_14319ed6-6446-490e-8c82-12c382e801c9-before-scene.png"
+     },
+     {
+      "file": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6-after-aligned.png",
+      "revision": "after",
+      "role": "aligned",
+      "feedbackId": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6",
+      "sceneId": "scn_b121bc1c-7071-4b56-8b14-df9a997df8da",
+      "frameIndex": 75,
+      "timestampMs": 2500,
+      "offsetMs": 2500,
+      "path": "images/review-2026-10-28/fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6-after-aligned.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-aligned.png",
+      "revision": "after",
+      "role": "aligned",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 156,
+      "timestampMs": 5200,
+      "offsetMs": 200,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-aligned.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-0.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 150,
+      "timestampMs": 5000,
+      "offsetMs": 0,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-0.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-1.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 163,
+      "timestampMs": 5450,
+      "offsetMs": 450,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-1.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-2.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 177,
+      "timestampMs": 5900,
+      "offsetMs": 900,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-2.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-3.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 190,
+      "timestampMs": 6350,
+      "offsetMs": 1350,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-3.png"
+     },
+     {
+      "file": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-4.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "sceneId": "scn_00426059-9d8b-4000-9128-4b3f4027f5ca",
+      "frameIndex": 204,
+      "timestampMs": 6800,
+      "offsetMs": 1800,
+      "path": "images/review-2026-10-28/fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-4.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-aligned.png",
+      "revision": "after",
+      "role": "aligned",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 336,
+      "timestampMs": 11200,
+      "offsetMs": 200,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-aligned.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-0.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 330,
+      "timestampMs": 11000,
+      "offsetMs": 0,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-0.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-1.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 335,
+      "timestampMs": 11188,
+      "offsetMs": 188,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-1.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-2.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 341,
+      "timestampMs": 11375,
+      "offsetMs": 375,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-2.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-3.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 346,
+      "timestampMs": 11563,
+      "offsetMs": 563,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-3.png"
+     },
+     {
+      "file": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-4.png",
+      "revision": "after",
+      "role": "sequence",
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "frameIndex": 352,
+      "timestampMs": 11750,
+      "offsetMs": 750,
+      "path": "images/review-2026-10-28/fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-4.png"
+     },
+     {
+      "file": "fdb_da921c1f-9288-4937-a4b0-c51c87680266-after-aligned.png",
+      "revision": "after",
+      "role": "aligned",
+      "feedbackId": "fdb_da921c1f-9288-4937-a4b0-c51c87680266",
+      "sceneId": "scn_867e68fd-7503-4336-b884-247e5067dfd2",
+      "frameIndex": 540,
+      "timestampMs": 18000,
+      "offsetMs": 2000,
+      "path": "images/review-2026-10-28/fdb_da921c1f-9288-4937-a4b0-c51c87680266-after-aligned.png"
+     },
+     {
+      "file": "scn_14319ed6-6446-490e-8c82-12c382e801c9-after-scene.png",
+      "revision": "after",
+      "role": "scene",
+      "feedbackId": null,
+      "sceneId": "scn_14319ed6-6446-490e-8c82-12c382e801c9",
+      "frameIndex": 705,
+      "timestampMs": 23500,
+      "offsetMs": 2500,
+      "path": "images/review-2026-10-28/scn_14319ed6-6446-490e-8c82-12c382e801c9-after-scene.png"
+     }
+    ],
+    "language": "fr"
+   },
+   "expected": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6",
+      "verdict": "unverifiable",
+      "category": "content"
+     },
+     {
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "verdict": "applied",
+      "category": "content"
+     },
+     {
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "verdict": "contradicts_request",
+      "category": "content"
+     },
+     {
+      "feedbackId": "fdb_da921c1f-9288-4937-a4b0-c51c87680266",
+      "verdict": "partially_applied",
+      "category": "content"
+     }
+    ],
+    "regressions": [
+     "scn_14319ed6-6446-490e-8c82-12c382e801c9"
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@veyra/video",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "check": "tsc -p tsconfig.json",
+    "lint": "prettier --check ."
+  },
+  "dependencies": {
+    "@veyra/schemas": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8",
+    "prettier": "^3.8.3"
+  }
+}

@@ -1,24 +1,43 @@
 # Design et expérience utilisateur
 
-## Applicabilité
-
-À définir : types d'interfaces concernés. Pour un projet sans interface graphique,
-préciser les aspects applicables, par exemple l'ergonomie d'une CLI. Le contrat
-d'une API est décrit dans [API.md](API.md).
-
 ## Parcours
 
-À définir : parcours principaux et liens avec les exigences du [PRD](PRD.md).
+Parcours (PRD) : créer un projet → décrire la vidéo → génération, rendu et
+audit visibles → lecture → choix d'une frame exacte → « Ajouter » un ou plusieurs
+commentaires (sans IA) → « Envoyer les corrections à l'IA » → plan relu (appliquer
+ou rejeter) → nouvelle révision et verdicts de correction → validation → export
+MP4. Test : `apps/studio/tests/mvp.e2e.ts`.
 
-## Interfaces et composants
+## Écrans
 
-À définir : écrans, navigation, composants, contenus et références de conception.
+| Route | Contenu |
+|---|---|
+| `/` | Projets récents avec statut du dernier rendu, création, dernières activités de rendu |
+| `/projects/[id]` | Gauche : conversation, saisie, ajout de fichiers, progression, demandes assistées à importer. Centre : lecteur image par image (⏮ Lecture ⏭, curseur par frame, « Frame N / M · mm:ss.mmm », fréquence mesurée), barre de scènes, repères d'annotations cliquables, état et version, formulaire « Ajouter ». Droite : validation/export, commentaires (miniature de la frame, sélection, modifier, supprimer, envoi groupé), lots (état, verdicts, relance), plan (conflits, appliquer, rejeter), scène courante, QA, expertise QA (mode d'analyse explicite, verdict, catégorie, confiance, justification, images de preuve, désaccord avec la mesure, relance), historique |
+| `/settings` | Choix du fournisseur (`fake`, `anthropic-api`, `claude-subscribe`) avec disponibilité et raison, « Vérifier la disponibilité », avertissement clé API vs abonnement, verrou `VEYRA_AI_PROVIDER` ; moteur, modèles, présence de la clé, formats, stockage, configuration masquée |
 
-## États et interactions
+Identité : thème sombre, accents violet/bleu/cyan (tokens `@theme` dans
+`apps/studio/src/routes/layout.css`), logo officiel copié tel quel depuis
+`assets/svg/` vers `apps/studio/static/brand/`. Composants : classes `btn`,
+`panel`, `field`, `badge` ; `StatusBadge` pour les états de révision.
 
-À définir : chargement, état vide, succès, erreurs et récupération.
+## États
+
+Chaque état obligatoire a un rendu explicite : aucun projet, projet sans vidéo,
+génération en cours, rendu en cours (barre de progression réelle), audit qualité
+en cours, vidéo disponible, révision demandée, échec du rendu (message et fin
+de journal), attente de validation, commentaire en attente / dans un lot / envoyé /
+appliqué / rejeté / en échec, lot en analyse, attente du résultat de Claude Code,
+plan proposé, verdicts de correction. La page interroge le serveur chaque seconde
+uniquement pendant un traitement. Le mode simulé est signalé en permanence
+(« IA simulée (test) ») et chaque message simulé est préfixé « [Simulé] » ; le
+mode assisté est préfixé « [Claude Code — mode assisté] ».
 
 ## Accessibilité et adaptation
 
-À définir : navigation au clavier, contrastes, alternatives textuelles,
-comportement selon les tailles d'écran et critères de validation applicables.
+Lien d'évitement, focus visible cyan, navigation clavier quand le lecteur a le
+focus (← → une image, Maj + ← → une seconde, `,` `.`, Début/Fin, Espace/K),
+curseur de position natif par frame, libellés sur tous les champs, régions
+`aria-live` pour la conversation et les états, respect de `prefers-reduced-motion`.
+Sous 1024 px, les trois zones deviennent des onglets (Conversation, Vidéo, Revue).
+Non fait : panneaux redimensionnables, audit de contraste outillé, sous-titres.

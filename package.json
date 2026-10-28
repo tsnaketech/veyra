@@ -1,15 +1,14 @@
 {
   "name": "veyra",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@playwright/test": "^1.64.1"
+    "test": "pnpm -r test",
+    "test:slow": "pnpm -r --if-present test:slow",
+    "check": "pnpm -r check",
+    "lint": "pnpm -r lint",
+    "dev": "pnpm --filter studio dev",
+    "qa:bench": "pnpm --filter @veyra/ai qa:bench"
   }
 }

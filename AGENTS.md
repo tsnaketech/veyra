@@ -5,13 +5,12 @@ instructions locales applicables aux fichiers concernés.
 
 ## Contexte
 
-Projet `veyra` (type : `other`), initialisé avec ai-devkit
-(profil `base`, niveau de qualité `standard`). La
-configuration du starter kit est dans `aidev.yaml`.
-
-À définir : description du produit et de sa stack. Compléter les rubriques
-« À définir ». Ne pas interpréter les exemples ou les rubriques non renseignées
-comme des exigences validées.
+Veyra est un studio vidéo conversationnel piloté par IA. Le monorepo pnpm 12.6.0
+contient Studio (SvelteKit 3, Svelte 5 runes, Tailwind 4), les contrats Zod et le
+chargeur de configuration YAML/JSON/Markdown. La persistance utilise Drizzle 0.45,
+better-sqlite3 et SQLite ; les tests utilisent Vitest 4 et Playwright. Node 24.19.
+Projet initialisé avec ai-devkit ; configuration du kit dans `aidev.yaml`.
+Les rubriques « À définir » restantes ne sont pas des exigences validées.
 
 ## Organisation du travail avec /route
 
@@ -41,6 +40,13 @@ Pour reprendre le travail, lire [PRD](docs/PRD.md), [TASKS](docs/TASKS.md) et
 [MEMORY](memory/MEMORY.md) lorsqu'ils existent. Consulter
 ROADMAP si elle est applicable, puis les documents pertinents
 pour la tâche.
+
+`memory/MEMORY.md` est un index : lire `memory/CONTEXT.md` et
+`memory/PROGRESS.md` pour reprendre ; consulter `memory/LESSONS.md` et les notes
+datées de `memory/sessions/` selon le besoin. La référence des entités et états
+est `docs/system/PROJECT-SCHEMA.md` ; DATA-MODEL et SCHEMA y renvoient.
+Les domaines revue, vidéo et IA sont documentés dans `docs/system/`,
+`docs/video/` et `docs/ai/`.
 
 Ne pas charger systématiquement toute la documentation.
 
@@ -188,7 +194,11 @@ Ne pas y copier de secrets ou de sorties sensibles.
 
 ## Entretien de la mémoire
 
-`memory/MEMORY.md` est une mémoire explicite, versionnable et lisible par l'humain.
+`memory/MEMORY.md` est l’index de la mémoire explicite, versionnable et lisible
+par l’humain : `CONTEXT.md` conserve le contexte utile, `PROGRESS.md` un état bref
+renvoyant à TASKS, `LESSONS.md` les enseignements vérifiables, et
+`sessions/AAAA-MM-JJ.md` les faits utiles et limites de chaque session.
+Mettre à jour les fichiers concernés sans y dupliquer les sources de référence.
 Ne pas supposer qu'un mécanisme externe assure sa lecture ou sa mise à jour :
 les effectuer lorsque la reprise ou la fin de session le nécessite.
 

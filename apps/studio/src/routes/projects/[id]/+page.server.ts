@@ -1,0 +1,93 @@
+import { error, fail } from '@sveltejs/kit';
+import { studio } from '#lib/server/jobs/index.ts';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ params }) => {
+  const snapshot = studio.snapshot(params.id);
+  if (!snapshot) error(404, 'Projet introuvable');
+  return { ...snapshot, aiKind: studio.aiKind };
+};
+
+const str = (data: FormData, key: string) => String(data.get(key) ?? '');
+// Background work is started, not awaited: the page polls for progress.
+const attempt = (work: () => unknown) => {
+  try {
+    const result = work();
+    if (result instanceof Promise) void result;
+    return { ok: true };
+  } catch (cause) {
+    return fail(400, { error: cause instanceof Error ? cause.message : 'Action impossible' });
+  }
+};
+
+export const actions: Actions = {
+  prompt: async ({ params, request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.sendPrompt(params.id, str(data, 'prompt')));
+  },
+  upload: async ({ params, request }) => {
+    const file = (await request.formData()).get('file');
+    if (!(file instanceof File) || file.size === 0) return fail(400, { error: 'Aucun fichier' });
+    if (file.size > 50 * 1024 * 1024) return fail(400, { error: 'Fichier limité à 50 Mo' });
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return attempt(() => studio.addAsset(params.id, file, bytes));
+  },
+  // Saving a comment never calls the AI and never starts a render.
+  comment: async ({ request }) => {
+    const data = await request.formData();
+    try {
+      await studio.addAnnotation({
+        revisionId: str(data, 'revisionId'),
+        frameIndex: data.has('frameIndex') ? Number(str(data, 'frameIndex')) : null,
+        timestampMs: data.has('timestampMs') ? Number(str(data, 'timestampMs')) : null,
+        text: str(data, 'text'),
+        author: 'Utilisateur'
+      });
+      return { ok: true };
+    } catch (cause) {
+      return fail(400, { error: cause instanceof Error ? cause.message : 'Action impossible' });
+    }
+  },
+  editComment: async ({ request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.editAnnotation(str(data, 'id'), str(data, 'text')));
+  },
+  deleteComment: async ({ request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.deleteAnnotation(str(data, 'id')));
+  },
+  submitBatch: async ({ request }) => {
+    const data = await request.formData();
+    return attempt(() =>
+      studio.submitBatch({
+        revisionId: str(data, 'revisionId'),
+        feedbackIds: data.getAll('feedbackIds').map(String),
+        submissionKey: str(data, 'submissionKey')
+      })
+    );
+  },
+  retryBatch: async ({ request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.retryBatch(str(data, 'batchId')));
+  },
+  rejectPlan: async ({ request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.rejectPlan(str(data, 'batchId')));
+  },
+  evaluate: async ({ request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.requestEvaluation(str(data, 'revisionId')));
+  },
+  importTask: async ({ request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.importTask(str(data, 'taskId')));
+  },
+  apply: async ({ request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.applyPlan(str(data, 'planId')));
+  },
+  approve: async ({ request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.approve(str(data, 'revisionId')));
+  }
+};

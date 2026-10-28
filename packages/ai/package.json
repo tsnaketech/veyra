@@ -1,0 +1,26 @@
+{
+  "name": "@veyra/ai",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "check": "tsc -p tsconfig.json",
+    "lint": "prettier --check .",
+    "qa:bench": "tsx src/benchmark-cli.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
+    "@veyra/schemas": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "prettier": "^3.8.3",
+    "tsx": "4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

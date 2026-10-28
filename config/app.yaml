@@ -1,0 +1,5 @@
+schemaVersion: 1
+name: Veyra
+maxDurationSeconds: 60
+projectsRoot: projects
+review: { maxCommentLength: 2000, maxBatchSize: 20 }

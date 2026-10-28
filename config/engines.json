@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "hyperframes": {
+    "cliVersion": "0.8.209",
+    "quality": "draft",
+    "fps": 30,
+    "allowUnsandboxed": false,
+    "wallTimeoutMs": 120000,
+    "cpuSeconds": 90,
+    "maxOutputBytes": 104857600
+  }
+}

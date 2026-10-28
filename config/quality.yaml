@@ -1,0 +1,6 @@
+schemaVersion: 1
+durationToleranceMs: 100
+minResolution: { width: 1080, height: 1080 }
+maxAutoFixAttempts: 2
+correctionCheck: { psnrThresholdDb: 40 }
+reportLanguage: fr

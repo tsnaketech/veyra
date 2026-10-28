@@ -1,0 +1,196 @@
+{
+ "format": "veyra-qa-results/v1",
+ "evaluator": "claude-subscribe",
+ "analysisMode": "multimodal",
+ "note": "Résultat réel de la revue indépendante du 2026-10-28 : sous-agent Claude Code sans accès au code ni aux attendus, images 1080p examinées (déclarées) ; un seul cas couvert.",
+ "cases": [
+  {
+   "caseId": "review-2026-10-28",
+   "review": {
+    "verdicts": [
+     {
+      "feedbackId": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6",
+      "verdict": "unverifiable",
+      "category": "content",
+      "confidence": 0.9,
+      "justification": "The comment is about audio volume. Images cannot show sound, and the storyboard has no audio track, so the plan changed nothing. The before and after frames at 2500 ms look the same.",
+      "evidence": [
+       {
+        "image": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6-before-capture.png",
+        "observation": "\"Votre site web, entre de bonnes mains\" fully visible, centered on a gradient."
+       },
+       {
+        "image": "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6-after-aligned.png",
+        "observation": "The same frame with no visible change. Sound cannot be judged from images."
+       }
+      ]
+     },
+     {
+      "feedbackId": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61",
+      "verdict": "applied",
+      "category": "content",
+      "confidence": 0.85,
+      "justification": "The text now enters more slowly. In the before render it was settled by 450 ms. In the after render it is still faint and lower at 200 and 450 ms, almost settled at 900 ms and fully settled at 1350 ms. This fits the 1200 ms entry.",
+      "evidence": [
+       {
+        "image": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-capture.png",
+        "observation": "At 200 ms the text is already mostly opaque and close to its final position."
+       },
+       {
+        "image": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-aligned.png",
+        "observation": "At 200 ms the text is much more transparent and clearly lower: the entry is slower."
+       },
+       {
+        "image": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-1.png",
+        "observation": "At 450 ms (before) the text is fully opaque and settled."
+       },
+       {
+        "image": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-1.png",
+        "observation": "At 450 ms (after) the text is still semi-transparent and slightly lower."
+       },
+       {
+        "image": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-2.png",
+        "observation": "At 900 ms (after) the text is almost settled."
+       },
+       {
+        "image": "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-3.png",
+        "observation": "At 1350 ms (after) the text is settled and fully opaque."
+       }
+      ]
+     },
+     {
+      "feedbackId": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897",
+      "verdict": "contradicts_request",
+      "category": "content",
+      "confidence": 0.9,
+      "justification": "The comment asked for a slower appearance, but the entry was made faster: 500 ms became 150 ms. In the before render the text was still scaling and semi-transparent at 200 ms. In the after render it is already fully shown at 188 ms.",
+      "evidence": [
+       {
+        "image": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-capture.png",
+        "observation": "At 200 ms (before) \"Hébergement fiable\" is semi-transparent and slightly smaller: the entry is still running."
+       },
+       {
+        "image": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-aligned.png",
+        "observation": "At 200 ms (after) the text is already fully opaque at full size."
+       },
+       {
+        "image": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-1.png",
+        "observation": "At 188 ms (after) the entry is already finished."
+       },
+       {
+        "image": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-2.png",
+        "observation": "At 375 ms (before) the text is close to its final state."
+       },
+       {
+        "image": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-4.png",
+        "observation": "At 750 ms (before) the text is settled."
+       }
+      ]
+     },
+     {
+      "feedbackId": "fdb_da921c1f-9288-4937-a4b0-c51c87680266",
+      "verdict": "partially_applied",
+      "category": "content",
+      "confidence": 0.8,
+      "justification": "The text was replaced correctly with \"Maintenance 24 h/24 et 7 j/7\". The request to slow the entry was not carried out: the plan only covers the text, and the storyboard keeps a 500 ms slide-up. There is no sequence image of the entry for this scene, so the motion itself cannot be checked from the images.",
+      "evidence": [
+       {
+        "image": "fdb_da921c1f-9288-4937-a4b0-c51c87680266-before-capture.png",
+        "observation": "At 2000 ms (before) the frame shows \"Maintenance continue\"."
+       },
+       {
+        "image": "fdb_da921c1f-9288-4937-a4b0-c51c87680266-after-aligned.png",
+        "observation": "At 2000 ms (after) the frame shows \"Maintenance 24 h/24 et 7 j/7\": legible, centered, on one line."
+       },
+       {
+        "image": null,
+        "observation": "After storyboard: the entry is still slide-up at 500 ms, the same as before. Slowing it down was not applied."
+       }
+      ]
+     }
+    ],
+    "findings": [
+     {
+      "kind": "regression",
+      "category": "content",
+      "sceneId": "scn_14319ed6-6446-490e-8c82-12c382e801c9",
+      "severity": "major",
+      "confidence": 0.95,
+      "justification": "The final scene was not targeted by any comment, yet its text changed from \"Contactez-nous\" to \"Appelez-nous\". This is an unrequested change to the call to action.",
+      "evidence": [
+       {
+        "image": "scn_14319ed6-6446-490e-8c82-12c382e801c9-before-scene.png",
+        "observation": "At 2500 ms (before) the frame shows \"Contactez-nous\"."
+       },
+       {
+        "image": "scn_14319ed6-6446-490e-8c82-12c382e801c9-after-scene.png",
+        "observation": "At 2500 ms (after) the frame shows \"Appelez-nous\"."
+       }
+      ]
+     },
+     {
+      "kind": "observation",
+      "category": "content",
+      "sceneId": null,
+      "severity": "minor",
+      "confidence": 0.9,
+      "justification": "Scene 2 was lengthened by 1 s, which moves every later scene back 1 s. The total length goes from 25 s to 26 s, while the brief asks for a 25-second video.",
+      "evidence": [
+       {
+        "image": null,
+        "observation": "After storyboard: the last scene starts at 21000 ms and lasts 5000 ms, so the video ends at 26000 ms."
+       }
+      ]
+     },
+     {
+      "kind": "observation",
+      "category": "aesthetic",
+      "sceneId": "scn_6c4e8c90-056e-4c28-acba-f7f8ad5a9a24",
+      "severity": "info",
+      "confidence": 0.6,
+      "justification": "A 150 ms scale entry looks almost like a hard cut. It clashes with the calm motion the brief asks for and with the slower entries of the other scenes.",
+      "evidence": [
+       {
+        "image": "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-1.png",
+        "observation": "The entry is already finished at 188 ms."
+       }
+      ]
+     },
+     {
+      "kind": "observation",
+      "category": "aesthetic",
+      "sceneId": null,
+      "severity": "info",
+      "confidence": 0.7,
+      "justification": "In every frame examined, the white text has good contrast on the violet-to-cyan gradient, the type is clear and the text is centered with plenty of space. The frames show no rendering defect: no black frame and no visible artifact.",
+      "evidence": [
+       {
+        "image": "fdb_da921c1f-9288-4937-a4b0-c51c87680266-after-aligned.png",
+        "observation": "The longer text stays on one line, fits the width and stays centered."
+       }
+      ]
+     }
+    ],
+    "imagesExamined": [
+     "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6-before-capture.png",
+     "fdb_e9c8bd9e-b7b9-423d-9912-4b5baae2fdf6-after-aligned.png",
+     "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-capture.png",
+     "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-aligned.png",
+     "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-before-seq-1.png",
+     "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-1.png",
+     "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-2.png",
+     "fdb_6f63003f-2938-45fe-8e28-e9d40ba08f61-after-seq-3.png",
+     "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-capture.png",
+     "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-aligned.png",
+     "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-2.png",
+     "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-before-seq-4.png",
+     "fdb_508fa535-9b58-43b1-aca7-eb7b38fc4897-after-seq-1.png",
+     "fdb_da921c1f-9288-4937-a4b0-c51c87680266-before-capture.png",
+     "fdb_da921c1f-9288-4937-a4b0-c51c87680266-after-aligned.png",
+     "scn_14319ed6-6446-490e-8c82-12c382e801c9-before-scene.png",
+     "scn_14319ed6-6446-490e-8c82-12c382e801c9-after-scene.png"
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,6 @@
+schemaVersion: 1
+maxDurationSeconds: 60
+formats:
+  landscape: { width: 1920, height: 1080 }
+  portrait: { width: 1080, height: 1920 }
+  square: { width: 1080, height: 1080 }

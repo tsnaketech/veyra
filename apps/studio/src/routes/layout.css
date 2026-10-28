@@ -1,2 +1,57 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
+
+@theme {
+  --color-ink: #e7e9f3;
+  --color-muted: #9aa0b8;
+  --color-canvas: #0b0d17;
+  --color-panel: #12152a;
+  --color-raised: #1a1e38;
+  --color-line: #262b4d;
+  --color-violet: #7c3aed;
+  --color-blue: #2563eb;
+  --color-cyan: #06b6d4;
+  --color-ok: #22c55e;
+  --color-warn: #f59e0b;
+  --color-bad: #ef4444;
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-raised px-3 py-2 text-sm font-medium text-ink transition-colors hover:border-cyan/60 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-transparent bg-linear-to-r from-violet to-blue text-white hover:from-violet/90 hover:to-cyan;
+  }
+  .panel {
+    @apply rounded-xl border border-line bg-panel;
+  }
+  .field {
+    @apply w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-cyan focus:outline-none;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

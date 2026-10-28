@@ -1,25 +1,10 @@
-# Mémoire du projet
+# Index de mémoire
 
-Aide à la reprise entre sessions, pas une source de vérité. Les règles d'entretien
-sont dans [AGENTS.md](../AGENTS.md), rubrique « Entretien de la mémoire ». Ne pas
-y stocker de secrets, de données personnelles ni de conversations.
+Mise à jour : 2026-10-28. Aide à la reprise ; les sources de référence restent dans docs/.
 
-Dernière mise à jour : À définir.
+- [Contexte](CONTEXT.md)
+- [Progression](PROGRESS.md)
+- [Leçons](LESSONS.md)
+- Sessions : [2026-10-27](sessions/2026-10-27.md), [2026-10-28](sessions/2026-10-28.md)
 
-## État utile à la reprise
-
-À définir : état actuel du travail et dernière tâche traitée, avec un renvoi vers
-[TASKS.md](../docs/TASKS.md).
-
-## Points à revérifier
-
-Aucun.
-
-## Blocages
-
-Aucun.
-
-## Prochaine étape
-
-Compléter le [PRD](../docs/PRD.md), puis suivre l'ordre de remplissage de
-[GUIDE.md](../docs/GUIDE.md).
+Lire aussi [PRD](../docs/PRD.md) et [TASKS](../docs/TASKS.md).
