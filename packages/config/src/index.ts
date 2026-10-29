@@ -207,6 +207,45 @@ export class ConfigLoader<T> {
 
 const version = { schemaVersion: z.literal(1) };
 export const configSchemas = {
+  audio: z.object({
+    ...version,
+    allowedFormats: z
+      .array(
+        z.enum([
+          "wav",
+          "mp3",
+          "flac",
+          "ogg",
+          "mov",
+          "mp4",
+          "m4a",
+          "3gp",
+          "3g2",
+          "mj2",
+          "aiff",
+        ]),
+      )
+      .min(1),
+    maxFileBytes: z.number().int().positive(),
+    maxDurationSeconds: z.number().positive(),
+    mix: z.object({
+      sampleRate: z.literal(48000),
+      channels: z.literal(2),
+      codec: z.literal("aac"),
+      bitrateKbps: z.number().int().min(8).max(512),
+      truePeakDb: z.number().min(-24).max(0),
+      targetLufs: z.number().min(-30).max(-5),
+    }),
+    qa: z.object({
+      silenceNoiseDb: z.number().min(-120).max(0),
+      silenceMinMs: z.number().positive(),
+      clippingPeakDb: z.number().max(0),
+      loudnessToleranceLu: z.number().nonnegative(),
+      syncToleranceMs: z.number().nonnegative(),
+    }),
+    cpuSeconds: z.number().int().positive().max(600),
+    timeoutMs: z.number().int().positive().max(600000),
+  }),
   app: z.object({
     ...version,
     name: z.string(),

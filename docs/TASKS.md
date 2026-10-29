@@ -110,3 +110,20 @@ Point de validation : `motion.slow.test.ts` et E2E Motion Engine (rendus réels)
 | T035 | Indexation VFR par timestamps de présentation, si des médias importés sont annotés | Besoin produit |
 | T036 | Option d'appel direct `claude -p` pour un usage strictement personnel, si l'utilisateur la décide | Décision utilisateur (D010) |
 | T033 | Extraire `apps/worker` si multi-instance ou reprise après crash requise (D006) | Besoin produit |
+
+## G9 — v0.3 Phase A : contrats audiovisuels et inter-agents
+
+| ID | Travail | Statut / preuve |
+|---|---|---|
+| T080 | Schémas timeline/audio/production, ancrages et hash ; événements du registre ; architecture multi-agents | Terminée le 2026-10-29 ; 392 tests réussis, check et lint réussis ; commit 7d16462 |
+
+## G10 — v0.3 Phase B : moteur audio
+
+Groupe indivisible : validation → résolution/mixage → mesures et tests réels.
+Point de validation : fixtures FFmpeg, sources inchangées, contrôles récursifs.
+
+| ID | Travail | Statut / preuve |
+|---|---|---|
+| T081 | Package audio, validation des médias et limites, configuration | Terminée ; `packages/audio/src/validation.test.ts`, configuration réelle chargée ; installation hors ligne réussie depuis le store local copié |
+| T082 | Résolution des ancrages, mixage WAV et mux AAC atomiques | Terminée ; `timeline.test.ts`, `mixing.test.ts` : onsets ±40 ms, fades, ducking ≥6 dB, mux 3 s, empreintes des sources inchangées et sortie préservée après échec |
+| T083 | Mesures, tests FFmpeg, documentation et vérification globale | Terminée ; `analysis.test.ts` ; 412 tests réussis (19 audio), `pnpm -r check` et `pnpm -r lint` réussis ; détail dans TESTING |

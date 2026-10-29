@@ -13,6 +13,7 @@
 | packages/ai | Fournisseurs `fake`, `anthropic-api` (non vérifié), `claude-subscribe` (mode assisté, `assisted.ts`), détection Claude Code ; aucun basculement (D010, D011) ; `QualityEvaluator` et validation des expertises (`evaluation.ts`, D015) | MVP + fournisseurs + expertise |
 | packages/core | Orchestration partagée | Non créé : l'orchestration vit dans le Studio tant qu'il n'y a pas de worker |
 | packages/motion | Registre versionné de composants animés (schémas, durées, capacités, HTML échappé + animations en données, CSS, aperçus) — D017 | Motion Engine v0.2 |
+| packages/audio | Validation, résolution des ancrages, mixage WAV, mux AAC et mesures déterministes — [AUDIO-PIPELINE](video/AUDIO-PIPELINE.md) | v0.3 Phase B |
 | packages/video | ffprobe (fréquence rationnelle, CFR), ffmpeg, QA déterministe, extraction PNG par temps ou par index, comparaison PSNR | Itération 2 + frames |
 | packages/hyperframes-adapter | Composition déterministe, CLI, sandbox et FakeEngine | Itération 2 |
 | packages/storage | Chemins confinés, révisions et originaux exclusifs | Itération 2 |
@@ -77,3 +78,10 @@ Le système requiert ffmpeg/ffprobe (5.1.9 présents), bwrap, prlimit et Chrome
 Headless Shell (`hyperframes browser ensure`, dans `~/.cache/hyperframes`).
 Le pipeline réel et ses limites sont dans [VIDEO-PIPELINE](video/VIDEO-PIPELINE.md),
 le modèle de sandbox dans [SECURITY](SECURITY.md).
+
+## Contrats v0.3 — phase A
+
+Les schémas historiques sont dans `packages/schemas/src/core.ts`, réexportés par
+`index.ts` ; `timeline.ts`, `audio.ts` et `production.ts` les réutilisent sans
+cycle d'import. Le registre Motion fournit aussi des événements synchronisés
+avec ses animations. Voir [Architecture multi-agents](ai/MULTI-AGENT-ARCHITECTURE.md).

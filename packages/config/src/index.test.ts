@@ -127,6 +127,7 @@ it("supports registered parsers", () => {
   ).toBe("Veyra");
 });
 const configs = [
+  ["audio", "audio.yaml"],
   ["app", "app.yaml"],
   ["engines", "engines.json"],
   ["formats", "formats.yaml"],

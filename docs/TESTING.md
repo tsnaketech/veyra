@@ -137,3 +137,29 @@ Résultat antérieur (MVP) : 197 tests, 3 E2E en 31,0 s.
 - `AnthropicQualityEvaluator` : seulement testé avec un `parse` simulé (pas de clé).
 - Tests Vitest navigateur (projet `client`) : aucun.
 - Accessibilité : pas d'audit outillé ; navigation clavier vérifiée par lecture du code seulement.
+
+## Résultats du 2026-10-29, v0.3 Phase A (exécutés directement)
+
+| Commande | Résultat |
+|---|---|
+| `pnpm -r test` | 392 réussis, 0 échec, 24 fichiers : schemas 256, config 25, storage 10, motion 13, ai 31, video 6, hyperframes-adapter 18, studio 33 |
+| `pnpm -r check`, `pnpm -r lint` | Réussis ; Svelte : 0 erreur, 0 avertissement |
+
+32 nouveaux tests couvrent contrats audio/production, ancrages, hash stable et
+événements visuels (FPS entiers et fractionnaires). Rendus lents et E2E non relancés.
+
+## Résultats du 2026-10-29, v0.3 Phase B (exécutés directement)
+
+| Commande | Résultat |
+|---|---|
+| `pnpm -r test` | 412 réussis, 0 échec, 28 fichiers : schemas 256, config 26, storage 10, motion 13, ai 31, video 6, hyperframes-adapter 18, audio 19, studio 33 |
+| `pnpm -r check` | Réussi ; Svelte : 0 erreur, 0 avertissement |
+| `pnpm -r lint` | Réussi ; Prettier et ESLint |
+
+Mode hors ligne forcé par `npm_config_offline=true`. Les tests audio génèrent
+leurs fixtures FFmpeg dans des répertoires temporaires et les nettoient : formats,
+limites, décodage, synchronisation, niveaux, silence, crêtes, mux et intégrité des
+sources. Premier passage global : timeout Vitest de 5 s du test fades/ducking sous
+charge ; délai des tests d'intégration audio porté à 30 s, puis passage réussi
+(audio : 5,18 s pour les 19 tests). Les limites du moteur restent inchangées.
+Rendus HyperFrames lents et E2E non relancés. Aucun Markdown passé à Prettier.

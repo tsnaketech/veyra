@@ -52,3 +52,5 @@ Le modèle ne produit jamais de code : seules des données structurées sont
 acceptées, puis transformées de façon déterministe (`toStoryboard`,
 `applyProposal`, `compose`). Les skills sont dans `.agents/skills/` (visibles par
 Claude Code via `.claude/skills`).
+
+Contrats v0.3 et rôles métier : [Architecture multi-agents](MULTI-AGENT-ARCHITECTURE.md).

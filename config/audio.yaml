@@ -1,0 +1,19 @@
+schemaVersion: 1
+allowedFormats: [wav, mp3, flac, ogg, mov, mp4, m4a, aiff]
+maxFileBytes: 104857600
+maxDurationSeconds: 600
+mix:
+  sampleRate: 48000
+  channels: 2
+  codec: aac
+  bitrateKbps: 192
+  truePeakDb: -1
+  targetLufs: -16
+qa:
+  silenceNoiseDb: -50
+  silenceMinMs: 500
+  clippingPeakDb: -0.1
+  loudnessToleranceLu: 3
+  syncToleranceMs: 40
+cpuSeconds: 60
+timeoutMs: 120000
