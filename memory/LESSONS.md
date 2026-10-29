@@ -45,3 +45,8 @@
   première accolade du gabarit : éditer la ligne entière.
 - 2026-10-29 — L'outil Write convertit les échappements `\u2028` d'un littéral regex en
   vrais caractères : écrire ce type de ligne en ASCII via un script.
+- 2026-10-29 — `git add -A` embarque ce qu'un outil a installé pendant la session
+  (plugins, skills, verrous) : relire `git status` avant chaque commit.
+- 2026-10-29 — Une version de plugin (0.8.214) ne désigne pas un contenu unique : seul un
+  tag ou un commit le fait. Un `extraKnownMarketplaces` de projet n'est appliqué qu'après
+  la confiance du dossier ; en non interactif, enregistrer la marketplace explicitement.

@@ -7,3 +7,16 @@ node_modules/
 *.db-wal
 coverage/
 /projects/
+
+# External HyperFrames skills: provided by the Claude Code plugin hyperframes@hyperframes,
+# pinned in .claude/settings.json (procedure: docs/RUNBOOK.md). These are local copies
+# installed by `npx skills add`; Veyra's own skills in .agents/skills/ stay tracked.
+/.agents/skills/figma/
+/.agents/skills/hyperframes/
+/.agents/skills/hyperframes-cli/
+/.agents/skills/hyperframes-registry/
+/.agents/skills/media-use/
+/.agents/skills/remotion-to-hyperframes/
+/.agents/skills/slideshow/
+# Written by `npx skills`: records hashes but no ref or commit, so it cannot restore exact versions.
+/skills-lock.json

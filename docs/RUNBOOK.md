@@ -46,6 +46,58 @@ configurée ». Une clé seule n'active plus l'API : choisir `anthropic-api` (D0
    indiqué. Dans Claude Code, à la racine du dépôt : `/veyra-assisted-task <dossier>`.
 4. Revenir au Studio : « Importer le résultat ». Le plan importé attend votre décision.
 
+## Skills externes HyperFrames (après un clone)
+
+Les skills propres à Veyra sont versionnés dans `.agents/skills/` (lien
+`.claude/skills`). Les skills HyperFrames (figma, hyperframes, hyperframes-cli,
+hyperframes-registry, media-use, remotion-to-hyperframes, slideshow) ne le sont pas :
+ils viennent du plugin Claude Code officiel `hyperframes@hyperframes`, figé dans
+`.claude/settings.json` sur le tag `v0.8.214` de `heygen-com/hyperframes` (D018).
+
+Réinstallation, à la racine du clone (Claude Code installé ; `git` et accès à github.com) :
+
+```sh
+claude plugin marketplace add 'heygen-com/hyperframes#v0.8.214' --scope project --sparse .claude-plugin skills
+claude plugin install hyperframes@hyperframes --scope project
+```
+
+Sans clé SSH GitHub, préfixer ces commandes par `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1`.
+Elles sont idempotentes et laissent `.claude/settings.json` inchangé. Ouvrir Claude Code
+dans le dossier et accepter la confiance suffit aussi à enregistrer la marketplace,
+mais pas en mode non interactif : un `install` seul échoue alors avec `Plugin
+"hyperframes" not found in marketplace "hyperframes"`.
+
+Vérification :
+
+```sh
+claude plugin list                # hyperframes@hyperframes · Version 0.8.214 · Scope project · enabled
+claude plugin marketplace list    # hyperframes · Source: GitHub (heygen-com/hyperframes@v0.8.214)
+git -C ~/.claude/plugins/marketplaces/hyperframes rev-parse HEAD
+                                  # 4719543e972548a261b8354f0a8dada479ae5d93 (tag v0.8.214)
+claude plugin details hyperframes  # Component inventory · Skills (7) figma, hyperframes, hyperframes-cli,
+                                  #   hyperframes-registry, media-use, remotion-to-hyperframes, slideshow
+```
+
+Dans une session, ils s'appellent `/hyperframes:<nom>`.
+
+Mises à jour : jamais silencieuses. L'auto-update est désactivé par défaut pour cette
+marketplace tierce, et `claude plugin marketplace update hyperframes` /
+`claude plugin update hyperframes@hyperframes` restent sur le tag. Pour changer de
+version : remplacer `v0.8.214` dans les deux commandes ci-dessus, les relancer, vérifier
+(`claude plugin list`, `hyperframes check` sur une composition), committer le nouveau
+`.claude/settings.json`.
+
+Points d'attention :
+- Le CLI utilisé pour le rendu reste `hyperframes@0.8.209` (`pnpm-lock.yaml`) ; les
+  skills sont ceux de 0.8.214. Aligner l'un sur l'autre est une décision à part.
+- `npx hyperframes skills …` et `npx skills add …` gèrent des copies autonomes non
+  figées (branche principale) : ne pas les utiliser pour ce dépôt. Le bac à sable de
+  rendu impose `HYPERFRAMES_SKIP_SKILLS=1`, donc le CLI n'en installe jamais.
+- Procédure vérifiée sur une configuration Claude Code vierge. Sur une machine où le
+  plugin est déjà installé en portée utilisateur depuis la branche principale, la
+  marketplace porte le même nom : contrôler ensuite `claude plugin list` (deux
+  portées possibles) et le commit de la marketplace ; cas non testé.
+
 ## Aperçus et démo du Motion Engine
 
 ```sh

@@ -256,3 +256,24 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   résolution, fps, codec, fichier vide, noirs), un défaut de mise en page demandant
   une correction. Avertissement HyperFrames sur les sous-compositions accepté pour
   l'instant (T071). Aucune migration : le composant vit dans le JSON du storyboard.
+
+## D018 — Skills HyperFrames par le plugin officiel figé sur un tag
+
+- Date : 2026-10-29
+- Statut : acceptée (choix de l'utilisateur : ignorer les copies installées)
+- Contexte : 7 skills HyperFrames ont été copiés dans `.agents/skills/` par
+  `npx skills add`, avec `skills-lock.json`, et le plugin `hyperframes@hyperframes`
+  était activé dans `.claude/settings.json`. Le verrou ne contient ni tag ni commit ;
+  `hyperframes skills update` et `npx skills add` suivent la branche principale ; deux
+  copies portant la même version 0.8.214 différaient d'un fichier.
+- Options envisagées : versionner les copies (redistribution, ~4 Mo) ; garder
+  `skills-lock.json` (détecte un écart mais réinstalle la dernière version) ; plugin
+  Claude Code officiel avec marketplace figée.
+- Décision et justification : plugin officiel, marketplace déclarée dans
+  `.claude/settings.json` avec `ref: v0.8.214` et `sparsePaths` (fichier écrit par
+  `claude plugin marketplace add … --scope project`, portable : ni secret ni chemin
+  local). Copies et verrou ignorés par git, répertoire par répertoire.
+- Conséquences : restauration vérifiée le 2026-10-29 dans un clone neuf avec une
+  configuration Claude Code isolée : commit 4719543 (= tag), skills identiques au
+  tag, version inchangée après `marketplace update` et `plugin update`. Une étape
+  manuelle par clone (RUNBOOK). Écart de version avec le CLI de rendu (0.8.209).

@@ -54,6 +54,7 @@ packages installés dans `node_modules` ; conserver leurs notices lors de redist
 | Vitest, Playwright | Tests | MIT / Apache-2.0 |
 | HyperFrames 0.8.209 | Moteur CLI installé | Manifest Apache-2.0, aucun fichier LICENSE livré dans le paquet npm inspecté ; **à vérifier pour redistribution** |
 | @anthropic-ai/sdk 1.3.0 | Fournisseur IA réel (API Messages, D007) | Apache-2.0 |
+| Plugin Claude Code `hyperframes@hyperframes` (tag v0.8.214) | Skills HyperFrames pour les agents (non versionnés, D018) | Apache-2.0 (marketplace.json) ; réinstallés, jamais redistribués |
 | tsx 4.23.15 | Exécution de `pnpm qa:bench` (dev, `@veyra/ai`) | MIT |
 | GSAP 3.14.2 | Animations, copie locale à la composition | Manifest « Standard 'no charge' license », en-tête renvoyant à gsap.com/standard-license ; **à vérifier pour redistribution** |
 
