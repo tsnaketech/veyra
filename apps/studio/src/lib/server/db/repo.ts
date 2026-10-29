@@ -113,12 +113,19 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
       id: string,
       patch: Pick<
         Partial<VideoRevision>,
-        'storyboard' | 'resolvedConfig' | 'videoPath' | 'media' | 'error'
+        'storyboard' | 'resolvedConfig' | 'videoPath' | 'media' | 'silentVideoPath' | 'error'
       >
     ) {
       return db.transaction(() => {
         const current = mutable(id);
-        const allowed = ['storyboard', 'resolvedConfig', 'videoPath', 'media', 'error'];
+        const allowed = [
+          'storyboard',
+          'resolvedConfig',
+          'videoPath',
+          'media',
+          'silentVideoPath',
+          'error'
+        ];
         if (Object.keys(patch).some((key) => !allowed.includes(key)))
           throw new Error('Unsupported revision update');
         const row = videoRevisionSchema.parse({ ...current, ...patch, updatedAt: Date.now() });
@@ -196,6 +203,8 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
     createFeedback(input: unknown) {
       const row = feedbackSchema.parse(input);
       if (row.status !== 'draft') throw new Error('Feedback must start as draft');
+      if (row.rangeEndMs !== null && row.rangeEndMs < row.timestampMs)
+        throw new Error('Fin de plage avant son début');
       db.insert(tables.feedback).values(row).run();
       return row;
     },
@@ -294,6 +303,16 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
     },
     listAssets(projectId: string) {
       return db.select().from(tables.assets).where(eq(tables.assets.projectId, projectId)).all();
+    },
+    setAssetAudio(id: string, audio: unknown) {
+      const row = db.select().from(tables.assets).where(eq(tables.assets.id, id)).get();
+      if (!row) throw new Error('Fichier introuvable');
+      const next = assetSchema.parse({ ...row, audio, updatedAt: Date.now() });
+      db.update(tables.assets).set(next).where(eq(tables.assets.id, id)).run();
+      return next;
+    },
+    getAsset(id: string) {
+      return db.select().from(tables.assets).where(eq(tables.assets.id, id)).get();
     },
     renderJobsFor(revisionIds: string[]) {
       if (!revisionIds.length) return [];

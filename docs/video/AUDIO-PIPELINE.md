@@ -94,3 +94,26 @@ liste de protocoles ne constituent pas un bac à sable du système de fichiers.
 
 Aucune génération audio, aucun TTS, aucune recherche réseau, aucun mastering
 au-delà du limiteur. `targetLufs` est une cible QA, sans normalisation automatique.
+
+## Intégration au rendu
+
+- HyperFrames écrit toujours une vidéo **muette** `renders/<rnd>.video.mp4`, conservée
+  dans `video_revisions.silent_video_path`. Sans piste audio, elle est copiée telle
+  quelle vers `renders/<rnd>.mp4` (comportement inchangé).
+- Avec une composition audio, le runner calcule `visualTimeline` (fréquence mesurée du
+  rendu), résout les pistes (`resolveAudioComposition`), mixe en WAV puis multiplexe
+  dans `renders/<rnd>.mp4`. Le WAV intermédiaire est supprimé.
+- **Réutilisation de l'image** : si le storyboard est identique à celui de la révision
+  parente, que sa vidéo muette existe (sous la racine des projets) et que la révision
+  n'est pas un nouveau rendu automatique, la composition, `check` et HyperFrames ne sont
+  pas relancés ; la vidéo muette est copiée (jamais référencée). Étape `reuse-video`,
+  `videoReusedFrom` dans la configuration du job, contrôle « Vidéo réutilisée ».
+- La résolution (pistes placées, écarts) est persistée dans la configuration du job
+  (`audio`). Contrôles : « Pistes audio attendues » (`major` si une piste n'est pas
+  placée, par exemple fichier absent : le rendu se termine) et « Synchronisation audio »
+  (`minor` si un ancrage ne se résout pas). Aucun des deux ne déclenche de nouveau rendu
+  automatique.
+- Studio : `importAudio` (original exclusif, validation, refus expliqué et conservé),
+  `reviseAudio` (révision enfant à storyboard identique ; la source passe
+  `changes_requested`). Les corrections de mouvement et les nouveaux rendus automatiques
+  conservent la bande son ; un nouveau prompt repart sans son.

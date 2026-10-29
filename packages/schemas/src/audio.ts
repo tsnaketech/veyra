@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { idSchema } from "./core";
+import { idSchema } from "./ids";
 import { anchorSchema } from "./timeline";
 
 export const audioCategorySchema = z.enum([
@@ -45,10 +45,13 @@ export const audioTrackSchema = z
 export const audioCompositionSchema = z.object({
   schemaVersion: z.literal(1),
   tracks: z.array(audioTrackSchema),
-  master: z.object({
-    targetLufs: z.number().min(-30).max(-5).default(-16),
-    truePeakDb: z.number().default(-1),
-  }),
+  master: z
+    .object({
+      targetLufs: z.number().min(-30).max(-5).default(-16),
+      truePeakDb: z.number().default(-1),
+    })
+    .default({ targetLufs: -16, truePeakDb: -1 }),
 });
+export type AudioCategory = z.infer<typeof audioCategorySchema>;
 export type AudioTrack = z.infer<typeof audioTrackSchema>;
 export type AudioComposition = z.infer<typeof audioCompositionSchema>;

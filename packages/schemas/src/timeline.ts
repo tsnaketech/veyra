@@ -7,7 +7,7 @@
  * endFrame is the displayed frame at endMs, clamped, not an exclusive frame bound.
  */
 import { z } from "zod";
-import { idSchema } from "./core";
+import { idSchema } from "./ids";
 import { frameAt, type FrameRate } from "./frames";
 
 export const eventNameSchema = z

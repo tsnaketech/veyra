@@ -90,6 +90,10 @@ Dans `apps/studio/drizzle/` (snapshot et journal), appliquées au démarrage :
   `resolved`→`applied`) ; renommage de `aiProvider` (`fake-test-only`→`fake`,
   `anthropic`→`anthropic-api`). Le SQL généré a été corrigé à la main pour la copie.
   Test : `src/lib/server/db/migration.test.ts`.
+- `0003_audio` (v0.3) : colonnes ajoutées uniquement — `video_revisions.audio`
+  (composition audio JSON, immuable avec la révision), `video_revisions.silent_video_path`,
+  `assets.audio` (validation et métadonnées d'un fichier audio), `feedback.range_end_ms`
+  (fin de plage, ≥ `timestamp_ms`, vérifiée par le dépôt) et `feedback.audio_track_id`.
 - `0002_quality_evaluations` (D015) : table `quality_evaluations` ; reconstruction
   de `ai_tasks` (CHECK `kind` + `evaluation`), lignes copiées telles quelles.
 

@@ -1,31 +1,7 @@
 import { z } from "zod";
-
-export const idPrefixes = [
-  "prj",
-  "scn",
-  "ast",
-  "cnv",
-  "msg",
-  "rev",
-  "rnd",
-  "fdb",
-  "qar",
-  "qck",
-  "qis",
-  "pln",
-  "cbt",
-  "tsk",
-  "qev",
-  "atr",
-  "run",
-  "phs",
-] as const;
-export type IdPrefix = (typeof idPrefixes)[number];
-export function newId<P extends IdPrefix>(prefix: P): `${P}_${string}` {
-  return `${prefix}_${crypto.randomUUID()}`;
-}
-export const idSchema = (prefix: IdPrefix) =>
-  z.string().regex(new RegExp(`^${prefix}_[A-Za-z0-9-]+$`));
+import { idSchema } from "./ids";
+import { audioCompositionSchema } from "./audio";
+export * from "./ids";
 const timestamp = z.number().int().nonnegative();
 const base = { createdAt: timestamp, updatedAt: timestamp };
 export const renderJobStatusSchema = z.enum([
@@ -203,6 +179,16 @@ export const assetSchema = z.object({
   projectId: idSchema("prj"),
   path: z.string().min(1),
   mediaType: z.string().min(1),
+  // Set for imported audio: validation result of @veyra/audio (metadata is engine-defined JSON).
+  audio: z
+    .object({
+      status: z.enum(["valid", "invalid"]),
+      metadata: z.record(z.string(), z.json()).nullable(),
+      error: z.string().nullable(),
+      category: z.enum(["music", "voiceover", "sfx", "ambience"]).nullable(),
+    })
+    .nullable()
+    .default(null),
   ...base,
 });
 export const conversationSchema = z.object({
@@ -237,6 +223,10 @@ export const videoRevisionSchema = z.object({
     })
     .nullable()
     .default(null),
+  // Soundtrack of this revision (immutable with it); null = silent video.
+  audio: audioCompositionSchema.nullable().default(null),
+  // HyperFrames output without sound, reused when only the audio changes.
+  silentVideoPath: z.string().nullable().default(null),
   error: z.string().nullable(),
   ...base,
 });
@@ -264,6 +254,9 @@ export const feedbackSchema = z.object({
   capturePath: z.string().nullable().default(null),
   batchId: idSchema("cbt").nullable().default(null),
   sceneId: idSchema("scn").nullable(),
+  // Optional end of a time range (>= timestampMs, checked by the repository) and audio target.
+  rangeEndMs: timestamp.nullable().default(null),
+  audioTrackId: idSchema("atr").nullable().default(null),
   text: z.string().min(1),
   status: feedbackStatusSchema.default("draft"),
   author: z.string().min(1),

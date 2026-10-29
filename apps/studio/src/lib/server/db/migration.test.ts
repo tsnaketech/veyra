@@ -91,3 +91,41 @@ it('upgrades 0001 data to 0002: assisted tasks are kept and evaluations become p
   expect(client.pragma('foreign_key_check')).toEqual([]);
   client.close();
 });
+
+it('upgrades 0002 data to 0003: rows are kept and the audio columns start empty', () => {
+  dir = mkdtempSync(join(tmpdir(), 'veyra-mig-'));
+  cpSync('drizzle', dir, { recursive: true });
+  const journal = JSON.parse(readFileSync(join(dir, 'meta/_journal.json'), 'utf8'));
+  journal.entries = journal.entries.slice(0, 3);
+  writeFileSync(join(dir, 'meta/_journal.json'), JSON.stringify(journal));
+  const client = new Database(':memory:');
+  client.pragma('foreign_keys = ON');
+  migrate(drizzle(client), { migrationsFolder: dir });
+  const storyboard = JSON.stringify({ scenes: [], width: 1920, height: 1080, fps: 30 });
+  client.exec(`insert into projects values ('prj_1','P','{}',1,1)`);
+  client
+    .prepare(
+      `insert into video_revisions (id,project_id,status,storyboard,resolved_config,created_at,updated_at) values ('rev_1','prj_1','draft',?,'{}',1,1)`
+    )
+    .run(storyboard);
+  client.exec(
+    `insert into assets (id,project_id,path,media_type,created_at,updated_at) values ('ast_1','prj_1','/x','image/png',1,1)`
+  );
+  client.exec(
+    `insert into feedback (id,project_id,revision_id,timestamp_ms,text,status,author,created_at,updated_at) values ('fdb_1','prj_1','rev_1',0,'c','draft','u',1,1)`
+  );
+
+  migrate(drizzle(client), { migrationsFolder: 'drizzle' });
+  expect(client.prepare('select audio, silent_video_path from video_revisions').get()).toEqual({
+    audio: null,
+    silent_video_path: null
+  });
+  expect(client.prepare('select audio from assets').get()).toEqual({ audio: null });
+  expect(client.prepare('select range_end_ms, audio_track_id, text from feedback').get()).toEqual({
+    range_end_ms: null,
+    audio_track_id: null,
+    text: 'c'
+  });
+  expect(client.pragma('foreign_key_check')).toEqual([]);
+  client.close();
+});

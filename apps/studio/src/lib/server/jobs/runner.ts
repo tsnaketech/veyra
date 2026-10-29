@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { copyFileSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { ConfigLoader, configSchemas } from '@veyra/config';
 import { ProjectStorage } from '@veyra/storage';
@@ -20,6 +20,8 @@ import {
   type RenderJob
 } from '@veyra/schemas';
 import type { ReviewFinding } from '@veyra/ai';
+import { mixToWav, muxAudio, resolveAudioComposition, type AudioMetadata } from '@veyra/audio';
+import { visualTimeline } from '@veyra/motion';
 import type { createRepository } from '../db/repo';
 type Repository = ReturnType<typeof createRepository>;
 /** Qualitative review run after deterministic QA; findings keep their own analysisMode. */
@@ -52,11 +54,15 @@ export function loadRenderSettings(configDir = defaultConfigDir()) {
   const quality = new ConfigLoader(configSchemas.quality).load([
     { file: join(configDir, 'quality.yaml') }
   ]);
+  const audio = new ConfigLoader(configSchemas.audio).load([
+    { file: join(configDir, 'audio.yaml') }
+  ]);
   return {
     app: app.value,
     engine: engines.value.hyperframes,
     style: style.value,
     quality: quality.value,
+    audio: audio.value,
     // VEYRA_PROJECTS_ROOT lets tests isolate their media from the default projects/ folder.
     storageRoot: resolve(
       process.env.VEYRA_PROJECTS_ROOT ?? join(dirname(configDir), app.value.projectsRoot)
@@ -65,7 +71,8 @@ export function loadRenderSettings(configDir = defaultConfigDir()) {
       app: app.redacted(),
       engines: engines.redacted(),
       style: style.redacted(),
-      quality: quality.redacted()
+      quality: quality.redacted(),
+      audio: audio.redacted()
     }
   };
 }
@@ -118,52 +125,64 @@ export class RenderJobRunner {
         this.settings.app.maxDurationSeconds * 1000
       )
         throw new Error('Configured maximum duration exceeded');
-      this.repo.updateRenderProgress(jobId, 0, 'compose');
       const workspace = this.storage.ensureRevision(revision.projectId, revision.id);
-      const files = compose(
-        revision.storyboard,
-        { width: revision.storyboard.width, height: revision.storyboard.height },
-        this.settings.style
-      );
-      writeComposition(workspace.composition, files);
-      // Layout, contrast, runtime and motion checks in a real browser, before encoding.
-      this.repo.updateRenderProgress(jobId, 2, 'check');
+      const silentPath = this.storage.silentRenderPath(revision.projectId, revision.id, jobId);
+      const outputPath = this.storage.renderPath(revision.projectId, revision.id, jobId);
       let compositionCheck: CompositionCheck | null = null;
       let checkError: string | null = null;
-      try {
-        compositionCheck = await this.engine.check(workspace.composition);
-      } catch (error) {
-        checkError = error instanceof Error ? error.message : String(error);
+      let renderSeconds = 0;
+      const reuseFrom = this.reusableVideo(revision);
+      if (reuseFrom) {
+        // Same storyboard as the parent: only the soundtrack changed, the picture is reused.
+        this.repo.updateRenderProgress(jobId, 2, 'reuse-video');
+        copyFileSync(reuseFrom.silentVideoPath!, silentPath);
+      } else {
+        this.repo.updateRenderProgress(jobId, 0, 'compose');
+        const files = compose(
+          revision.storyboard,
+          { width: revision.storyboard.width, height: revision.storyboard.height },
+          this.settings.style
+        );
+        writeComposition(workspace.composition, files);
+        // Layout, contrast, runtime and motion checks in a real browser, before encoding.
+        this.repo.updateRenderProgress(jobId, 2, 'check');
+        try {
+          compositionCheck = await this.engine.check(workspace.composition);
+        } catch (error) {
+          checkError = error instanceof Error ? error.message : String(error);
+        }
+        const renderStarted = Date.now();
+        const result = renderResultSchema.parse(
+          await this.engine.render(
+            workspace.composition,
+            {
+              revisionDir: workspace.revision,
+              outputPath: silentPath,
+              quality: this.settings.engine.quality,
+              fps: this.settings.engine.fps
+            },
+            (raw) => {
+              const progress = progressSchema.parse(raw);
+              this.repo.updateRenderProgress(
+                jobId,
+                Math.min(90, Math.round(progress.percent * 0.9)),
+                progress.stage
+              );
+            }
+          )
+        );
+        if (resolve(result.path) !== silentPath || result.engine !== this.engine.kind)
+          throw new Error('Engine result does not match job');
+        stderrTail = result.stderrTail;
+        renderSeconds = (Date.now() - renderStarted) / 1000;
       }
-      const renderStarted = Date.now();
-      const outputPath = this.storage.renderPath(revision.projectId, revision.id, jobId);
-      const result = renderResultSchema.parse(
-        await this.engine.render(
-          workspace.composition,
-          {
-            revisionDir: workspace.revision,
-            outputPath,
-            quality: this.settings.engine.quality,
-            fps: this.settings.engine.fps
-          },
-          (raw) => {
-            const progress = progressSchema.parse(raw);
-            this.repo.updateRenderProgress(
-              jobId,
-              Math.min(90, Math.round(progress.percent * 0.9)),
-              progress.stage
-            );
-          }
-        )
-      );
-      if (resolve(result.path) !== outputPath || result.engine !== this.engine.kind)
-        throw new Error('Engine result does not match job');
-      stderrTail = result.stderrTail;
-      const renderSeconds = (Date.now() - renderStarted) / 1000;
-      this.repo.updateRevision(revision.id, { videoPath: result.path });
+      this.repo.updateRevision(revision.id, { silentVideoPath: silentPath });
+      const silent = await this.engine.inspect(silentPath);
+      const audio = await this.soundtrack(revision, silentPath, outputPath, jobId, silent);
+      this.repo.updateRevision(revision.id, { videoPath: outputPath });
       this.repo.transitionRevision(revision.id, 'qa');
       this.repo.updateRenderProgress(jobId, 95, 'qa');
-      const metadata = await this.engine.inspect(result.path);
+      const metadata = await this.engine.inspect(outputPath);
       // The measured stream timing is the reference for frame-accurate comments.
       const rate = metadata.frameRate ?? { num: Math.round(this.settings.engine.fps), den: 1 };
       this.repo.updateRevision(revision.id, {
@@ -189,16 +208,33 @@ export class RenderJobRunner {
         },
         this.settings.quality
       );
-      checks.push(
-        ...compositionChecks(compositionCheck, checkError),
-        renderPerformanceCheck(renderSeconds, durationMs / 1000, this.settings.engine.wallTimeoutMs)
-      );
+      if (reuseFrom)
+        checks.push({
+          id: newId('qck'),
+          name: 'Vidéo réutilisée',
+          passed: true,
+          severity: 'info',
+          timestamp: 0,
+          evidence: `Image identique à la révision ${reuseFrom.id} (storyboard inchangé) : composition et rendu HyperFrames non relancés ; voir son rapport.`,
+          recommendation: 'No action required',
+          analysisMode: 'deterministic'
+        });
+      else
+        checks.push(
+          ...compositionChecks(compositionCheck, checkError),
+          renderPerformanceCheck(
+            renderSeconds,
+            durationMs / 1000,
+            this.settings.engine.wallTimeoutMs
+          )
+        );
+      if (audio) checks.push(...audioPlacementChecks(audio));
       if (this.engine.kind === 'fake-test-only')
         for (const check of checks) {
           check.analysisMode = 'simulated';
           check.evidence = `FakeEngine test-only: ${check.evidence}`;
         }
-      const findings = this.reviewer ? await this.reviewer(revision, result.path) : [];
+      const findings = this.reviewer ? await this.reviewer(revision, outputPath) : [];
       for (const finding of findings)
         checks.push({
           id: newId('qck'),
@@ -234,7 +270,15 @@ export class RenderJobRunner {
       this.repo.createQualityReport(report);
       // QA findings are reviewable even when checks fail; no automatic human approval.
       this.repo.transitionRevision(revision.id, 'awaiting_approval');
-      this.repo.transitionRenderJob(jobId, 'succeeded', { outputPath: result.path, stderrTail });
+      this.repo.transitionRenderJob(jobId, 'succeeded', {
+        outputPath,
+        stderrTail,
+        resolvedConfig: {
+          ...this.repo.getRenderJob(jobId).resolvedConfig,
+          ...(reuseFrom ? { videoReusedFrom: reuseFrom.id } : {}),
+          ...(audio ? { audio: JSON.parse(JSON.stringify(audio)) } : {})
+        } as RenderJob['resolvedConfig']
+      });
     } catch (error) {
       const message = (error instanceof Error ? error.message : 'Unknown render failure').slice(
         0,
@@ -251,6 +295,112 @@ export class RenderJobRunner {
     }
     return this.repo.getRenderJob(jobId);
   }
+
+  /** Parent whose silent render can stand in for this revision's picture, if any. */
+  private reusableVideo(revision: ReturnType<Repository['getRevision']>) {
+    if (!revision.parentRevisionId) return null;
+    // An automatic re-render exists precisely to produce a new picture.
+    if ((revision.resolvedConfig.origin as { autoFix?: number } | undefined)?.autoFix) return null;
+    const parent = this.repo.getRevision(revision.parentRevisionId);
+    if (
+      !parent.silentVideoPath ||
+      !parent.silentVideoPath.startsWith(this.storage.root + '/') ||
+      !existsSync(parent.silentVideoPath) ||
+      JSON.stringify(parent.storyboard) !== JSON.stringify(revision.storyboard)
+    )
+      return null;
+    return parent;
+  }
+
+  /**
+   * Writes the final video: the silent render as is, or with the revision's soundtrack
+   * resolved on the visual timeline, mixed and muxed. Returns the resolution, if any.
+   */
+  private async soundtrack(
+    revision: ReturnType<Repository['getRevision']>,
+    silentPath: string,
+    outputPath: string,
+    jobId: string,
+    silent: Awaited<ReturnType<VideoEngine['inspect']>>
+  ) {
+    const composition = revision.audio;
+    if (!composition?.tracks.length) {
+      copyFileSync(silentPath, outputPath);
+      return null;
+    }
+    const rate = silent.frameRate ?? { num: Math.round(this.settings.engine.fps), den: 1 };
+    const events = visualTimeline(revision.storyboard, rate, this.settings.style.palette);
+    const assets = new Map<string, { path: string; metadata: AudioMetadata }>();
+    for (const track of composition.tracks) {
+      const asset = this.repo.getAsset(track.assetId);
+      // A missing or invalid file becomes an explicit asset-missing issue, not a crash.
+      if (
+        asset?.projectId === revision.projectId &&
+        asset.audio?.status === 'valid' &&
+        asset.audio.metadata &&
+        asset.path.startsWith(this.storage.root + '/') &&
+        existsSync(asset.path)
+      )
+        assets.set(asset.id, {
+          path: asset.path,
+          metadata: asset.audio.metadata as unknown as AudioMetadata
+        });
+    }
+    const resolved = resolveAudioComposition(composition, events, assets, silent.durationMs);
+    const mix = this.storage.mixPath(revision.projectId, revision.id, jobId);
+    const settings = {
+      ...this.settings.audio.mix,
+      cpuSeconds: this.settings.audio.cpuSeconds,
+      timeoutMs: this.settings.audio.timeoutMs
+    };
+    this.repo.updateRenderProgress(jobId, 92, 'audio');
+    try {
+      await mixToWav(resolved.tracks, mix, settings, silent.durationMs);
+      await muxAudio(silentPath, mix, outputPath, settings);
+    } finally {
+      rmSync(mix, { force: true });
+    }
+    return { expected: composition.tracks.length, ...resolved };
+  }
+}
+
+/** Placement checks of a soundtrack; level, clipping and silence checks come with audio QA. */
+export function audioPlacementChecks(audio: {
+  expected: number;
+  tracks: { trackId: string }[];
+  issues: { trackId: string; code: string; message: string }[];
+}) {
+  const anchorIssues = audio.issues.filter((i) => i.code !== 'asset-missing');
+  const placed = audio.tracks.length === audio.expected;
+  const syncOk = anchorIssues.length === 0;
+  return [
+    {
+      id: newId('qck'),
+      name: 'Pistes audio attendues',
+      passed: placed,
+      severity: placed ? ('info' as const) : ('major' as const),
+      timestamp: 0,
+      evidence: JSON.stringify({
+        attendues: audio.expected,
+        placees: audio.tracks.length,
+        problemes: audio.issues.map((i) => `${i.trackId} ${i.code} : ${i.message}`)
+      }),
+      recommendation: placed ? 'No action required' : 'Réimporter le fichier ou corriger la piste',
+      analysisMode: 'deterministic' as const
+    },
+    {
+      id: newId('qck'),
+      name: 'Synchronisation audio',
+      passed: syncOk,
+      severity: syncOk ? ('info' as const) : ('minor' as const),
+      timestamp: 0,
+      evidence: JSON.stringify({
+        ancrages: syncOk ? 'tous résolus' : anchorIssues.map((i) => `${i.trackId} : ${i.message}`)
+      }),
+      recommendation: syncOk ? 'No action required' : 'Réancrer la piste sur un événement existant',
+      analysisMode: 'deterministic' as const
+    }
+  ];
 }
 const checkGroups = [
   {

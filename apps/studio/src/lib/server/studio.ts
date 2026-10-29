@@ -19,7 +19,9 @@ import {
   type Feedback,
   type Scene,
   type ScenePatch,
-  type VideoRevision
+  type VideoRevision,
+  audioCompositionSchema,
+  type AudioCategory
 } from '@veyra/schemas';
 import {
   AssistedProvider,
@@ -37,6 +39,7 @@ import {
   type StoryboardDraft
 } from '@veyra/ai';
 import { getComponent } from '@veyra/motion';
+import { AudioMediaError, probeAudio } from '@veyra/audio';
 import type { createRepository } from './db/repo';
 import type { RenderJobRunner, RenderSettings } from './jobs/runner';
 
@@ -222,7 +225,9 @@ export class Studio {
     storyboard: VideoRevision['storyboard'],
     parentRevisionId: string | null,
     origin: Record<string, string | number>,
-    kind: string = this.ai?.kind ?? 'none'
+    kind: string = this.ai?.kind ?? 'none',
+    // Corrections and re-renders keep the soundtrack; a new prompt starts silent.
+    audio: VideoRevision['audio'] = null
   ) {
     const now = Date.now();
     return this.repo.createRevision({
@@ -230,6 +235,7 @@ export class Studio {
       projectId,
       parentRevisionId,
       storyboard,
+      audio,
       resolvedConfig: { origin, aiProvider: kind },
       videoPath: null,
       error: null,
@@ -280,7 +286,8 @@ export class Studio {
         revision.storyboard,
         revision.id,
         { ...originOf(source), autoFix: autoFix + 1 },
-        String(source.resolvedConfig.aiProvider ?? 'none')
+        String(source.resolvedConfig.aiProvider ?? 'none'),
+        source.audio
       );
       return this.render(projectId, retry, autoFix + 1);
     }
@@ -586,7 +593,8 @@ export class Studio {
         storyboard,
         source.id,
         batch ? { planId, batchId: batch.id } : { planId },
-        batch?.provider
+        batch?.provider,
+        source.audio
       );
       if (batch) this.repo.updateBatch(batch.id, { status: 'applied', resultRevisionId: child.id });
       return child;
@@ -1173,7 +1181,8 @@ export class Studio {
     return pack;
   }
 
-  addAsset(projectId: string, file: File, data: Uint8Array) {
+  /** Writes an upload once, as an exclusive original that nothing ever modifies. */
+  private storeOriginal(projectId: string, file: File, data: Uint8Array) {
     if (!this.repo.getProject(projectId)) throw new Error('Projet introuvable');
     validateId(projectId, 'prj');
     const safeName =
@@ -1184,7 +1193,7 @@ export class Studio {
     const id = newId('ast');
     const path = this.storage.writeOriginal(projectId, `${id}-${safeName}`, data);
     const now = Date.now();
-    this.repo.createAsset({
+    const asset = this.repo.createAsset({
       id,
       projectId,
       path,
@@ -1192,7 +1201,94 @@ export class Studio {
       createdAt: now,
       updatedAt: now
     });
+    return { asset, safeName };
+  }
+
+  addAsset(projectId: string, file: File, data: Uint8Array) {
+    const { safeName } = this.storeOriginal(projectId, file, data);
     this.say(projectId, 'system', `Fichier ajouté : ${safeName} (conservé sans modification).`);
+  }
+
+  // --- Audio: imported files are untrusted media, validated before any use.
+
+  private audioLimits() {
+    const a = this.settings.audio;
+    return {
+      allowedFormats: a.allowedFormats,
+      maxFileBytes: a.maxFileBytes,
+      maxDurationMs: a.maxDurationSeconds * 1000,
+      cpuSeconds: a.cpuSeconds,
+      timeoutMs: a.timeoutMs
+    };
+  }
+
+  /** Keeps the original even when refused, so the user sees why; only valid files can be used. */
+  async importAudio(
+    projectId: string,
+    file: File,
+    data: Uint8Array,
+    category: AudioCategory | null = null
+  ) {
+    const { asset, safeName } = this.storeOriginal(projectId, file, data);
+    try {
+      const metadata = await probeAudio(asset.path, this.audioLimits());
+      const row = this.repo.setAssetAudio(asset.id, {
+        status: 'valid',
+        metadata,
+        error: null,
+        category
+      });
+      this.say(
+        projectId,
+        'system',
+        `Fichier audio ajouté : ${safeName} (${(metadata.durationMs / 1000).toFixed(1)} s, ${metadata.codec}, ${metadata.sampleRate} Hz).`
+      );
+      return row;
+    } catch (error) {
+      if (!(error instanceof AudioMediaError)) throw error;
+      const row = this.repo.setAssetAudio(asset.id, {
+        status: 'invalid',
+        metadata: null,
+        error: error.message,
+        category
+      });
+      this.say(projectId, 'system', `Fichier audio refusé : ${safeName} — ${error.message}`);
+      return row;
+    }
+  }
+
+  /**
+   * New soundtrack for a revision awaiting approval: the source stays as it is, a child
+   * revision with the same storyboard and the new audio is rendered (picture reused).
+   */
+  reviseAudio(revisionId: string, composition: unknown) {
+    const parsed = audioCompositionSchema.parse(composition);
+    const source = this.repo.getRevision(revisionId);
+    if (source.status !== 'awaiting_approval')
+      throw new Error('Seule une révision en attente de validation peut être modifiée');
+    for (const track of parsed.tracks) {
+      const asset = this.repo.getAsset(track.assetId);
+      if (asset?.projectId !== source.projectId || asset.audio?.status !== 'valid')
+        throw new Error(`Piste « ${track.label} » : fichier audio absent ou refusé`);
+    }
+    this.busy(source.projectId, 'generating');
+    const child = this.repo.transaction(() => {
+      this.repo.transitionRevision(source.id, 'changes_requested');
+      return this.newRevision(
+        source.projectId,
+        source.storyboard,
+        source.id,
+        { audioRevision: 'manual' },
+        String(source.resolvedConfig.aiProvider ?? 'none'),
+        parsed
+      );
+    });
+    this.say(
+      source.projectId,
+      'assistant',
+      `Bande son mise à jour (${parsed.tracks.length} piste(s)) : nouvelle révision, image réutilisée.`
+    );
+    return this.background(source.projectId, () => this.render(source.projectId, child, 0));
   }
 
   /** Everything the Studio page needs, in one read. */

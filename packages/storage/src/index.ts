@@ -151,6 +151,20 @@ export class ProjectStorage {
       taskId,
     );
   }
+  /** HyperFrames output before the soundtrack is muxed in (`<rnd>.video.mp4`). */
+  silentRenderPath(
+    projectId: string,
+    revisionId: string,
+    jobId: string,
+  ): string {
+    const { renders } = this.ensureRevision(projectId, revisionId);
+    return safePath(renders, `${validateId(jobId, "rnd")}.video.mp4`);
+  }
+  /** Intermediate soundtrack mix (`<rnd>.mix.wav`). */
+  mixPath(projectId: string, revisionId: string, jobId: string): string {
+    const { renders } = this.ensureRevision(projectId, revisionId);
+    return safePath(renders, `${validateId(jobId, "rnd")}.mix.wav`);
+  }
   renderPath(projectId: string, revisionId: string, jobId: string): string {
     const { renders } = this.ensureRevision(projectId, revisionId);
     return safePath(renders, `${validateId(jobId, "rnd")}.mp4`);

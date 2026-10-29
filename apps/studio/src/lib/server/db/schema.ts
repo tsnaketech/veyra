@@ -11,6 +11,8 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import type {
   AiTask,
+  Asset,
+  AudioComposition,
   CorrectionBatch,
   ExpertFinding,
   ExpertVerdict,
@@ -62,6 +64,8 @@ export const videoRevisions = sqliteTable(
       .notNull(),
     videoPath: text('video_path'),
     media: text('media', { mode: 'json' }).$type<MediaInfo>(),
+    audio: text('audio', { mode: 'json' }).$type<AudioComposition>(),
+    silentVideoPath: text('silent_video_path'),
     error: text('error'),
     ...timestamps()
   },
@@ -102,6 +106,7 @@ export const assets = sqliteTable(
       .references(() => projects.id),
     path: text('path').notNull(),
     mediaType: text('media_type').notNull(),
+    audio: text('audio', { mode: 'json' }).$type<Asset['audio']>(),
     ...timestamps()
   },
   (t) => [index('assets_project_idx').on(t.projectId)]
@@ -177,6 +182,8 @@ export const feedback = sqliteTable(
     capturePath: text('capture_path'),
     batchId: text('batch_id').references((): AnySQLiteColumn => correctionBatches.id),
     sceneId: text('scene_id'),
+    rangeEndMs: integer('range_end_ms'),
+    audioTrackId: text('audio_track_id'),
     text: text('text').notNull(),
     status: text('status', { enum: feedbackStatuses }).notNull().default('draft'),
     author: text('author').notNull(),
