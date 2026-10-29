@@ -276,4 +276,5 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
 - Conséquences : restauration vérifiée le 2026-10-29 dans un clone neuf avec une
   configuration Claude Code isolée : commit 4719543 (= tag), skills identiques au
   tag, version inchangée après `marketplace update` et `plugin update`. Une étape
-  manuelle par clone (RUNBOOK). Écart de version avec le CLI de rendu (0.8.209).
+  manuelle par clone (RUNBOOK). Écart de version avec le CLI de rendu (0.8.209), levé
+  le même jour : CLI aligné sur 0.8.214 (rendus identiques au pixel, voir TESTING).

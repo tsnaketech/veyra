@@ -5,4 +5,4 @@ allowBuilds:
   better-sqlite3: true
   esbuild: true
 minimumReleaseAgeExclude:
-  - hyperframes@0.8.209
+  - hyperframes@0.8.214

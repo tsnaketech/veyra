@@ -222,7 +222,7 @@ export const configSchemas = {
   engines: z.object({
     ...version,
     hyperframes: z.object({
-      cliVersion: z.literal("0.8.209"),
+      cliVersion: z.literal("0.8.214"),
       quality: z.enum(["draft", "looks", "delivery"]),
       allowUnsandboxed: z.boolean().default(false),
       wallTimeoutMs: z.number().int().positive().default(120000),

@@ -88,8 +88,11 @@ version : remplacer `v0.8.214` dans les deux commandes ci-dessus, les relancer, 
 `.claude/settings.json`.
 
 Points d'attention :
-- Le CLI utilisé pour le rendu reste `hyperframes@0.8.209` (`pnpm-lock.yaml`) ; les
-  skills sont ceux de 0.8.214. Aligner l'un sur l'autre est une décision à part.
+- Le CLI de rendu (`hyperframes`, figé dans `packages/hyperframes-adapter/package.json`,
+  `pnpm-lock.yaml` et `config/engines.json` → `cliVersion`) et les skills sont tous deux en
+  0.8.214. Pour une nouvelle version, changer les quatre endroits ensemble (plus
+  l'exemption `minimumReleaseAgeExclude` de `pnpm-workspace.yaml` si la version a moins
+  d'un jour), puis relancer tests, `test:slow`, E2E et `pnpm motion:previews`.
 - `npx hyperframes skills …` et `npx skills add …` gèrent des copies autonomes non
   figées (branche principale) : ne pas les utiliser pour ce dépôt. Le bac à sable de
   rendu impose `HYPERFRAMES_SKIP_SKILLS=1`, donc le CLI n'en installe jamais.

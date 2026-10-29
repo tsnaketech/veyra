@@ -18,7 +18,7 @@
     "@veyra/storage": "workspace:*",
     "@veyra/video": "workspace:*",
     "gsap": "3.14.2",
-    "hyperframes": "0.8.209",
+    "hyperframes": "0.8.214",
     "zod": "^4.0.0"
   },
   "devDependencies": {

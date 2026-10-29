@@ -5,7 +5,7 @@ description: Use when touching HyperFrames composition, the bwrap sandbox, the r
 
 # Rendu HyperFrames
 
-- HyperFrames 0.8.209 n'expose pas d'API de rendu : `HyperFramesEngine` appelle le CLI (`check --json`, `lint`, puis `render`) via `spawn` sans shell, dans `bwrap --unshare-net`, sous `prlimit`.
+- HyperFrames 0.8.214 n'expose pas d'API de rendu : `HyperFramesEngine` appelle le CLI (`check --json`, `lint`, puis `render`) via `spawn` sans shell, dans `bwrap --unshare-net`, sous `prlimit`.
 - Sans bwrap, le rendu est refusé (`SandboxUnavailableError`). Ne pas ajouter de repli non isolé sans `allowUnsandboxed` explicite dans `config/engines.json`.
 - GSAP est copié localement dans chaque composition : aucun accès réseau au rendu. Le catalogue `hyperframes add` (code tiers) n'est pas utilisé (D017).
 - `check` sort du JSON même en échec (code non nul) : lire `ProcessError.stdout`. Textes ≥ 28 px à 1080p, contraste AA.

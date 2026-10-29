@@ -31,6 +31,15 @@ seule, aucune requête modèle) ; son résultat n'est pas vérifié par le test.
    dossier du plan dans Claude Code → importer → appliquer → verdicts de correction.
 Critère : v2 rendue, verdicts `applied` pour des corrections réellement appliquées.
 
+## Résultats du 2026-10-29, passage à HyperFrames 0.8.214 (exécutés directement)
+
+| Commande | Résultat |
+|---|---|
+| `pnpm -r test`, `pnpm -r check`, `pnpm -r lint` | 360 réussis ; réussis |
+| `pnpm test:slow` | 2 rendus réels réussis ; 4 E2E réussis (1,6 min) |
+| `pnpm motion:previews --demo` | 5 aperçus `check` sans erreur ; images octet pour octet identiques à celles de 0.8.209 |
+| Démo 0.8.209 vs 0.8.214 (`ffmpeg … psnr`) | PSNR infini sur les 600 images : rendu identique au pixel ; seuls les octets du conteneur MP4 diffèrent |
+
 ## Résultats du 2026-10-29, Motion Engine v0.2 (exécutés directement)
 
 | Commande | Résultat |

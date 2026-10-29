@@ -1,7 +1,7 @@
 # Contexte
 
 2026-10-28 — MVP v0.1 de Veyra livré, puis étendu le même jour (non commité) :
-studio vidéo conversationnel (SvelteKit 3 / Svelte 5), rendu HyperFrames 0.8.209
+studio vidéo conversationnel (SvelteKit 3 / Svelte 5), rendu HyperFrames 0.8.214
 réel sous bwrap, QA ffprobe + revue qualitative + QA comparatif avant/après + expertise QA
 consultative par intention (D015),
 annotations par frame exacte, lots de corrections idempotents, révisions enfants,

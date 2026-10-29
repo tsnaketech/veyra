@@ -18,6 +18,7 @@ import {
 import type { Storyboard } from "@veyra/schemas";
 import { ProjectStorage } from "@veyra/storage";
 import { runProcess } from "@veyra/video";
+import { createRequire } from "node:module";
 import {
   compose,
   HyperFramesEngine,
@@ -25,6 +26,11 @@ import {
   writeComposition,
 } from "./index";
 
+const hyperframesVersion = (
+  createRequire(import.meta.url)("hyperframes/package.json") as {
+    version: string;
+  }
+).version;
 const args = process.argv.slice(2);
 const option = (name: string) => {
   const i = args.indexOf(`--${name}`);
@@ -113,7 +119,7 @@ writeFileSync(
   JSON.stringify(
     {
       registryVersion,
-      engine: "HyperFrames 0.8.209 (bwrap, draft)",
+      engine: `HyperFrames ${hyperframesVersion} (bwrap, draft)`,
       generatedAt: new Date().toISOString(),
       previews: manifest,
     },

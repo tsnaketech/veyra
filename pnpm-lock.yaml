@@ -355,8 +355,8 @@ importers:
         specifier: 3.14.2
         version: 3.14.2
       hyperframes:
-        specifier: 0.8.209
-        version: 0.8.209(@types/node@24.19.2)
+        specifier: 0.8.214
+        version: 0.8.214(@types/node@24.19.2)
       zod:
         specifier: ^4.0.0
         version: 4.6.7
@@ -2058,8 +2058,8 @@ packages:
   hookified@2.2.0:
     resolution: {integrity: sha512-p/LgFzRN5FeoD3DLS6bkUapeye6E4SI6yJs6KetENd18S+FBthqYq2amJUWpt5z0EQwwHemidjY5OqJGEKm5uA==}
 
-  hyperframes@0.8.209:
-    resolution: {integrity: sha512-08ft2bTwhVPUxklkEFQ3iw6JWi/bDDDC6s9yI6QjVabGFAZ2T5WfhPkSlgbCTNAOixS8GnjvDaJ0Z5rmf4op6w==}
+  hyperframes@0.8.214:
+    resolution: {integrity: sha512-ZPxgxGB5nYzqq67We1XtSdj6QbXIkubp/QxgVQXl3BvfmZnLmYVLyL2gDPixydV51OpZCG8pBTd5yELzEaahIQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -4105,7 +4105,7 @@ snapshots:
 
   hookified@2.2.0: {}
 
-  hyperframes@0.8.209(@types/node@24.19.2):
+  hyperframes@0.8.214(@types/node@24.19.2):
     dependencies:
       '@hono/node-server': 2.1.5(hono@4.13.14)
       '@puppeteer/browsers': 3.2.6(yauzl@3.4.0)
