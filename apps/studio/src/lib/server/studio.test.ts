@@ -72,7 +72,8 @@ function colorEngine(): VideoEngine {
       );
       return { path: opts.outputPath, engine: 'hyperframes', stderrTail: '' };
     },
-    inspect: (file) => probe(file)
+    inspect: (file) => probe(file),
+    check: (dir) => new FakeEngine().check(dir)
   };
 }
 // Test-only engine whose probe is reported as a real measurement, so deterministic QA applies.
@@ -97,7 +98,8 @@ function measuredEngine(durationMs: number): VideoEngine {
       ...(await fake.render(dir, opts, onProgress)),
       engine: 'hyperframes'
     }),
-    inspect: (file) => fake.inspect(file)
+    inspect: (file) => fake.inspect(file),
+    check: (dir) => fake.check(dir)
   };
 }
 /** Fake provider that counts every AI call. */

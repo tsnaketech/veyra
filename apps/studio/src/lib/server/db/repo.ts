@@ -52,7 +52,9 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
           .where(and(eq(tables.scenes.revisionId, row.id), eq(tables.scenes.id, scene.id)))
           .run();
       }
-    for (const scene of row.storyboard.scenes) {
+    // The scenes table indexes timing and text; components live in the storyboard JSON.
+    for (const { id, start, duration, text, animation } of row.storyboard.scenes) {
+      const scene = { id, start, duration, text, animation };
       db.insert(tables.scenes)
         .values({
           ...scene,

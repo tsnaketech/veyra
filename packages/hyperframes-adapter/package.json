@@ -9,7 +9,7 @@
     "test": "vitest run --exclude \"**/*.slow.test.ts\"",
     "check": "tsc -p tsconfig.json",
     "lint": "prettier --check .",
-    "test:slow": "vitest run src/render.slow.test.ts"
+    "test:slow": "vitest run src/render.slow.test.ts src/motion.slow.test.ts"
   },
   "dependencies": {
     "@veyra/schemas": "workspace:*",
@@ -17,7 +17,8 @@
     "@veyra/video": "workspace:*",
     "zod": "^4.0.0",
     "hyperframes": "0.8.209",
-    "gsap": "3.14.2"
+    "gsap": "3.14.2",
+    "@veyra/motion": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24",

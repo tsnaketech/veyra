@@ -74,7 +74,8 @@ function colorEngine(): VideoEngine {
       );
       return { path: opts.outputPath, engine: 'hyperframes', stderrTail: '' };
     },
-    inspect: (file) => probe(file)
+    inspect: (file) => probe(file),
+    check: (dir) => new FakeEngine().check(dir)
   };
 }
 /** Provider whose planner follows a script, so each QA case is produced on purpose. */

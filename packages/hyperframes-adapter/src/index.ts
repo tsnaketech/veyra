@@ -28,6 +28,7 @@ export {
   styleSchema,
   formatSchema,
 } from "./compose";
+export { motionDemoStoryboard } from "./demo";
 const require = createRequire(import.meta.url);
 export const progressSchema = z.object({
   percent: z.number().int().min(0).max(100),
@@ -54,6 +55,38 @@ export const validationResultSchema = z.object({
   stderrTail: z.string().max(8192),
 });
 export type ValidationResult = z.infer<typeof validationResultSchema>;
+const checkFinding = z
+  .object({
+    code: z.string(),
+    severity: z.string(),
+    message: z.string(),
+    selector: z.string().optional(),
+    time: z.number().optional(),
+  })
+  .loose();
+const checkSection = z
+  .object({
+    ok: z.boolean(),
+    errorCount: z.number().default(0),
+    warningCount: z.number().default(0),
+    findings: z.array(checkFinding).default([]),
+  })
+  .loose();
+/** `hyperframes check --json`: lint, runtime, layout (overflow), contrast, motion, craft. */
+export const compositionCheckSchema = z.object({
+  ok: z.boolean(),
+  engine: z.enum(["hyperframes", "fake-test-only"]),
+  sections: z.record(z.string(), checkSection),
+});
+export type CompositionCheck = z.infer<typeof compositionCheckSchema>;
+const checkSections = [
+  "lint",
+  "runtime",
+  "layout",
+  "contrast",
+  "motion",
+  "craft",
+] as const;
 export const previewResultSchema = z.object({
   path: z.string(),
   kind: z.literal("rendered-draft"),
@@ -70,6 +103,8 @@ export interface VideoEngine {
     onProgress?: (progress: RenderProgress) => void,
   ): Promise<RenderResult>;
   inspect(file: string): Promise<VideoProbe>;
+  /** Static and in-browser checks of the composition before encoding. */
+  check(dir: string): Promise<CompositionCheck>;
 }
 export class HyperFramesEngine implements VideoEngine {
   readonly kind = "hyperframes" as const;
@@ -96,6 +131,47 @@ export class HyperFramesEngine implements VideoEngine {
       valid: true,
       engine: this.kind,
       stderrTail: stderr,
+    });
+  }
+  async check(dir: string): Promise<CompositionCheck> {
+    let stdout: string;
+    try {
+      stdout = (
+        await this.sandbox.run(
+          process.execPath,
+          [
+            this.cli,
+            "check",
+            ".",
+            "--json",
+            "--at-transitions",
+            "--max-transition-samples=40",
+          ],
+          dirname(resolve(dir)),
+          dir,
+        )
+      ).stdout;
+    } catch (error) {
+      // check exits non-zero when it finds errors; its JSON report is still on stdout.
+      if (
+        !(error instanceof ProcessError) ||
+        !error.stdout.trim().startsWith("{")
+      )
+        throw error;
+      stdout = error.stdout;
+    }
+    const raw = z
+      .object({ ok: z.boolean() })
+      .loose()
+      .parse(JSON.parse(stdout)) as Record<string, unknown> & { ok: boolean };
+    return compositionCheckSchema.parse({
+      ok: raw.ok,
+      engine: this.kind,
+      sections: Object.fromEntries(
+        checkSections
+          .filter((name) => raw[name])
+          .map((name) => [name, raw[name]]),
+      ),
     });
   }
   async preview(dir: string): Promise<PreviewResult> {
@@ -230,6 +306,13 @@ export class FakeEngine implements VideoEngine {
       path: opts.outputPath,
       engine: this.kind,
       stderrTail: "",
+    });
+  }
+  async check(_dir: string) {
+    return compositionCheckSchema.parse({
+      ok: true,
+      engine: this.kind,
+      sections: {},
     });
   }
   async inspect(_file: string) {

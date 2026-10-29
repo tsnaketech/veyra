@@ -3,6 +3,8 @@ export class ProcessError extends Error {
   constructor(
     message: string,
     public readonly stderrTail: string = "",
+    /** Full captured stdout (bounded by maxLogBytes), for CLIs that report JSON and exit non-zero. */
+    public readonly stdout: string = "",
   ) {
     super(message);
     this.name = "ProcessError";
@@ -98,6 +100,7 @@ export function runProcess(
           new ProcessError(
             failure ?? `${options.label ?? command} exited ${code ?? signal}`,
             outputTail(),
+            stdout,
           ),
         );
       else resolve({ stdout, stderr });

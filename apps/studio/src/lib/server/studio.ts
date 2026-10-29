@@ -778,8 +778,17 @@ export class Studio {
             const next = after.get(change.sceneId!);
             if (!old || !next) throw new Error('scène absente du rendu');
             targeted.add(next.id);
-            for (const [key, value] of Object.entries(change.patch) as [
-              keyof ScenePatch,
+            // Component parameters are checked one by one against the new scene.
+            const { params: paramPatch, ...fields } = change.patch;
+            for (const [key, value] of Object.entries(paramPatch ?? {})) {
+              expected++;
+              const actual = (next.component?.params as Record<string, unknown> | undefined)?.[key];
+              const same = JSON.stringify(actual) === JSON.stringify(value);
+              if (same) found++;
+              notes.push(`params.${key} ${same ? '=' : '≠'} ${JSON.stringify(value)}`);
+            }
+            for (const [key, value] of Object.entries(fields) as [
+              Exclude<keyof ScenePatch, 'params'>,
               unknown
             ][]) {
               expected++;

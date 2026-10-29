@@ -1,5 +1,6 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { compose } from "./compose";
+import { motionDemoStoryboard } from "./demo";
 const style = {
   palette: { violet: "#7C3AED", blue: "#2563EB", cyan: "#06B6D4" },
   fonts: ["Inter", "sans-serif"],
@@ -63,4 +64,50 @@ it("rejects unsafe CSS and invalid storyboard data", () => {
       style,
     ),
   ).toThrow();
+});
+
+describe("motion components in compositions", () => {
+  const style = {
+    palette: { violet: "#7C3AED", blue: "#2563EB", cyan: "#06B6D4" },
+    fonts: ["Inter"],
+  };
+  it("renders registered components as clips with data-only tweens and keeps text scenes", () => {
+    const board = motionDemoStoryboard();
+    board.scenes.push({
+      id: "scn_legacy",
+      start: 20000,
+      duration: 2000,
+      text: "Scène texte",
+      animation: { enter: "fade", durationMs: 500, easing: "power2.out" },
+    });
+    const html = compose(board, board, style)["index.html"];
+    expect(html.match(/class="clip scene"/g)).toHaveLength(5);
+    expect(html).toContain(
+      '<p class="clip" data-start="20" data-duration="2" data-track-index="5" id="text-5">Scène texte</p>',
+    );
+    expect(html).toContain(
+      'veyraCounter({"target":"#scene-3 .metric-0 .value"',
+    );
+    expect(html).not.toMatch(/visibility|autoAlpha/);
+  });
+  it("cannot be used to inject markup or script through parameters", () => {
+    const board = motionDemoStoryboard();
+    const evil = "</script><script>alert(1)</script>";
+    (board.scenes[0].component!.params as { title: string }).title = evil.slice(
+      0,
+      60,
+    );
+    (
+      board.scenes[3].component!.params as { metrics: { suffix: string }[] }
+    ).metrics[0].suffix = "</scr";
+    const html = compose(board, board, style)["index.html"];
+    expect(html.match(/<script/g)).toHaveLength(2); // gsap.min.js + Veyra's own timeline
+    expect(html).not.toContain("alert(1)</script>");
+    const bad = motionDemoStoryboard();
+    (bad.scenes[1].component!.params as { cards: unknown[] }).cards = [];
+    expect(() => compose(bad, bad, style)).toThrow();
+    const unknown = motionDemoStoryboard();
+    unknown.scenes[0].component!.id = "custom-js";
+    expect(() => compose(unknown, unknown, style)).toThrow(/inconnu/);
+  });
 });

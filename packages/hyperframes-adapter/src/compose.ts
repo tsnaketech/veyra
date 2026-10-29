@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { z } from "zod";
 import { storyboardSchema } from "@veyra/schemas";
 import { safePath } from "@veyra/storage";
+import { buildComponentScene, motionCss, scriptJson } from "@veyra/motion";
 const require = createRequire(import.meta.url);
 export const animationSchema = z
   .object({
@@ -55,6 +56,39 @@ export function compose(
     steps: string[] = [];
   board.scenes.forEach((scene, index) => {
     const animation = animationSchema.parse(scene.animation);
+    if (scene.component) {
+      const domId = `scene-${index}`,
+        start = scene.start / 1000,
+        duration = scene.duration / 1000;
+      const built = buildComponentScene(scene.component, {
+        sceneId: `#${domId}`,
+        durationS: duration,
+        entryS: animation.durationMs / 1000,
+        width: dimensions.width,
+        height: dimensions.height,
+        palette: brand.palette,
+      });
+      clips.push(
+        `<div class="clip scene" data-start="${start}" data-duration="${duration}" data-track-index="${index}" id="${domId}"><div class="stage align-${built.align}" style="--accent:${brand.palette[built.accent]}">${built.html}</div></div>`,
+      );
+      // Fixed statements around validated data: components never contribute code.
+      for (const t of built.tweens) {
+        const { target, from, to, at, duration: length, ...options } = t;
+        steps.push(
+          `tl.fromTo(${scriptJson(target)}, ${scriptJson(from)}, ${scriptJson({ ...to, ...options, duration: length, immediateRender: false })}, ${start + at});`,
+        );
+      }
+      for (const c of built.counters)
+        steps.push(`veyraCounter(${scriptJson(c)}, ${start + c.at});`);
+      // Exit fade on the inner stage (HyperFrames owns the clip itself); none on the last scene.
+      if (index < board.scenes.length - 1) {
+        const exit = Math.min(0.4, duration * 0.1);
+        steps.push(
+          `tl.fromTo(${scriptJson(`#${domId} .stage`)}, {opacity:1}, {opacity:0,duration:${exit},ease:"power1.in",immediateRender:false}, ${start + duration - exit});`,
+        );
+      }
+      return;
+    }
     const selector = `#text-${index}`,
       start = scene.start / 1000,
       duration = scene.duration / 1000;
@@ -77,11 +111,21 @@ export function compose(
 <style>
 *{box-sizing:border-box}html,body{margin:0;width:${dimensions.width}px;height:${dimensions.height}px;overflow:hidden}
 #root{position:relative;width:${dimensions.width}px;height:${dimensions.height}px;background:linear-gradient(135deg,${brand.palette.violet},${brand.palette.blue} 60%,${brand.palette.cyan});color:white;font-family:${brand.fonts.map((font) => `'${font}'`).join(",")}}
+${motionCss(dimensions.width, dimensions.height)}
 .clip{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:8%;font-size:${Math.round(dimensions.width / 20)}px;font-weight:700;line-height:1.15;text-align:center;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;max-width:100%}
 </style><script src="./gsap.min.js"></script></head><body>
 <div id="root" data-composition-id="main" data-start="0" data-duration="${durationMs / 1000}" data-width="${dimensions.width}" data-height="${dimensions.height}">${clips.join("\n")}</div>
 <script>
 const tl = gsap.timeline({paused:true});
+const veyraFormats = {};
+// Counter tweens animate a plain number and write formatted text (fixed code; data from JSON).
+function veyraCounter(c, at) {
+  const el = document.querySelector(c.target);
+  if (!el) return;
+  const f = veyraFormats[c.decimals] || (veyraFormats[c.decimals] = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: c.decimals, maximumFractionDigits: c.decimals }));
+  const state = { v: c.from };
+  tl.to(state, { v: c.to, duration: c.duration, ease: "power1.out", onUpdate: () => { el.textContent = c.prefix + f.format(state.v) + c.suffix; } }, at);
+}
 tl.to({}, {duration:${durationMs / 1000}}, 0);
 ${steps.join("\n")}
 window.__timelines = window.__timelines || {};

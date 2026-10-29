@@ -134,12 +134,25 @@ export function assertTransition(
     throw new Error(`Illegal ${kind} transition: ${from} → ${to}`);
   }
 }
+/**
+ * Reference to a registered motion component (@veyra/motion validates id, version
+ * and params against the registry). Scenes without one render as plain text.
+ */
+export const sceneComponentSchema = z
+  .object({
+    id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+    version: z.number().int().positive(),
+    params: z.record(z.string(), z.json()),
+    style: z.record(z.string(), z.json()).default({}),
+  })
+  .strict();
 export const sceneSchema = z.object({
   id: id("scn"),
   start: z.number().nonnegative(),
   duration: z.number().positive(),
   text: z.string(),
   animation: z.record(z.string(), z.json()).default({}),
+  component: sceneComponentSchema.optional(),
 });
 export const storyboardSchema = z
   .object({
@@ -168,6 +181,7 @@ export const storyboardSchema = z
     });
   });
 export type Scene = z.infer<typeof sceneSchema>;
+export type SceneComponent = z.infer<typeof sceneComponentSchema>;
 export type Storyboard = z.infer<typeof storyboardSchema>;
 // Scene times and the lookup argument are milliseconds; intervals are half-open.
 export function sceneAt(storyboard: Storyboard, ms: number): Scene | undefined {
@@ -380,6 +394,8 @@ export const scenePatchSchema = z
     durationMs: z.number().int().min(1000).max(15000).optional(),
     enter: z.enum(["fade", "slide-up", "scale"]).optional(),
     animationMs: z.number().int().min(100).max(1500).optional(),
+    // Component parameters to merge; the result is revalidated by the registry.
+    params: z.record(z.string(), z.json()).optional(),
   })
   .strict();
 export type ScenePatch = z.infer<typeof scenePatchSchema>;
