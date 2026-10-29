@@ -12,6 +12,7 @@
 | apps/worker | Worker isolé lors du passage multi-instance | Différé, voir D006 |
 | packages/ai | Fournisseurs `fake`, `anthropic-api` (non vérifié), `claude-subscribe` (mode assisté, `assisted.ts`), détection Claude Code ; aucun basculement (D010, D011) ; `QualityEvaluator` et validation des expertises (`evaluation.ts`, D015) | MVP + fournisseurs + expertise |
 | packages/core | Orchestration partagée | Non créé : l'orchestration vit dans le Studio tant qu'il n'y a pas de worker |
+| packages/motion | Registre versionné de composants animés (schémas, durées, capacités, HTML échappé + animations en données, CSS, aperçus) — D017 | Motion Engine v0.2 |
 | packages/video | ffprobe (fréquence rationnelle, CFR), ffmpeg, QA déterministe, extraction PNG par temps ou par index, comparaison PSNR | Itération 2 + frames |
 | packages/hyperframes-adapter | Composition déterministe, CLI, sandbox et FakeEngine | Itération 2 |
 | packages/storage | Chemins confinés, révisions et originaux exclusifs | Itération 2 |

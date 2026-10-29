@@ -22,7 +22,7 @@ Implémentations : `packages/schemas/src/index.ts` (validation et types),
 | QualityReport | qar_ | Révision, rapport JSON, date |
 | QualityCheck / QualityIssue | qck_ / qis_ | Constats imbriqués dans le rapport, pas de table séparée |
 | RevisionPlan | pln_ | Révision, feedbackIds, résumé, changements (feedbackId nullable, scène, instruction, patch structuré), conflits, date ; JSON en base |
-| Storyboard | — | Scènes ordonnées, largeur, hauteur, fps ; JSON de la révision |
+| Storyboard | — | Scènes ordonnées (texte, ou `component` : id, version, params, style du registre `@veyra/motion`), largeur, hauteur, fps ; JSON de la révision. La table `scenes` n'indexe que temps et texte. |
 
 Les IDs sont préfixés puis générés par UUID. Les dates sont des entiers Unix en
 millisecondes. Les débuts, durées et retours utilisent également les millisecondes.

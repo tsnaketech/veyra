@@ -44,6 +44,10 @@ Implémenté dans `apps/studio/src/lib/server/studio.ts` (lecteur :
 Erreur du fournisseur : lot et commentaires `failed`, textes conservés ;
 « Relancer » réutilise le même lot et le même fournisseur, jamais un autre (D011).
 
+Scène à composant : le commentaire vise ce composant ; le plan corrige son texte
+principal (`text`) ou ses paramètres (`params`), revalidés par le registre ; les autres
+composants sont conservés ([MOTION-ENGINE](../video/MOTION-ENGINE.md)).
+
 ## Contraintes
 
 - Un plan ne modifie le storyboard que par `scenePatchSchema` (texte, durée,

@@ -46,6 +46,15 @@ configurée ». Une clé seule n'active plus l'API : choisir `anthropic-api` (D0
    indiqué. Dans Claude Code, à la racine du dépôt : `/veyra-assisted-task <dossier>`.
 4. Revenir au Studio : « Importer le résultat ». Le plan importé attend votre décision.
 
+## Aperçus et démo du Motion Engine
+
+```sh
+pnpm motion:previews                              # aperçus réels → apps/studio/static/motion-previews/
+pnpm motion:previews --demo projects/_demo/demo.mp4   # + démo 20 s à 5 composants
+```
+
+Rendu HyperFrames réel sous bwrap (Chrome headless requis), ~25 s pour les aperçus.
+
 ## Démarrage
 
 ```sh

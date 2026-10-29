@@ -1,10 +1,10 @@
 # Progression
 
-2026-10-28 — G1, G3, G4, G5, G6 (expertise QA) et G7 (consolidation v0.1) terminés ; détail et preuves dans
-[TASKS](../docs/TASKS.md), comptes dans [TESTING](../docs/TESTING.md)
-(343 tests rapides, test lent de rendu réel, 3 E2E avec rendu réel, tests manuels
-`claude-subscribe` et revue indépendante de l'expertise réussis).
+2026-10-29 — G1 à G8 terminés (G8 : Motion Engine v0.2, première itération) ;
+détail et preuves dans [TASKS](../docs/TASKS.md), comptes dans
+[TESTING](../docs/TESTING.md) : 360 tests rapides, 2 tests de rendu réel, 4 E2E réels.
+Commits sur `feat/qa-expert-v0.1`, rien n'est poussé.
 
-Prochaine étape : T065 (validation humaine des verdicts de référence), T030 (valider `anthropic-api` avec une clé), T031 (licences
-HyperFrames/GSAP). Rien n'est commité ; migrations 0000 à 0002 appliquées à des
-bases locales : ne plus les modifier (D014, D015).
+Prochaine étape : T065 (validation humaine des verdicts de référence QA), T030/T074
+(fournisseurs réels), T071 (sous-compositions). Migrations 0000 à 0002 : ne plus les
+modifier (D014, D015) ; le Motion Engine n'en a ajouté aucune.

@@ -12,18 +12,22 @@
    Le répertoire config est recherché en remontant depuis le répertoire courant ;
    `VEYRA_CONFIG_DIR` permet de le fixer explicitement dans un runtime empaqueté.
 4. `compose` valide le storyboard, les dimensions, la palette et les animations.
-   Chaque scène devient un clip texte sur dégradé violet/bleu/cyan. Texte échappé,
-   IDs DOM internes, animations fade/slide-up/scale, durée 0–1500 ms bornée à la
-   scène et easing sur liste fermée. Le code est entièrement déterministe.
+   Une scène texte devient un clip texte sur dégradé violet/bleu/cyan (texte échappé,
+   animations fade/slide-up/scale, 0–1500 ms, easing sur liste fermée). Une scène à
+   composant devient un clip produit par le registre `@veyra/motion` : HTML échappé et
+   animations en données, écrites par le compositeur fixe ([MOTION-ENGINE](MOTION-ENGINE.md)).
+   Le code est entièrement déterministe.
    GSAP 3.14.2 est copié localement depuis node_modules avec son en-tête de licence.
-5. HyperFramesEngine appelle le CLI installé via spawn sans shell : lint, puis
-   render. Sandbox encapsule ces appels dans prlimit et bwrap sans réseau.
+5. HyperFramesEngine appelle le CLI installé via spawn sans shell : `check --json`
+   (lint, exécution, mise en page, contraste, mouvement, craft, dans Chrome headless),
+   puis lint et render ; le temps de rendu est mesuré. Sandbox encapsule ces appels dans prlimit et bwrap sans réseau.
    Progression : lint → render → encode ; pourcentages CLI utilisés si disponibles.
 6. Le MP4 porte l’ID du job et ne remplace pas un fichier existant. La révision
    passe qa. ffprobe lit durée, codec, dimensions, fps, audio et taille ; ffmpeg
    blackdetect relève les segments noirs avec leurs temps.
-7. Six contrôles déterministes sont persistés : durée, résolution, fps, h264,
-   fichier non vide, absence de segments noirs. Le rapport expose l’union des
+7. Contrôles déterministes persistés : durée, résolution, fps, h264, fichier non
+   vide, absence de segments noirs, plus les groupes issus de `check` et la
+   performance de rendu. Le rapport expose l’union des
    modes des constats. La révision passe awaiting_approval, le job succeeded.
    Un contrôle QA négatif reste visible et ne vaut jamais approbation.
 

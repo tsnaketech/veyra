@@ -21,6 +21,9 @@ Cycle :
 5. Erreur → lot et commentaires `failed`, texte conservé, « Relancer » réutilise le
    même lot et le **même fournisseur** (jamais de substitution).
 
+Scène à composant : `patch.text` = texte principal du composant, `patch.params` =
+paramètres fusionnés puis revalidés ; autres composants copiés tels quels.
+
 Invariants :
 - Une révision rendue n'est jamais modifiée ; `approved`/`published` sont immuables.
 - Les plans ne modifient le storyboard que par `scenePatchSchema` sur des scènes existantes.

@@ -83,6 +83,18 @@ Point de validation : `evaluation.test.ts`, E2E et revue indépendante sur rendu
 | T064 | Jeu de référence `qa/reference/v1` et `pnpm qa:bench` | Terminée ; `benchmark.test.ts` |
 | T065 | Validation humaine des verdicts attendus du jeu de référence | **À faire (humain)** |
 
+## G8 — Motion Engine v0.2, première itération — terminée le 2026-10-29
+
+Point de validation : `motion.slow.test.ts` et E2E Motion Engine (rendus réels).
+
+| ID | Travail | Statut / preuve |
+|---|---|---|
+| T070 | Audit compositeur, adaptateur, extension HyperFrames (catalogue tiers exclu, D017) | Terminée |
+| T071a | `@veyra/motion` : registre et 5 composants ; intégration `compose` ; `check` dans le moteur | Terminée ; commit d758dfb |
+| T071b | Storyboard et IA : composition, corrections `text`/`params`, QA de composition | Terminée ; commit 6af557e |
+| T071c | Studio : composants par scène, composition, page Composants, aperçus réels, E2E | Terminée ; commit f9d1d6a |
+| T072 | Démo 20 s à 5 composants (`pnpm motion:previews --demo`) | Terminée ; non versionnée |
+
 ## À faire
 
 | ID | Travail | Dépendance |
@@ -91,6 +103,9 @@ Point de validation : `evaluation.test.ts`, E2E et revue indépendante sur rendu
 | T031 | Vérifier les licences HyperFrames et GSAP pour redistribution | — |
 | T032 | Panneaux redimensionnables ; test avec un lecteur d'écran réel (audit contraste/cibles fait le 2026-10-28, DESIGN) | — |
 | T034 | Valider `AnthropicQualityEvaluator` avec une clé (coût par évaluation à mesurer) | T030 |
+| T071 | Une sous-composition HyperFrames par scène (avertissement `nested_structure_needs_subcomposition`) | — |
+| T073 | Images utilisateur dans ProductMockup (assets locaux, sans réseau) | — |
+| T074 | Composition par composants avec `anthropic-api` et `claude-subscribe` réels (non mesurée) | T030 |
 | T037 | Rendre les cas synthétiques du jeu de référence avec images, pour mesurer un expert multimodal sur 10 cas | T065 |
 | T035 | Indexation VFR par timestamps de présentation, si des médias importés sont annotés | Besoin produit |
 | T036 | Option d'appel direct `claude -p` pour un usage strictement personnel, si l'utilisateur la décide | Décision utilisateur (D010) |

@@ -234,3 +234,25 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   (`validation.status: proposed`, `reviewedBy: null`) ; ils doivent être validés par
   un humain avant de servir de référence. Le score du simulateur ne mesure que ses
   règles, écrites pour les mêmes formulations.
+
+## D017 — Composants animés maison, déclarés en données
+
+- Date : 2026-10-29
+- Statut : acceptée
+- Contexte : passer de scènes texte à un motion design paramétrable sans laisser
+  l'IA écrire de code. HyperFrames 0.8.209 propose un catalogue (`catalog`, `add`)
+  de blocs et composants tiers, et des sous-compositions avec variables.
+- Options envisagées : composants du catalogue HyperFrames (téléchargement réseau
+  de code tiers exécuté au rendu, licences non vérifiées) ; sous-compositions avec
+  script lisant `getVariables()` ; composants maison générant HTML + données
+  d'animation.
+- Décision et justification : registre maison `@veyra/motion`, versionné ; chaque
+  composant produit du HTML échappé et des tweens/compteurs validés par Zod, écrits
+  en JavaScript uniquement par le compositeur fixe ; une seule composition racine,
+  scènes = clips. Le catalogue tiers n'est ni installé ni exécuté. Les scènes texte
+  existantes gardent leur rendu (aucune régression des anciennes révisions).
+- Conséquences : `hyperframes check` s'exécute avant chaque rendu et alimente le QA ;
+  les nouveaux rendus automatiques sont limités aux défauts de sortie vidéo (durée,
+  résolution, fps, codec, fichier vide, noirs), un défaut de mise en page demandant
+  une correction. Avertissement HyperFrames sur les sous-compositions accepté pour
+  l'instant (T071). Aucune migration : le composant vit dans le JSON du storyboard.

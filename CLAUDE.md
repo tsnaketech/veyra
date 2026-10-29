@@ -8,7 +8,7 @@ Les consignes communes sont dans `AGENTS.md` ; ne pas les recopier ici.
 
 - Skills du projet : `.claude/skills` est un lien vers `.agents/skills/`
   (prompt-to-video, video-rendering, video-review, video-quality-assurance,
-  veyra-assisted-task).
+  veyra-assisted-task). Composants animés : docs/video/MOTION-ENGINE.md.
   Les charger avant de modifier le domaine correspondant.
 - Vérifications : `pnpm test`, `pnpm check`, `pnpm lint` ; rendu réel et
   parcours complet : voir [TESTING](docs/TESTING.md) (Chrome headless requis).

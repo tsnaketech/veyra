@@ -16,7 +16,7 @@ fournisseur choisi ou lève `ProviderUnavailableError` ; aucun basculement.
 
 | Opération | Entrée | Sortie validée par Zod |
 |---|---|---|
-| Storyboard | prompt, durée visée, consignes de marque | `storyboardDraftSchema` |
+| Storyboard | prompt, durée visée, consignes de marque, catalogue du registre de composants | `storyboardDraftSchema` (scènes texte ou `component` validé par union discriminée) |
 | Plan d'un lot | storyboard + commentaires (`frameIndex`, `timestampMs`, scène, image) | `revisionProposalSchema` (`feedbackId`, patches, `conflicts`) |
 | Revue | storyboard, images PNG | constats avec `analysisMode` |
 | Expertise QA (`QualityEvaluator`) | dossier de preuves : brief, storyboards, commentaires alignés, plan, mesures, images exactes | `expertReviewSchema` (verdicts, catégories, confiance, preuves, constats) — D015 |

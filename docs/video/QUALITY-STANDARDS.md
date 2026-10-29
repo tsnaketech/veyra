@@ -12,6 +12,23 @@ utilise d=0.05, pix_th=0.10, pic_th=0.98 ; les temps des segments figurent dans
 l'evidence JSON du contrôle. Ces seuils détectent des noirs techniques et ne
 jugent pas la qualité esthétique ni la pertinence d'un fondu intentionnel.
 
+## Contrôles de composition (HyperFrames `check`, D017)
+
+Avant chaque rendu, `hyperframes check --json --at-transitions` s'exécute dans le bac à
+sable. Ses sections deviennent des contrôles `deterministic` :
+
+| Contrôle | Sections | En échec si | Sévérité |
+|---|---|---|---|
+| Mise en page (marges, débordements) | layout | une erreur de débordement | major |
+| Lisibilité (contraste WCAG AA) | contrast | un texte sous AA | major |
+| Exécution de la composition | lint, runtime | erreur de lint ou JS | major |
+| Animations et transitions (conseils) | motion, craft | une erreur ; les avertissements (rythme, première image, son) restent en preuve | minor |
+| Performance de rendu | — | rendu > 80 % du délai maximal | minor |
+
+Si `check` ne peut pas tourner, un contrôle « non exécuté » le dit. Ces échecs ne
+déclenchent pas de nouveau rendu automatique : un nouveau rendu n'y changerait rien ;
+il faut une correction. Seuils de texte des composants : ≥ 2,6 % de la hauteur.
+
 ## Revue qualitative
 
 Une image par scène (au milieu de la scène) est extraite avec ffmpeg et envoyée

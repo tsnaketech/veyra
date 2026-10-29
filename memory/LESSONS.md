@@ -38,3 +38,10 @@
 - 2026-10-28 — Un benchmark dont les attendus et l'évaluateur simulé sont écrits par
   le même agent sur les mêmes formulations donne un score flatteur sans valeur :
   faire valider les attendus par un humain et mesurer de vrais experts.
+- 2026-10-29 — `hyperframes check` trouve de vrais défauts que les tests unitaires ne
+  voient pas (contraste du surtitre, textes < 28 px) : ne déclarer un composant
+  fonctionnel qu'après un aperçu réel passé par `check`.
+- 2026-10-29 — Remplacer une règle CSS contenant `${px(…)}` avec `[^}]*` coupe à la
+  première accolade du gabarit : éditer la ligne entière.
+- 2026-10-29 — L'outil Write convertit les échappements `\u2028` d'un littéral regex en
+  vrais caractères : écrire ce type de ligne en ASCII via un script.

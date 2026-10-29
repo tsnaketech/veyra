@@ -10,6 +10,7 @@
 | `pnpm --filter @veyra/hyperframes-adapter test:slow` | Rendu HyperFrames réel 6 s sous bwrap, ffprobe | ~6 s, Chrome requis |
 | `pnpm --filter studio test:e2e` | Playwright : build, serveur, parcours complet avec rendu réel, sélection de frame, lot, QA comparatif, IA simulée | ~45 s, Chrome requis |
 | Test manuel `claude-subscribe` | Voir ci-dessous ; utilise l'abonnement de l'utilisateur | Manuel, hors CI |
+| `pnpm --filter @veyra/hyperframes-adapter test:slow` (inclut `motion.slow.test.ts`) | Rendu réel des 5 composants (20 s) : `check` sans erreur, animations mesurées | ~40 s, Chrome requis |
 | `pnpm qa:bench --evaluator fake` | Compare le simulateur au jeu de référence `qa/reference/v1` | Rapide ; **mesure les règles du simulateur, pas une expertise** |
 | `pnpm qa:bench --results <fichier>` | Compare des résultats d'expert (`veyra-qa-results/v1`) aux références ; `--json <sortie>`, `--fail-on-critical` | Rapide ; résultats produits ailleurs (mode assisté ou API) |
 
@@ -29,6 +30,16 @@ seule, aucune requête modèle) ; son résultat n'est pas vérifié par le test.
 4. Deux frames annotées → « Envoyer les corrections à l'IA (2) » → traiter le
    dossier du plan dans Claude Code → importer → appliquer → verdicts de correction.
 Critère : v2 rendue, verdicts `applied` pour des corrections réellement appliquées.
+
+## Résultats du 2026-10-29, Motion Engine v0.2 (exécutés directement)
+
+| Commande | Résultat |
+|---|---|
+| `pnpm -r test` | **360 réussis, 0 échec** : schemas 231, config 25, storage 10, motion 6, ai 31, video 6, hyperframes-adapter 18, studio 33 |
+| `pnpm -r check`, `pnpm -r lint` | Réussis |
+| `test:slow` (adaptateur) | **2 réussis** : rendu texte 6 s ; rendu réel des 5 composants, 20 s, `check` sans erreur de lint/exécution/mise en page/contraste, frames différentes début/fin dans chaque scène |
+| `pnpm test:e2e` | **4 réussis, 1,7 min** ; dont catalogue, composition SaaS, correction du bouton d'un composant, conservation des autres, verdict `applied`, export MP4 20 s |
+| `pnpm motion:previews --demo` | 5 aperçus `check` sans erreur (après correction du contraste du surtitre et des textes < 28 px que `check` avait signalés) ; démo 20 s 1080p h264 |
 
 ## Résultats du 2026-10-28, consolidation QA Expert v0.1 (exécutés directement)
 
@@ -105,6 +116,7 @@ Résultat antérieur (MVP) : 197 tests, 3 E2E en 31,0 s.
 | R13 (frames) | `packages/schemas/src/frames.test.ts` (30, 25, 29,97, 23,976 i/s, aller-retour de chaque frame, PTS tronqués, décalage, bornes) ; `packages/video` (fréquence mesurée, extraction par index) ; E2E |
 | R14 (fournisseurs) | `packages/ai/src/index.test.ts` (fournisseur choisi uniquement, clé absente → erreur, détection : non installé, non connecté, connexion non abonnement, abonnement + clé API signalée, aucune identité conservée) ; E2E `/settings` |
 | Migration | `apps/studio/src/lib/server/db/migration.test.ts` (0000 → 0001 : statuts, fournisseurs, clés étrangères ; 0001 → 0002 : tâches conservées, `evaluation` accepté) |
+| R16 (Motion Engine) | `packages/motion/src/index.test.ts` (registre, échappement, rejets, durées, format français) ; `packages/ai/src/motion.test.ts` (composition, validation, corrections ciblées, conservation) ; `compose.test.ts` (clips, injection) ; `motion.slow.test.ts` (rendu réel) ; `apps/studio/src/lib/server/motion.test.ts` (parcours service, `check` → QA, pas de nouveau rendu inutile) ; E2E Motion Engine |
 | R15 (consolidation) | `packages/schemas` (garde-fou : simulé jamais multimodal, multimodal sans image refusé) ; `ui.spec.ts` (libellés de mode et de confiance) ; `packages/ai/src/benchmark.test.ts` (exactitude, matrice, erreurs critiques, cohérence du jeu de référence, résultat enregistré) ; `evaluation.test.ts` (langue) ; E2E |
 | R15 (expertise) | `packages/ai/src/evaluation.test.ts` (5 cas simulés, validation des résultats, `multimodal` seulement si images envoyées, requête assistée sans chemin local) ; `apps/studio/src/lib/server/evaluation.test.ts` (lot réel : appliquée, contraire, partielle, invérifiable, régression, preuves alignées avec décalage de 1 s, ancienne révision intacte, validation humaine ; fournisseur indisponible ou absent ; import assisté : rejet d'un résultat invalide, images hors dossier ignorées, `text-only` sans image) ; E2E ; revue indépendante ci-dessus |
 | R10, R11 | `packages/ai/src/index.test.ts` (prompt de référence → 20 s ; « à 12 s, ralentis » → scène à 12 s, 500 → 800 ms) ; E2E `apps/studio/tests/mvp.e2e.ts` (prompt → rendu réel → QA → commentaire → plan → v2 → validation → MP4 de 20 s vérifié par ffprobe) ; E2E mobile (onglets) |
