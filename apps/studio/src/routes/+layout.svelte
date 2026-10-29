@@ -7,6 +7,7 @@
   let { children }: LayoutProps = $props();
   const nav = [
     { href: resolve('/'), label: 'Projets' },
+    { href: resolve('/components'), label: 'Composants' },
     { href: resolve('/settings'), label: 'Paramètres' }
   ];
 </script>

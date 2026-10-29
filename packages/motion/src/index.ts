@@ -154,7 +154,8 @@ export function previewStoryboard(id: string, params?: unknown): Storyboard {
   };
 }
 
-/** Static stylesheet for every component; sizes derive from the frame height. */
+/** Static stylesheet for every component; sizes derive from the frame height, never below
+ * 2.6 % of it (HyperFrames text_below_floor: 28 px at 1080p). */
 export function motionCss(width: number, height: number) {
   const u = height / 100;
   const px = (k: number) => `${Math.round(k * u)}px`;
@@ -162,7 +163,7 @@ export function motionCss(width: number, height: number) {
 .scene .stage{position:absolute;inset:7% 8%;display:flex;flex-direction:column;justify-content:center;gap:${px(3)};color:#fff;text-align:center;align-items:center}
 .scene .stage.align-left{text-align:left;align-items:flex-start}
 .scene h1,.scene h2,.scene h3,.scene p{margin:0}
-.scene .kicker{font-size:${px(3)};font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.scene .kicker{font-size:${px(2.8)};font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fff;background:rgba(11,13,23,.55);padding:${px(0.8)} ${px(2)};border-radius:999px;box-shadow:inset 0 0 0 ${px(0.3)} var(--accent)}
 .scene .title{font-size:${px(8.5)};font-weight:800;line-height:1.08;max-width:${Math.round(width * 0.78)}px}
 .scene .title .w{display:inline-block}
 .scene .subtitle{font-size:${px(3.6)};opacity:.92;max-width:${Math.round(width * 0.6)}px;line-height:1.3}
@@ -170,7 +171,7 @@ export function motionCss(width: number, height: number) {
 .scene .cards{display:flex;gap:${px(2.5)};width:100%;justify-content:center}
 .scene .cards.grid{display:grid;grid-template-columns:1fr 1fr}
 .scene .card{flex:1;max-width:${Math.round(width * 0.27)}px;background:rgba(11,13,23,.55);border:1px solid rgba(255,255,255,.18);border-radius:${px(2)};padding:${px(3)};text-align:left}
-.scene .card-index{font-size:${px(2.4)};font-weight:700;color:var(--accent)}
+.scene .card-index{font-size:${px(2.6)};font-weight:700;color:var(--accent)}
 .scene .card h3{font-size:${px(3.6)};margin-top:${px(1)};line-height:1.15}
 .scene .card p{font-size:${px(2.6)};opacity:.9;margin-top:${px(1)};line-height:1.3}
 .scene .metrics{display:flex;gap:${px(6)};justify-content:center}
@@ -181,12 +182,12 @@ export function motionCss(width: number, height: number) {
 .scene .device.phone{width:${Math.round(height * 0.34)}px;height:${Math.round(height * 0.68)}px;border-radius:${px(4)}}
 .scene .device-bar{display:flex;align-items:center;gap:${px(0.8)};padding:${px(1.2)} ${px(1.6)};background:#12152a}
 .scene .device-bar i{width:${px(1.2)};height:${px(1.2)};border-radius:50%;background:#3a3f66}
-.scene .url{margin-left:${px(1.5)};font-size:${px(1.8)};color:#9aa0b8}
+.scene .url{margin-left:${px(1.5)};font-size:${px(2.6)};color:#9aa0b8}
 .scene .device-body{flex:1;display:flex;min-height:0}
 .scene .nav{width:28%;background:#12152a;padding:${px(2)};display:flex;flex-direction:column;gap:${px(1.4)};text-align:left}
 .scene .device.phone .nav{display:none}
 .scene .app-name{font-size:${px(2.6)};color:var(--accent)}
-.scene .nav-item{font-size:${px(2)};color:#cdd1e4}
+.scene .nav-item{font-size:${px(2.6)};color:#cdd1e4}
 .scene .screen{flex:1;padding:${px(2.4)};display:flex;flex-direction:column;gap:${px(2)};text-align:left}
 .scene .screen-title{font-size:${px(3)};color:#e7e9f3}
 .scene .chart{flex:1;display:flex;align-items:flex-end;gap:${px(1.2)}}

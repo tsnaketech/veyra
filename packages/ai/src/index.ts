@@ -205,6 +205,11 @@ const capitalize = (text: string) =>
  * from 4/5/4/4/3 and checked against each component's limits. The example metrics
  * and features are placeholders the user must replace.
  */
+function clipWords(text: string, max: number) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max + 1).replace(/\s+\S*$/, "");
+  return cut || text.slice(0, max);
+}
 function composeWithComponents(subject: string, prompt: string, total: number) {
   const order = [
     ["animated-title", 4],
@@ -229,13 +234,20 @@ function composeWithComponents(subject: string, prompt: string, total: number) {
     return durations[i] >= minMs && durations[i] <= maxMs;
   });
   if (!fits) return null;
+  // The app name goes in the kicker; the title keeps whole words only.
+  const title = clipWords(
+    capitalize(
+      subject.replace(/«[^»]*»\s*,?\s*|"[^"]*"\s*,?\s*/g, "").trim() || subject,
+    ),
+    60,
+  );
   const example = (id: string) =>
     structuredClone(getComponent(id).example) as Record<string, unknown>;
   const params: Record<string, Record<string, unknown>> = {
     "animated-title": {
       ...example("animated-title"),
       kicker: appName.slice(0, 40),
-      title: capitalize(subject).slice(0, 60),
+      title,
     },
     "feature-cards": example("feature-cards"),
     "product-mockup": {

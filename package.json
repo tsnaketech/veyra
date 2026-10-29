@@ -9,6 +9,7 @@
     "check": "pnpm -r check",
     "lint": "pnpm -r lint",
     "dev": "pnpm --filter studio dev",
-    "qa:bench": "pnpm --filter @veyra/ai qa:bench"
+    "qa:bench": "pnpm --filter @veyra/ai qa:bench",
+    "motion:previews": "pnpm --filter @veyra/hyperframes-adapter motion:previews"
   }
 }

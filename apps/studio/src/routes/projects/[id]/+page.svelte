@@ -5,6 +5,7 @@
   import { frameTimestampMs, sceneAt } from '@veyra/schemas';
   import FramePlayer from '#lib/components/FramePlayer.svelte';
   import Icon from '#lib/components/Icon.svelte';
+  import { componentName, summarizeParams } from '#lib/motion.ts';
   import StatusBadge from '#lib/components/StatusBadge.svelte';
   import {
     batchLabels,
@@ -573,12 +574,51 @@
         {#if scene}
           <p>{scene.text}</p>
           <p class="text-xs text-muted">
-            {timecode(scene.start)} → {timecode(scene.start + scene.duration)} · entrée {scene
-              .animation.enter}
-            · {scene.animation.durationMs} ms
+            {timecode(scene.start)} → {timecode(scene.start + scene.duration)} ·
+            {#if scene.component}rythme{:else}entrée {scene.animation.enter} ·{/if}
+            {scene.animation.durationMs} ms
           </p>
+          {#if scene.component}
+            <div class="mt-2 rounded-lg bg-raised p-2 text-xs" data-testid="scene-component">
+              <p>
+                Composant <span class="font-medium">{componentName(scene.component.id)}</span>
+                <span class="text-muted">v{scene.component.version}</span>
+              </p>
+              <dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
+                {#each summarizeParams(scene.component) as param (param.key)}
+                  <dt class="text-muted">{param.key}</dt>
+                  <dd class="break-words">{param.value}</dd>
+                {/each}
+              </dl>
+              <p class="mt-1 text-muted">
+                Pour le modifier, commentez une frame de cette scène : la correction vise ce
+                composant.
+              </p>
+            </div>
+          {/if}
         {:else}<p class="text-xs text-muted">Aucune scène.</p>{/if}
       </div>
+
+      <details class="text-xs" data-testid="composition">
+        <summary class="cursor-pointer text-sm font-medium">
+          Composition ({revision.storyboard.scenes.filter((s) => s.component).length} composant(s) sur
+          {revision.storyboard.scenes.length} scènes)
+        </summary>
+        <ol class="mt-2 space-y-1">
+          {#each revision.storyboard.scenes as item, index (item.id)}
+            <li class="flex gap-2" data-component={item.component?.id ?? 'text'}>
+              <span class="font-mono text-muted">{index + 1}.</span>
+              <span class="min-w-0">
+                <span class="font-medium"
+                  >{item.component ? componentName(item.component.id) : 'Texte'}</span
+                >
+                · {timecode(item.start)} · {item.duration / 1000} s —
+                <span class="break-words text-muted">{item.text}</span>
+              </span>
+            </li>
+          {/each}
+        </ol>
+      </details>
 
       <div data-testid="qa-report">
         <h2 class="mb-1 font-medium">Contrôle qualité</h2>

@@ -1,0 +1,72 @@
+{
+  "registryVersion": 1,
+  "engine": "HyperFrames 0.8.209 (bwrap, draft)",
+  "generatedAt": "2026-10-29T00:27:43.885Z",
+  "previews": [
+    {
+      "id": "animated-title",
+      "image": "animated-title.png",
+      "frameAtSeconds": 2.8,
+      "renderSeconds": 4.3,
+      "check": {
+        "ok": true,
+        "errors": [],
+        "warnings": [
+          "nested_structure_needs_subcomposition"
+        ]
+      }
+    },
+    {
+      "id": "feature-cards",
+      "image": "feature-cards.png",
+      "frameAtSeconds": 3.5,
+      "renderSeconds": 4.9,
+      "check": {
+        "ok": true,
+        "errors": [],
+        "warnings": [
+          "nested_structure_needs_subcomposition"
+        ]
+      }
+    },
+    {
+      "id": "product-mockup",
+      "image": "product-mockup.png",
+      "frameAtSeconds": 2.8,
+      "renderSeconds": 4.5,
+      "check": {
+        "ok": true,
+        "errors": [],
+        "warnings": [
+          "nested_structure_needs_subcomposition"
+        ]
+      }
+    },
+    {
+      "id": "metrics-counter",
+      "image": "metrics-counter.png",
+      "frameAtSeconds": 2.8,
+      "renderSeconds": 4.6,
+      "check": {
+        "ok": true,
+        "errors": [],
+        "warnings": [
+          "nested_structure_needs_subcomposition"
+        ]
+      }
+    },
+    {
+      "id": "call-to-action",
+      "image": "call-to-action.png",
+      "frameAtSeconds": 2.1,
+      "renderSeconds": 3.9,
+      "check": {
+        "ok": true,
+        "errors": [],
+        "warnings": [
+          "nested_structure_needs_subcomposition"
+        ]
+      }
+    }
+  ]
+}

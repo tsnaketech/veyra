@@ -176,7 +176,7 @@
             ? 'bg-violet/25'
             : ''}"
           style="width: {(item.duration / durationMs) * 100}%"
-          title={item.text}
+          title={item.component ? `${item.component.id} — ${item.text}` : item.text}
           onclick={() => seekFrame(frameAt(item.start, rate, count))}
           >{index + 1}. {item.text}</button
         >

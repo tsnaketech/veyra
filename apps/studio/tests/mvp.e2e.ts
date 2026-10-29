@@ -139,3 +139,73 @@ test('mobile layout exposes the studio zones as tabs', async ({ page }) => {
   await page.getByRole('tab', { name: 'Conversation' }).click();
   await expect(page.getByLabel('Message à Veyra')).toBeVisible();
 });
+
+test('Motion Engine: catalogue, SaaS composition, targeted component correction, export', async ({
+  page
+}, testInfo) => {
+  await page.goto('/components');
+  const cards = page.getByTestId('motion-component');
+  await expect(cards).toHaveCount(5);
+  for (const check of await page.getByTestId('preview-check').allTextContents())
+    expect(check).toBe('check sans erreur');
+
+  await page.goto('/');
+  await page.getByLabel('Nom du projet').fill('Pilot SaaS');
+  await page.getByRole('button', { name: 'Nouveau projet' }).click();
+  await expect(page).toHaveURL(/\/projects\/prj_/);
+  await page
+    .getByLabel('Message à Veyra')
+    .fill(
+      'Crée une vidéo de 20 secondes présentant « Pilot », une application SaaS de gestion pour petites équipes.'
+    );
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+  await expect(page.getByTestId('player')).toBeVisible({ timeout: 240_000 });
+  await expect(page.locator('[data-status="awaiting_approval"]').first()).toBeVisible();
+
+  const composition = page.getByTestId('composition');
+  await composition.locator('summary').click();
+  await expect(composition.locator('[data-component]')).toHaveCount(5);
+  await expect(composition.locator('[data-component="call-to-action"]')).toBeVisible();
+  const qa = page.getByTestId('qa-report');
+  await expect(qa).toContainText('Mise en page (marges, débordements)');
+  await expect(qa).toContainText('Performance de rendu');
+
+  // Frame 525 = 17.5 s, inside the CallToAction scene (17–20 s).
+  await page.getByTestId('scrubber').fill('525');
+  await expect(page.getByTestId('frame-index')).toHaveText('525');
+  await expect(page.getByTestId('scene-component')).toContainText('CallToAction');
+  await expect(page.getByTestId('scene-component')).toContainText('Essai gratuit 14 jours');
+  await page
+    .getByLabel(/Commentaire à la frame 525/)
+    .fill('Change le bouton en « Démarrer maintenant »');
+  await page.locator('form[action="?/comment"]').getByRole('button', { name: 'Ajouter' }).click();
+  await expect(page.getByTestId('comment')).toHaveCount(1);
+  await page.getByRole('button', { name: /Envoyer les corrections à l'IA \(1\)/ }).click();
+  await expect(page.getByTestId('plan')).toContainText(
+    'Libellé du bouton : « Démarrer maintenant »',
+    { timeout: 30_000 }
+  );
+  await page.getByRole('button', { name: 'Appliquer et générer une révision' }).click();
+  await expect(page.getByTestId('verification')).toContainText('applied', { timeout: 240_000 });
+
+  await page.getByTestId('scrubber').fill('525');
+  await expect(page.getByTestId('scene-component')).toContainText('Démarrer maintenant');
+  await composition.locator('summary').click();
+  await expect(composition.locator('[data-component]')).toHaveCount(5);
+
+  await page.getByRole('button', { name: 'Valider cette révision' }).click();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('export').click()
+  ]);
+  const file = testInfo.outputPath('motion.mp4');
+  await download.saveAs(file);
+  const probe = JSON.parse(
+    execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'json', file],
+      { encoding: 'utf8' }
+    )
+  );
+  expect(Math.abs(Number(probe.format.duration) - 20)).toBeLessThan(0.2);
+});

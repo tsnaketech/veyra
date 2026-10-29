@@ -33,6 +33,9 @@ describe("composition with motion components", () => {
       params: { kicker: "Pilot" },
     });
     expect(board.scenes[0].text).toBe(board.scenes[0].component!.params.title);
+    expect(board.scenes[0].text).toBe(
+      "Une application SaaS de gestion pour petites équipes",
+    );
   });
   it("keeps plain text scenes for other prompts", async () => {
     const draft = await new FakeAiProvider().generateStoryboard(
