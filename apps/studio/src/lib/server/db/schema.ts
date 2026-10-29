@@ -13,6 +13,8 @@ import type {
   AiTask,
   Asset,
   AudioComposition,
+  ProductionPhase,
+  ProductionRun,
   CorrectionBatch,
   ExpertFinding,
   ExpertVerdict,
@@ -334,6 +336,64 @@ export const qualityEvaluations = sqliteTable(
     check(
       'evaluation_status',
       sql`${t.status} in ('pending','awaiting_import','completed','failed','unavailable')`
+    )
+  ]
+);
+// Orchestrated productions and revisions (Director plan, phases, agent results).
+export const productionRuns = sqliteTable(
+  'production_runs',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    kind: text('kind', { enum: ['production', 'revision'] }).notNull(),
+    status: text('status', {
+      enum: ['running', 'waiting', 'completed', 'failed', 'stopped']
+    })
+      .notNull()
+      .default('running'),
+    brief: text('brief', { mode: 'json' }).$type<ProductionRun['brief']>(),
+    plan: text('plan', { mode: 'json' }).$type<ProductionRun['plan']>().notNull(),
+    sourceRevisionId: text('source_revision_id').references(() => videoRevisions.id),
+    revisionId: text('revision_id').references(() => videoRevisions.id),
+    aiCalls: integer('ai_calls').notNull().default(0),
+    error: text('error'),
+    ...timestamps()
+  },
+  (t) => [
+    index('runs_project_idx').on(t.projectId),
+    check('run_status', sql`${t.status} in ('running','waiting','completed','failed','stopped')`)
+  ]
+);
+export const productionPhases = sqliteTable(
+  'production_phases',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id')
+      .notNull()
+      .references(() => productionRuns.id),
+    phase: text('phase').notNull(),
+    agent: text('agent').notNull(),
+    status: text('status', {
+      enum: ['pending', 'running', 'done', 'failed', 'waiting', 'skipped']
+    })
+      .notNull()
+      .default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    inputHash: text('input_hash'),
+    result: text('result', { mode: 'json' }).$type<ProductionPhase['result']>(),
+    error: text('error'),
+    startedAt: integer('started_at'),
+    finishedAt: integer('finished_at'),
+    ...timestamps()
+  },
+  (t) => [
+    index('phases_run_idx').on(t.runId),
+    unique('phase_run_unique').on(t.runId, t.phase),
+    check(
+      'phase_status',
+      sql`${t.status} in ('pending','running','done','failed','waiting','skipped')`
     )
   ]
 );

@@ -163,3 +163,27 @@ sources. Premier passage global : timeout Vitest de 5 s du test fades/ducking so
 charge ; délai des tests d'intégration audio porté à 30 s, puis passage réussi
 (audio : 5,18 s pour les 19 tests). Les limites du moteur restent inchangées.
 Rendus HyperFrames lents et E2E non relancés. Aucun Markdown passé à Prettier.
+
+## Résultats du 2026-10-29, v0.3 Phase C (exécutés directement)
+
+| Commande | Résultat |
+|---|---|
+| `pnpm check` | Réussi ; Svelte : 0 erreur, 0 avertissement, 1128 fichiers examinés |
+| `pnpm lint` | Réussi ; Prettier et ESLint ; Markdown exclu temporairement, fichier ignore restauré ensuite |
+| `pnpm test` | 500 réussis, 0 échec, 31 fichiers : schemas 317, config 26, storage 10, motion 13, ai 39, video 6, hyperframes-adapter 18, audio 19, studio 52 |
+
+Les 14 tests de `apps/studio/src/lib/server/production.test.ts` couvrent SQLite
+migrée en mémoire, dépendances, parallélisme Motion/Audio, tentatives et budget IA,
+arrêt/reprise idempotente, attente externe, drives concurrents, rollback atomique,
+validation humaine, imports assistés récents et anciens, reconstruction des runners
+après changement d'instance Studio et reprise d'un rendu échoué dans un enfant.
+Les WAV music/sfx sont générés localement par FFmpeg ; la correction de musique
+entre 8 et 12 s crée un duck sans nouveau rendu image et conserve le parent.
+Les 38 tests Studio existants passent sans nouvelle modification.
+
+Un passage intermédiaire, lancé avant la dernière correction de reprise du rendu,
+a échoué sur ce nouveau scénario ; le test ciblé puis le passage global final
+sur les fichiers stabilisés ont réussi (Studio : 123,55 s).
+Aucun Markdown passé à Prettier. Aucun appel fournisseur réel, E2E ou rendu
+HyperFrames lent exécuté pour cette phase ; les rendus d'intégration utilisent
+`colorEngine` et FFmpeg.

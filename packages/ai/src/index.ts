@@ -10,6 +10,8 @@ import {
   type AnalysisMode,
   type ScenePatch,
   type Storyboard,
+  audioMixPatchSchema,
+  type AudioComposition,
 } from "@veyra/schemas";
 import { AssistedProvider } from "./assisted";
 import {
@@ -62,8 +64,20 @@ export const revisionProposalSchema = z.object({
       description: z.string().min(1),
     }),
   ),
+  // Soundtrack edits: mix fields of an existing track only (ids filtered by the caller).
+  audioChanges: z
+    .array(
+      z.object({
+        trackId: z.string(),
+        patch: audioMixPatchSchema,
+        feedbackId: z.string().nullable(),
+        instruction: z.string().min(1),
+      }),
+    )
+    .default([]),
 });
 export type RevisionProposal = z.infer<typeof revisionProposalSchema>;
+export type RevisionProposalInput = z.input<typeof revisionProposalSchema>;
 
 export const reviewFindingSchema = z.object({
   name: z.string().min(1),
@@ -89,6 +103,9 @@ export interface FeedbackInput {
   frameIndex?: number | null;
   /** PNG of the exact annotated frame, when it could be extracted. */
   capturePath?: string | null;
+  /** End of a commented time range, and the audio track it targets, if any. */
+  rangeEndMs?: number | null;
+  audioTrackId?: string | null;
 }
 export interface Frame {
   timestampMs: number;
@@ -111,6 +128,7 @@ export interface AiProvider {
   planRevision(
     storyboard: Storyboard,
     feedback: FeedbackInput[],
+    audio?: AudioComposition | null,
   ): Promise<RevisionProposal>;
   reviewFrames(
     storyboard: Storyboard,
@@ -324,47 +342,53 @@ export class FakeAiProvider implements AiProvider {
   async planRevision(
     storyboard: Storyboard,
     feedback: FeedbackInput[],
+    audio: AudioComposition | null = null,
   ): Promise<RevisionProposal> {
-    const changes = feedback.map((item) => {
-      const scene =
-        storyboard.scenes.find((row) => row.id === item.sceneId) ??
-        sceneAt(storyboard, item.timestampMs);
-      const current = Number(scene?.animation.durationMs ?? 500);
-      const text = item.text.toLowerCase();
-      const quoted = /«\s*([^»]+?)\s*»|"([^"]+)"/.exec(item.text);
-      const patch: ScenePatch = {};
-      const notes: string[] = [];
-      if (/ralenti|plus lent|lentement|slow/.test(text)) {
-        patch.animationMs = clamp(current * 1.6, 100, 1500);
-        notes.push(
-          `ralentir l'animation (${current} → ${patch.animationMs} ms)`,
-        );
-      } else if (/accél|plus rapide|plus vite|faster/.test(text)) {
-        patch.animationMs = clamp(current * 0.6, 100, 1500);
-        notes.push(
-          `accélérer l'animation (${current} → ${patch.animationMs} ms)`,
-        );
-      }
-      if (
-        quoted &&
-        /bouton|button/.test(text) &&
-        scene?.component?.id === "call-to-action"
-      ) {
-        patch.params = { buttonLabel: (quoted[1] ?? quoted[2]).slice(0, 28) };
-        notes.push(`libellé du bouton : « ${patch.params.buttonLabel} »`);
-      } else if (quoted && /texte|titre|remplace|écri|text/.test(text)) {
-        patch.text = (quoted[1] ?? quoted[2]).slice(0, 140);
-        notes.push(`remplacer le texte par « ${patch.text} »`);
-      }
-      return {
-        feedbackId: item.id,
-        sceneId: scene?.id ?? null,
-        instruction: notes.length
-          ? capitalize(notes.join(" ; "))
-          : `Non interprété par le simulateur : « ${item.text} »`,
-        patch: scene ? patch : {},
-      };
-    });
+    const audioChanges = feedback
+      .filter((item) => isAudioFeedback(item))
+      .map((item) => simulateAudioChange(item, audio));
+    const changes = feedback
+      .filter((item) => !isAudioFeedback(item))
+      .map((item) => {
+        const scene =
+          storyboard.scenes.find((row) => row.id === item.sceneId) ??
+          sceneAt(storyboard, item.timestampMs);
+        const current = Number(scene?.animation.durationMs ?? 500);
+        const text = item.text.toLowerCase();
+        const quoted = /«\s*([^»]+?)\s*»|"([^"]+)"/.exec(item.text);
+        const patch: ScenePatch = {};
+        const notes: string[] = [];
+        if (/ralenti|plus lent|lentement|slow/.test(text)) {
+          patch.animationMs = clamp(current * 1.6, 100, 1500);
+          notes.push(
+            `ralentir l'animation (${current} → ${patch.animationMs} ms)`,
+          );
+        } else if (/accél|plus rapide|plus vite|faster/.test(text)) {
+          patch.animationMs = clamp(current * 0.6, 100, 1500);
+          notes.push(
+            `accélérer l'animation (${current} → ${patch.animationMs} ms)`,
+          );
+        }
+        if (
+          quoted &&
+          /bouton|button/.test(text) &&
+          scene?.component?.id === "call-to-action"
+        ) {
+          patch.params = { buttonLabel: (quoted[1] ?? quoted[2]).slice(0, 28) };
+          notes.push(`libellé du bouton : « ${patch.params.buttonLabel} »`);
+        } else if (quoted && /texte|titre|remplace|écri|text/.test(text)) {
+          patch.text = (quoted[1] ?? quoted[2]).slice(0, 140);
+          notes.push(`remplacer le texte par « ${patch.text} »`);
+        }
+        return {
+          feedbackId: item.id,
+          sceneId: scene?.id ?? null,
+          instruction: notes.length
+            ? capitalize(notes.join(" ; "))
+            : `Non interprété par le simulateur : « ${item.text} »`,
+          patch: scene ? patch : {},
+        };
+      });
     // Two comments setting the same field of the same scene differently: keep neither.
     const conflicts: RevisionProposal["conflicts"] = [];
     for (const [i, a] of changes.entries())
@@ -387,6 +411,7 @@ export class FakeAiProvider implements AiProvider {
       summary: `Plan simulé (règles déterministes, aucun modèle) pour ${feedback.length} commentaire(s).`,
       changes,
       conflicts,
+      audioChanges: audioChanges.filter((c) => c !== null),
     });
   }
   async reviewFrames(
@@ -449,9 +474,16 @@ export class AnthropicProvider implements AiProvider {
       { type: "text", text: prompt },
     ]);
   }
-  planRevision(storyboard: Storyboard, feedback: FeedbackInput[]) {
+  planRevision(
+    storyboard: Storyboard,
+    feedback: FeedbackInput[],
+    audio: AudioComposition | null = null,
+  ) {
     const content: Anthropic.Beta.BetaContentBlockParam[] = [
-      { type: "text", text: JSON.stringify(planInput(storyboard, feedback)) },
+      {
+        type: "text",
+        text: JSON.stringify(planInput(storyboard, feedback, audio)),
+      },
     ];
     // Each annotated frame is sent as an image, labelled with its comment.
     for (const item of feedback)
@@ -504,17 +536,24 @@ export const instructions = {
     styleInstructions: string;
   }) =>
     `Tu conçois des storyboards de motion design pour Veyra. Chaque scène est soit un court texte animé (text ≤ 140 caractères), soit un composant du registre ci-dessous (component : id, params, style), dont tu respectes la durée et les paramètres ; aucun autre composant, aucun code, aucun HTML. Durée totale visée : ${options.targetDurationMs} ms, sans dépasser 60000 ms.\nComposants disponibles :\n${componentCatalog()}\nConsignes de marque :\n${options.styleInstructions}`,
-  plan: "Tu proposes des corrections minimales à un storyboard Veyra à partir de commentaires posés sur des frames précises (frameIndex, timestampMs, image de la frame si fournie). Une entrée de changes par commentaire, avec son feedbackId. N'utilise que les champs de patch autorisés, sur des sceneId existants ; pour une scène à composant, text remplace son texte principal et params modifie ses paramètres (mêmes schémas que le registre, sans changer de composant) ; laisse patch vide si la demande n'est pas exprimable. Signale dans conflicts les commentaires contradictoires et ne les applique pas.",
+  plan: "Tu proposes des corrections minimales à un storyboard Veyra à partir de commentaires posés sur des frames précises (frameIndex, timestampMs, image de la frame si fournie). Une entrée de changes par commentaire, avec son feedbackId. N'utilise que les champs de patch autorisés, sur des sceneId existants ; pour une scène à composant, text remplace son texte principal et params modifie ses paramètres (mêmes schémas que le registre, sans changer de composant) ; laisse patch vide si la demande n'est pas exprimable. Signale dans conflicts les commentaires contradictoires et ne les applique pas. Un commentaire sur le son (plage rangeEndMs, audioTrackId, musique, voix, effet) va dans audioChanges : trackId d'une piste existante de audio, patch limité à gainDb, fadeInMs, fadeOutMs, duck (liste complète des atténuations), anchor ; pas d'entrée changes pour lui.",
 };
 /** What a planner receives for a batch: storyboard plus each comment's frame context. */
-export function planInput(storyboard: Storyboard, feedback: FeedbackInput[]) {
+export function planInput(
+  storyboard: Storyboard,
+  feedback: FeedbackInput[],
+  audio: AudioComposition | null = null,
+) {
   return {
     storyboard,
+    audio,
     feedback: feedback.map((item) => ({
       id: item.id,
       text: item.text,
       frameIndex: item.frameIndex ?? null,
       timestampMs: item.timestampMs,
+      rangeEndMs: item.rangeEndMs ?? null,
+      audioTrackId: item.audioTrackId ?? null,
       sceneId:
         item.sceneId ?? sceneAt(storyboard, item.timestampMs)?.id ?? null,
       hasImage: Boolean(item.capturePath),
@@ -545,3 +584,5 @@ export function createProvider(
 }
 export * from "./assisted";
 export * from "./evaluation";
+export * from "./agents";
+import { isAudioFeedback, simulateAudioChange } from "./agents";

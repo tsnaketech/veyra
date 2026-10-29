@@ -9,9 +9,10 @@ import { ProjectStorage } from '@veyra/storage';
 import {
   AssistedProvider,
   FakeAiProvider,
+  revisionProposalSchema,
   ProviderUnavailableError,
   type AiProvider,
-  type RevisionProposal
+  type RevisionProposalInput
 } from '@veyra/ai';
 import type { Storyboard } from '@veyra/schemas';
 import { createRepository } from './db/repo';
@@ -29,7 +30,7 @@ let client: Database.Database, root: string, repo: ReturnType<typeof createRepos
 const colorEngine = () => sharedColorEngine((id) => repo.getRevision(id).storyboard);
 /** Provider whose planner follows a script, so each QA case is produced on purpose. */
 function scripted(
-  plan: (board: Storyboard, ids: string[]) => RevisionProposal,
+  plan: (board: Storyboard, ids: string[]) => RevisionProposalInput,
   evaluator: AiProvider['qualityEvaluator'] = () => new FakeAiProvider().qualityEvaluator()
 ): AiProvider {
   const base = new FakeAiProvider();
@@ -39,9 +40,11 @@ function scripted(
     generateStoryboard: (...args) => base.generateStoryboard(...args),
     reviewFrames: (...args) => base.reviewFrames(...args),
     planRevision: async (board, feedback) =>
-      plan(
-        board,
-        feedback.map((f) => f.id)
+      revisionProposalSchema.parse(
+        plan(
+          board,
+          feedback.map((f) => f.id)
+        )
       ),
     qualityEvaluator: evaluator
   };

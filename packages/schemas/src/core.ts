@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { idSchema } from "./ids";
-import { audioCompositionSchema } from "./audio";
+import { audioCompositionSchema, audioMixPatchSchema } from "./audio";
 export * from "./ids";
 const timestamp = z.number().int().nonnegative();
 const base = { createdAt: timestamp, updatedAt: timestamp };
@@ -95,6 +95,22 @@ export const transitions = {
     completed: [],
     failed: [],
     unavailable: [],
+  },
+  // A failed or stopped run resumes from its first unfinished phase.
+  ProductionRun: {
+    running: ["waiting", "completed", "failed", "stopped"],
+    waiting: ["running", "completed", "stopped"],
+    failed: ["running"],
+    stopped: ["running"],
+    completed: [],
+  },
+  ProductionPhase: {
+    pending: ["running", "skipped"],
+    running: ["done", "failed", "waiting"],
+    waiting: ["done", "failed"],
+    failed: ["pending"],
+    done: [],
+    skipped: [],
   },
   AiTask: {
     awaiting_import: ["imported", "failed"],
@@ -395,6 +411,12 @@ export const scenePatchSchema = z
   })
   .strict();
 export type ScenePatch = z.infer<typeof scenePatchSchema>;
+export const audioChangeSchema = z.object({
+  trackId: idSchema("atr"),
+  patch: audioMixPatchSchema,
+  feedbackId: idSchema("fdb").nullable().default(null),
+  instruction: z.string().min(1),
+});
 export const revisionPlanSchema = z.object({
   id: idSchema("pln"),
   revisionId: idSchema("rev"),
@@ -416,6 +438,8 @@ export const revisionPlanSchema = z.object({
       }),
     )
     .default([]),
+  // Soundtrack edits of the plan (mix fields of an existing track), applied with the patches.
+  audioChanges: z.array(audioChangeSchema).default([]),
   createdAt: timestamp,
 });
 export const qualityEvaluationSchema = z

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { idSchema, storyboardSchema, revisionPlanSchema } from "./core";
-import { audioMixPatchSchema } from "./audio";
 export { qualityReportSchema } from "./core";
 
 // Veyra business agents, not Claude Code development subagents.
@@ -74,19 +73,10 @@ export const motionCompositionSchema = z.object({
   storyboard: storyboardSchema,
   registryVersion: z.number().int().nonnegative(),
 });
+// The revision plan already carries patches and audio changes; review adds the routing.
 export const reviewPlanSchema = revisionPlanSchema.extend({
   affectedAgents: z.array(agentIdSchema),
   affectedPhases: z.array(phaseSchema),
-  audioChanges: z
-    .array(
-      z.object({
-        trackId: idSchema("atr"),
-        patch: audioMixPatchSchema,
-        feedbackId: idSchema("fdb").nullable(),
-        instruction: z.string().min(1),
-      }),
-    )
-    .default([]),
 });
 export function agentResultSchema<T extends z.ZodType>(payloadSchema: T) {
   return z.object({
@@ -129,3 +119,58 @@ export function inputHash(value: unknown): string {
   };
   return createHash("sha256").update(stable(json)).digest("hex");
 }
+export type ProductionBrief = z.infer<typeof productionBriefSchema>;
+export type ProductionPlan = z.infer<typeof productionPlanSchema>;
+export type Phase = z.infer<typeof phaseSchema>;
+export type AgentId = z.infer<typeof agentIdSchema>;
+export type ReviewPlan = z.infer<typeof reviewPlanSchema>;
+
+const time = z.number().int().nonnegative();
+export const productionRunStatusSchema = z.enum([
+  "running",
+  "waiting",
+  "completed",
+  "failed",
+  "stopped",
+]);
+export const productionPhaseStatusSchema = z.enum([
+  "pending",
+  "running",
+  "done",
+  "failed",
+  "waiting",
+  "skipped",
+]);
+/** One orchestrated production or revision, with its Director plan and budget usage. */
+export const productionRunSchema = z.object({
+  id: idSchema("run"),
+  projectId: idSchema("prj"),
+  kind: z.enum(["production", "revision"]),
+  status: productionRunStatusSchema.default("running"),
+  brief: productionBriefSchema.nullable().default(null),
+  plan: productionPlanSchema,
+  sourceRevisionId: idSchema("rev").nullable().default(null),
+  revisionId: idSchema("rev").nullable().default(null),
+  aiCalls: z.number().int().nonnegative().default(0),
+  error: z.string().nullable().default(null),
+  createdAt: time,
+  updatedAt: time,
+});
+/** Persisted state of one phase; `result` is the agent result envelope once done. */
+export const productionPhaseSchema = z.object({
+  id: idSchema("phs"),
+  runId: idSchema("run"),
+  phase: phaseSchema,
+  agent: z.union([agentIdSchema, z.enum(["engine", "human"])]),
+  status: productionPhaseStatusSchema.default("pending"),
+  attempts: z.number().int().nonnegative().default(0),
+  inputHash: z.string().nullable().default(null),
+  result: z.record(z.string(), z.json()).nullable().default(null),
+  error: z.string().nullable().default(null),
+  startedAt: time.nullable().default(null),
+  finishedAt: time.nullable().default(null),
+  createdAt: time,
+  updatedAt: time,
+});
+export type ProductionRun = z.infer<typeof productionRunSchema>;
+export type ProductionPhase = z.infer<typeof productionPhaseSchema>;

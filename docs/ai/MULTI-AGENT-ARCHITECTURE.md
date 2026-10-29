@@ -1,7 +1,7 @@
-# Architecture multi-agents — v0.3, phase A
+# Architecture multi-agents — v0.3
 
-Cette phase livre des contrats purs et des événements visuels ; elle ne crée
-ni orchestrateur opérationnel, ni stockage, ni interface, ni moteur audio.
+La phase A a livré les contrats et événements visuels ; la phase B le moteur
+audio. La phase C intègre les runs persistés dans le service Studio.
 **agents ≠ sous-agents Claude Code (.claude/agents)**.
 
 ## Rôles et frontières
@@ -18,7 +18,7 @@ ni orchestrateur opérationnel, ni stockage, ni interface, ni moteur audio.
   évaluation reste consultative et la validation humaine demeure obligatoire.
 
 Les opérations déterministes restent dans les moteurs : résolution des ancrages,
-composition, futur mixage, rendu, mesures et validation des contrats. Les phases
+composition, mixage, rendu, mesures et validation des contrats. Les phases
 `composition` et `render` appartiennent à `engine`, `human-approval` à `human`.
 
 ```mermaid
@@ -86,4 +86,30 @@ composition, et non un sous-ensemble filtré.
 Une piste utilise la source depuis `sourceInMs` ; sans `durationMs`, jusqu'à la fin
 connue de la source. Seule la musique peut boucler. Les patches ne réinitialisent
 pas les champs omis. L'application des fades, du ducking, des gains et de la cible
-LUFS appartient au futur moteur audio, pas aux agents.
+LUFS appartient au moteur audio, pas aux agents.
+
+## Orchestration persistée dans Studio (phase C)
+
+`apps/studio/src/lib/server/production.ts` exécute les dépendances du plan et
+persiste chaque résultat dans une enveloppe avec fournisseur, hash et validation.
+Les phases indépendantes Motion/Audio démarrent ensemble, avec des IDs de scènes
+communs et stables dans le run. Une phase sans runner attend une entrée externe.
+Les phases réussies ne sont pas rejouées à la reprise ; les échecs sont retentés
+dans la limite du plan et du budget d'appels IA. La création du run et la
+persistance des résultats sont transactionnelles. Un rendu en échec reprend
+dans une révision enfant, sans rouvrir la révision échouée. L'arrêt laisse finir les phases
+en cours ; la reprise attend leur fin. Les appels concurrents à `drive` d'une même
+instance partagent la même exécution (pas de coordination multi-processus).
+
+`Studio.sendPrompt` crée le brief et le plan ; l'import assisté complète le script.
+Les anciens exports sans run créent un run lors de l'import. Les révisions
+conservent le plan de correction ou la composition audio manuelle dans le résultat
+de la phase plan, et la révision source dans le run : `resumeProduction` reconstruit
+ainsi ses runners depuis SQLite. Les corrections audio seules omettent Motion et
+réutilisent l'image via le moteur existant. Les commentaires transmettent plage
+temporelle et piste audio au fournisseur ; les IDs proposés sont filtrés.
+
+Le résumé QA reste `needs-human`. L'approbation, ou la demande de changements sur
+la révision source, complète la phase d'attente humaine. Aucun run ne publie.
+Le snapshot expose runs et phases ; cette phase ne crée pas de commandes UI.
+Preuves et avancement : T084–T086 dans [TASKS](../TASKS.md).

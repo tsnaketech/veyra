@@ -8,7 +8,12 @@ import { join } from 'node:path';
 import { ProjectStorage } from '@veyra/storage';
 import { runProcess } from '@veyra/video';
 import { detectOnsets } from '@veyra/audio';
-import { FakeAiProvider, type AiProvider, type RevisionProposal } from '@veyra/ai';
+import {
+  FakeAiProvider,
+  revisionProposalSchema,
+  type AiProvider,
+  type RevisionProposalInput
+} from '@veyra/ai';
 import type { Storyboard } from '@veyra/schemas';
 import { createRepository } from './db/repo';
 import * as schema from './db/schema';
@@ -44,7 +49,7 @@ async function wav(name: string, source: string, seconds: number) {
   ]);
   return { path, file: new File([readFileSync(path)], name, { type: 'audio/wav' }) };
 }
-function scripted(plan: (board: Storyboard, ids: string[]) => RevisionProposal): AiProvider {
+function scripted(plan: (board: Storyboard, ids: string[]) => RevisionProposalInput): AiProvider {
   const base = new FakeAiProvider();
   return {
     kind: 'fake',
@@ -52,9 +57,11 @@ function scripted(plan: (board: Storyboard, ids: string[]) => RevisionProposal):
     generateStoryboard: (...args) => base.generateStoryboard(...args),
     reviewFrames: (...args) => base.reviewFrames(...args),
     planRevision: async (board, feedback) =>
-      plan(
-        board,
-        feedback.map((f) => f.id)
+      revisionProposalSchema.parse(
+        plan(
+          board,
+          feedback.map((f) => f.id)
+        )
       ),
     qualityEvaluator: () => base.qualityEvaluator()
   };

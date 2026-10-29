@@ -21,7 +21,12 @@ import {
   type ScenePatch,
   type VideoRevision,
   audioCompositionSchema,
-  type AudioCategory
+  type AudioCategory,
+  type AudioComposition,
+  type ProductionBrief,
+  type ProductionPlan,
+  type ProductionRun,
+  type RevisionPlan
 } from '@veyra/schemas';
 import {
   AssistedProvider,
@@ -36,12 +41,16 @@ import {
   type Provider,
   type ReviewFinding,
   type RevisionProposal,
-  type StoryboardDraft
+  type StoryboardDraft,
+  planProduction,
+  planRevisionPhases,
+  proposeAudio
 } from '@veyra/ai';
 import { getComponent } from '@veyra/motion';
 import { AudioMediaError, probeAudio } from '@veyra/audio';
 import type { createRepository } from './db/repo';
 import type { RenderJobRunner, RenderSettings } from './jobs/runner';
+import { Orchestrator, type Runners } from './production';
 
 type Repository = ReturnType<typeof createRepository>;
 type RevisionRow = ReturnType<Repository['getRevision']>;
@@ -82,10 +91,12 @@ const modeLabel = (evaluator: string | null, mode: string | null) =>
         ? 'texte seul, aucune image regardée'
         : 'non réalisée';
 const SEQUENCE_FRAMES = 5;
+const soundWords = /musique|music|\bson\b|sonore|audio|voix|bruitage|effets? sonores?/i;
 // Output defects a fresh render can fix; layout or content issues need a correction instead.
 const RETRYABLE = new Set(['duration', 'resolution', 'fps', 'codec', 'non-empty', 'black-frames']);
 
 export class Studio {
+  private orchestrator: Orchestrator;
   private activity = new Map<string, Activity>();
   constructor(
     private repo: Repository,
@@ -93,7 +104,11 @@ export class Studio {
     private ai: Provider | null,
     private settings: StudioSettings,
     private storage: ProjectStorage
-  ) {}
+  ) {
+    this.orchestrator = new Orchestrator(repo, (projectId, text) =>
+      this.say(projectId, 'system', text)
+    );
+  }
 
   get aiKind() {
     return this.ai?.kind ?? null;
@@ -167,57 +182,221 @@ export class Studio {
     if (!this.repo.getProject(projectId)) throw new Error('Projet introuvable');
     const ai = this.requireAi();
     const parent = this.repo.listRevisions(projectId).at(-1) ?? null;
-    const options = {
-      targetDurationMs: 20000,
-      styleInstructions: this.settings.style.instructions
-    };
-    if (ai.mode === 'assisted') {
-      this.say(projectId, 'user', text);
-      const task = this.exportTask(projectId, 'storyboard', ai.storyboardRequest(text, options), {
-        input: { prompt: text, parentRevisionId: parent?.id ?? null }
-      });
-      this.say(projectId, 'assistant', this.assistedInstructions(task.dir, 'storyboard'));
-      return Promise.resolve();
-    }
-    this.busy(projectId, 'generating');
+    if (ai.mode !== 'assisted') this.busy(projectId, 'generating');
     this.say(projectId, 'user', text);
+    const brief = this.productionBrief(projectId, text);
+    const plan = planProduction(brief, this.productionBudget());
+    const run = this.orchestrator.create({
+      projectId,
+      kind: 'production',
+      brief,
+      plan,
+      sourceRevisionId: parent?.id ?? null,
+      done: { plan: { kind: 'done', payload: plan, provider: 'rules' } }
+    });
     return this.background(projectId, async () => {
-      const draft = await ai.generateStoryboard(text, options);
-      await this.buildFromDraft(projectId, draft, text, parent?.id ?? null, ai.kind);
+      await this.orchestrator.drive(run.id, this.productionRunners(run));
     });
   }
 
-  private async buildFromDraft(
-    projectId: string,
-    draft: StoryboardDraft,
-    prompt: string,
-    parentRevisionId: string | null,
-    kind: Provider['kind']
-  ) {
-    const format = this.settings.formats.formats.landscape;
-    const storyboard = toStoryboard(draft, { ...format, fps: this.settings.engine.fps });
-    const total = endOf({ storyboard });
-    if (total > this.settings.app.maxDurationSeconds * 1000)
-      throw new Error(`Durée demandée supérieure à ${this.settings.app.maxDurationSeconds} s`);
-    const revision = this.newRevision(projectId, storyboard, parentRevisionId, { prompt }, kind);
-    this.say(
-      projectId,
-      'assistant',
-      this.label(
-        `Storyboard « ${draft.title} » : ${storyboard.scenes.length} scènes, ${total / 1000} s.\n` +
-          storyboard.scenes
-            .map(
-              (scene, i) =>
-                `${i + 1}. ${scene.component ? `${getComponent(scene.component.id).name} — ` : ''}${scene.text} (${scene.duration / 1000} s)`
+  private productionBudget() {
+    return { maxAiCalls: 3, maxRenders: this.settings.quality.maxAutoFixAttempts + 1 };
+  }
+
+  private productionBrief(projectId: string, prompt: string): ProductionBrief {
+    const assets = this.repo
+      .listAssets(projectId)
+      .filter((a) => a.audio?.status === 'valid' && a.audio.category);
+    return {
+      prompt,
+      targetDurationMs: 20000,
+      format: { ...this.settings.formats.formats.landscape, fps: this.settings.engine.fps },
+      audio: {
+        wanted: assets.length > 0 || soundWords.test(prompt),
+        assetIds: assets.map((a) => a.id)
+      },
+      constraints: []
+    };
+  }
+
+  private phasePayload<T>(runId: string, phase: string): T {
+    const result = this.orchestrator.phases(runId).find((p) => p.phase === phase)?.result;
+    return (result as { payload: T } | null)?.payload as T;
+  }
+
+  private renderRunners(run: ProductionRun): Runners {
+    return {
+      render: {
+        run: async (inputs) => {
+          const { revisionId } = inputs.composition as { revisionId: string };
+          let target = this.repo.getRevision(this.repo.getRun(run.id).revisionId ?? revisionId);
+          // Failed revisions are immutable; retry the render in a child, keeping completed phases.
+          if (target.status === 'failed') {
+            target = this.newRevision(
+              run.projectId,
+              target.storyboard,
+              target.id,
+              {
+                ...(target.resolvedConfig.origin as Record<string, string | number>),
+                renderRetry: run.id
+              },
+              String(target.resolvedConfig.aiProvider ?? 'none'),
+              target.audio
+            );
+            this.repo.updateRun(run.id, { revisionId: target.id });
+          }
+          await this.render(run.projectId, target, 0);
+          const revision = this.repo.listRevisions(run.projectId).at(-1)!;
+          this.repo.updateRun(run.id, { revisionId: revision.id });
+          const job = this.repo.renderJobsFor([revision.id]).at(-1);
+          if (job?.status !== 'succeeded') throw new Error(job?.error ?? 'Échec du rendu');
+          return {
+            kind: 'done',
+            payload: { revisionId: revision.id, status: job.status },
+            revisionId: revision.id,
+            provider: 'engine'
+          };
+        }
+      },
+      qa: {
+        run: async (inputs) => {
+          const { revisionId } = inputs.render as { revisionId: string };
+          const report = this.repo.reportsFor([revisionId]).at(-1);
+          const failed = report?.checks.filter((c) => !c.passed).map((c) => c.name) ?? [];
+          return {
+            kind: 'done',
+            payload: { failed, failedCount: failed.length, total: report?.checks.length ?? 0 },
+            provider: 'engine',
+            validation: 'needs-human'
+          };
+        }
+      }
+    };
+  }
+
+  private productionRunners(run: ProductionRun): Runners {
+    const { projectId } = run;
+    const brief = run.brief!;
+    // Both parallel agents must address the same scenes, including after a restart.
+    const storyboardFrom = (draft: StoryboardDraft) => {
+      const storyboard = toStoryboard(draft, brief.format);
+      return {
+        ...storyboard,
+        scenes: storyboard.scenes.map((scene, i) => ({
+          ...scene,
+          id: `scn_${run.id.slice(4)}-${i}`
+        }))
+      };
+    };
+    const scriptProvider = () =>
+      this.orchestrator.phases(run.id).find((p) => p.phase === 'script')?.result
+        ?.provider as Provider['kind'];
+    return {
+      ...this.renderRunners(run),
+      script: {
+        usesAi: true,
+        run: async () => {
+          const ai = this.requireAi();
+          const options = {
+            targetDurationMs: brief.targetDurationMs,
+            styleInstructions: this.settings.style.instructions
+          };
+          if (ai.mode === 'assisted') {
+            const task = this.exportTask(
+              projectId,
+              'storyboard',
+              ai.storyboardRequest(brief.prompt, options),
+              {
+                input: {
+                  prompt: brief.prompt,
+                  parentRevisionId: run.sourceRevisionId,
+                  runId: run.id
+                }
+              }
+            );
+            this.say(projectId, 'assistant', this.assistedInstructions(task.dir, 'storyboard'));
+            return { kind: 'waiting' };
+          }
+          return {
+            kind: 'done',
+            payload: await ai.generateStoryboard(brief.prompt, options),
+            provider: ai.kind
+          };
+        }
+      },
+      motion: {
+        run: async (inputs) => {
+          const draft = inputs.script as StoryboardDraft;
+          const storyboard = storyboardFrom(draft);
+          const total = endOf({ storyboard });
+          if (total > this.settings.app.maxDurationSeconds * 1000)
+            throw new Error(
+              `Durée demandée supérieure à ${this.settings.app.maxDurationSeconds} s`
+            );
+          const kind = scriptProvider();
+          this.say(
+            projectId,
+            'assistant',
+            this.label(
+              `Storyboard « ${draft.title} » : ${storyboard.scenes.length} scènes, ${total / 1000} s.\n` +
+                storyboard.scenes
+                  .map(
+                    (scene, i) =>
+                      `${i + 1}. ${scene.component ? `${getComponent(scene.component.id).name} — ` : ''}${scene.text} (${scene.duration / 1000} s)`
+                  )
+                  .join('\n') +
+                (kind === 'fake' && storyboard.scenes.some((s) => s.component)
+                  ? "\nParamètres d'exemple (fonctionnalités, chiffres) à remplacer par les vôtres."
+                  : ''),
+              kind
             )
-            .join('\n') +
-          (kind === 'fake' && storyboard.scenes.some((s) => s.component)
-            ? "\nParamètres d'exemple (fonctionnalités, chiffres) à remplacer par les vôtres."
-            : ''),
-        kind
-      )
-    );
-    await this.render(projectId, revision, 0);
+          );
+          return { kind: 'done', payload: { storyboard }, provider: 'rules' };
+        }
+      },
+      audio: {
+        run: async (inputs) => {
+          const storyboard = storyboardFrom(inputs.script as StoryboardDraft);
+          const assets = this.repo
+            .listAssets(projectId)
+            .filter((a) => brief.audio.assetIds.includes(a.id) && a.audio?.status === 'valid');
+          const { composition, warnings } = proposeAudio(
+            storyboard,
+            assets.map((a) => ({
+              id: a.id,
+              category: a.audio!.category,
+              durationMs: Number(a.audio!.metadata!.durationMs),
+              label: a.path.split('/').at(-1)!
+            }))
+          );
+          this.say(
+            projectId,
+            'assistant',
+            `Bande son proposée : ${composition.tracks.length} piste(s).` +
+              (warnings.length ? '\n' + warnings.join('\n') : '')
+          );
+          return { kind: 'done', payload: composition, warnings, provider: 'rules' };
+        }
+      },
+      composition: {
+        run: async (inputs) => {
+          const revision = this.newRevision(
+            projectId,
+            (inputs.motion as { storyboard: VideoRevision['storyboard'] }).storyboard,
+            run.sourceRevisionId,
+            { prompt: brief.prompt, runId: run.id },
+            scriptProvider(),
+            (inputs.audio as AudioComposition) ?? null
+          );
+          return {
+            kind: 'done',
+            payload: { revisionId: revision.id },
+            revisionId: revision.id,
+            provider: 'engine'
+          };
+        }
+      }
+    };
   }
 
   private newRevision(
@@ -317,6 +496,8 @@ export class Studio {
     revisionId: string;
     frameIndex?: number | null;
     timestampMs?: number | null;
+    rangeEndMs?: number | null;
+    audioTrackId?: string | null;
     text: string;
     author: string;
   }) {
@@ -344,12 +525,23 @@ export class Studio {
     }
     if (!Number.isFinite(timestampMs) || timestampMs < 0 || timestampMs > endOf(revision))
       throw new Error('Horodatage hors de la vidéo');
+    if (
+      input.rangeEndMs != null &&
+      (!Number.isFinite(input.rangeEndMs) ||
+        input.rangeEndMs <= timestampMs ||
+        input.rangeEndMs > endOf(revision))
+    )
+      throw new Error('Fin de plage hors de la vidéo ou antérieure au début');
+    if (input.audioTrackId && !revision.audio?.tracks.some((t) => t.id === input.audioTrackId))
+      throw new Error('Piste audio introuvable dans cette révision');
     const now = Date.now();
     const row = this.repo.createFeedback({
       id: newId('fdb'),
       projectId: revision.projectId,
       revisionId: revision.id,
       timestampMs,
+      rangeEndMs: input.rangeEndMs ?? null,
+      audioTrackId: input.audioTrackId ?? null,
       frameIndex,
       fpsNum: media?.fpsNum ?? null,
       fpsDen: media?.fpsDen ?? null,
@@ -452,6 +644,8 @@ export class Studio {
         id: item.id,
         text: item.text,
         timestampMs: item.timestampMs,
+        rangeEndMs: item.rangeEndMs,
+        audioTrackId: item.audioTrackId,
         frameIndex: item.frameIndex,
         sceneId: item.sceneId,
         capturePath: item.capturePath
@@ -489,7 +683,7 @@ export class Studio {
         const task = this.exportTask(
           revision.projectId,
           'plan',
-          ai.planRequest(revision.storyboard, inputs),
+          ai.planRequest(revision.storyboard, inputs, revision.audio),
           {
             batchId,
             input: { sourceRevisionId: revision.id },
@@ -509,7 +703,7 @@ export class Studio {
     this.markItems(batch, 'submitted');
     this.say(revision.projectId, 'system', 'Analyse du lot en cours…');
     return ai
-      .planRevision(revision.storyboard, inputs)
+      .planRevision(revision.storyboard, inputs, revision.audio)
       .then((proposal) => {
         this.savePlan(batchId, proposal, ai.kind);
       })
@@ -538,6 +732,12 @@ export class Studio {
       feedbackIds: batch.feedbackIds,
       summary: proposal.summary,
       changes,
+      audioChanges: proposal.audioChanges
+        .filter((c) => revision.audio?.tracks.some((t) => t.id === c.trackId))
+        .map((c) => ({
+          ...c,
+          feedbackId: c.feedbackId && known.has(c.feedbackId) ? c.feedbackId : null
+        })),
       conflicts,
       createdAt: Date.now()
     });
@@ -546,8 +746,11 @@ export class Studio {
       revision.projectId,
       'assistant',
       this.label(
-        `Plan de correction (${plan.changes.length} modification(s)) :\n` +
+        `Plan de correction (${plan.changes.length + plan.audioChanges.length} modification(s)) :\n` +
           plan.changes.map((c) => `- ${c.instruction}`).join('\n') +
+          (plan.audioChanges.length
+            ? '\n' + plan.audioChanges.map((c) => `- Audio : ${c.instruction}`).join('\n')
+            : '') +
           (plan.conflicts.length
             ? `\nConflits à arbitrer :\n${plan.conflicts.map((c) => `- ${c.description}`).join('\n')}`
             : '') +
@@ -576,36 +779,178 @@ export class Studio {
     // Plans created before correction batches existed have no batch.
     const batch = this.repo.listBatches(source.projectId).find((item) => item.planId === planId);
     if (batch && batch.status !== 'planned') throw new Error('Plan déjà traité');
-    const storyboard = applyProposal(
-      source.storyboard,
-      plan.changes,
-      this.settings.app.maxDurationSeconds * 1000
-    );
+    applyProposal(source.storyboard, plan.changes, this.settings.app.maxDurationSeconds * 1000);
+    this.patchedAudio(source.audio, plan.audioChanges);
     this.busy(source.projectId, 'generating');
-    // The original revision is kept untouched; the correction lives in a child revision.
-    const revision = this.repo.transaction(() => {
+    const run = this.repo.transaction(() => {
       this.repo.transitionRevision(source.id, 'changes_requested');
       for (const id of plan.feedbackIds)
         if (this.repo.getFeedback(id)?.status === 'submitted')
           this.repo.transitionFeedback(id, 'applied');
-      const child = this.newRevision(
-        source.projectId,
-        storyboard,
-        source.id,
-        batch ? { planId, batchId: batch.id } : { planId },
-        batch?.provider,
-        source.audio
+      return this.createRevisionRun(
+        source,
+        plan,
+        (batch?.provider as Provider['kind'] | undefined) ?? 'rules'
       );
-      if (batch) this.repo.updateBatch(batch.id, { status: 'applied', resultRevisionId: child.id });
-      return child;
     });
+    this.finishApproval(source.id, { decision: 'changes_requested' });
     this.say(source.projectId, 'assistant', 'Plan appliqué : rendu de la nouvelle révision.');
-    return this.background(source.projectId, () => this.render(source.projectId, revision, 0));
+    return this.background(source.projectId, async () => {
+      await this.orchestrator.drive(run.id, this.revisionRunners(run));
+    });
+  }
+
+  private patchedAudio(audio: AudioComposition | null, changes: RevisionPlan['audioChanges']) {
+    if (!changes.length) return audio;
+    let result = audio;
+    for (const change of changes) {
+      result = audioCompositionSchema.parse({
+        ...result,
+        tracks: result?.tracks.map((t) => (t.id === change.trackId ? { ...t, ...change.patch } : t))
+      });
+    }
+    return result;
+  }
+
+  private createRevisionRun(
+    source: RevisionRow,
+    payload: RevisionPlan | AudioComposition,
+    provider: Provider['kind'] | 'rules'
+  ) {
+    const manual = 'tracks' in payload;
+    const routing = planRevisionPhases(
+      manual ? { changes: [], audioChanges: [payload] } : payload,
+      this.productionBudget()
+    );
+    const plan: ProductionPlan = {
+      ...routing.plan,
+      phases: [
+        { phase: 'plan', agent: 'review', dependsOn: [], maxAttempts: 1 },
+        ...routing.plan.phases.map((p) => ({
+          ...p,
+          dependsOn: p.dependsOn.length ? p.dependsOn : ['plan' as const]
+        }))
+      ]
+    };
+    return this.orchestrator.create({
+      projectId: source.projectId,
+      kind: 'revision',
+      sourceRevisionId: source.id,
+      plan,
+      done: {
+        plan: {
+          kind: 'done',
+          provider,
+          payload: manual
+            ? payload
+            : {
+                ...payload,
+                affectedAgents: routing.affectedAgents,
+                affectedPhases: routing.affectedPhases
+              }
+        }
+      }
+    });
+  }
+
+  private revisionRunners(run: ProductionRun): Runners {
+    const source = this.repo.getRevision(run.sourceRevisionId!);
+    const payload = this.phasePayload<RevisionPlan | AudioComposition>(run.id, 'plan');
+    const manual = 'tracks' in payload;
+    const plan = manual ? null : payload;
+    const batch = plan
+      ? this.repo.listBatches(run.projectId).find((b) => b.planId === plan.id)
+      : null;
+    return {
+      ...this.renderRunners(run),
+      motion: {
+        run: async () => ({
+          kind: 'done',
+          provider: 'rules',
+          payload: {
+            storyboard: applyProposal(
+              source.storyboard,
+              plan!.changes,
+              this.settings.app.maxDurationSeconds * 1000
+            )
+          }
+        })
+      },
+      audio: {
+        run: async () => ({
+          kind: 'done',
+          provider: 'rules',
+          payload: manual ? payload : this.patchedAudio(source.audio, plan!.audioChanges)
+        })
+      },
+      composition: {
+        run: async (inputs) => {
+          const child = this.repo.transaction(() => {
+            const revision = this.newRevision(
+              source.projectId,
+              (inputs.motion as { storyboard: VideoRevision['storyboard'] } | undefined)
+                ?.storyboard ?? source.storyboard,
+              source.id,
+              plan
+                ? batch
+                  ? { planId: plan.id, batchId: batch.id }
+                  : { planId: plan.id }
+                : { audioRevision: 'manual' },
+              batch?.provider ?? String(source.resolvedConfig.aiProvider ?? 'none'),
+              (inputs.audio as AudioComposition) ?? source.audio
+            );
+            if (batch)
+              this.repo.updateBatch(batch.id, { status: 'applied', resultRevisionId: revision.id });
+            return revision;
+          });
+          return {
+            kind: 'done',
+            payload: { revisionId: child.id },
+            revisionId: child.id,
+            provider: 'engine'
+          };
+        }
+      }
+    };
+  }
+
+  private finishApproval(revisionId: string, payload: Record<string, string>) {
+    const revision = this.repo.getRevision(revisionId);
+    for (const run of this.repo.listRuns(revision.projectId)) {
+      if (run.revisionId !== revisionId || run.status !== 'waiting') continue;
+      if (
+        !this.orchestrator
+          .phases(run.id)
+          .some((p) => p.phase === 'human-approval' && p.status === 'waiting')
+      )
+        continue;
+      this.orchestrator.complete(run.id, 'human-approval', {
+        kind: 'done',
+        payload,
+        provider: 'human'
+      });
+      void this.orchestrator.drive(run.id, {});
+    }
+  }
+
+  stopProduction(runId: string) {
+    this.orchestrator.stop(runId);
+  }
+
+  resumeProduction(runId: string) {
+    const run = this.repo.getRun(runId);
+    const runners =
+      run.kind === 'production' ? this.productionRunners(run) : this.revisionRunners(run);
+    if (this.ai?.mode !== 'assisted') this.busy(run.projectId, 'generating');
+    return this.background(run.projectId, async () => {
+      await this.orchestrator.resume(runId, runners);
+    });
   }
 
   approve(revisionId: string) {
     const revision = this.repo.getRevision(revisionId);
     this.repo.transitionRevision(revisionId, 'approved');
+    this.finishApproval(revisionId, { approvedRevisionId: revisionId });
     this.say(revision.projectId, 'system', 'Révision validée par l’utilisateur.');
   }
 
@@ -702,16 +1047,33 @@ export class Studio {
     }
     this.busy(task.projectId, 'generating');
     this.repo.updateTask(taskId, { status: 'imported', error: null });
-    const input = task.input as { prompt: string; parentRevisionId: string | null };
-    return this.background(task.projectId, () =>
-      this.buildFromDraft(
-        task.projectId,
-        draft,
-        input.prompt,
-        input.parentRevisionId,
-        'claude-subscribe'
-      )
-    );
+    const input = task.input as { prompt: string; parentRevisionId: string | null; runId?: string };
+    let run: ProductionRun;
+    if (input.runId) {
+      this.orchestrator.complete(input.runId, 'script', {
+        kind: 'done',
+        payload: draft,
+        provider: 'claude-subscribe'
+      });
+      run = this.repo.getRun(input.runId);
+    } else {
+      const brief = this.productionBrief(task.projectId, input.prompt);
+      const plan = planProduction(brief, this.productionBudget());
+      run = this.orchestrator.create({
+        projectId: task.projectId,
+        kind: 'production',
+        brief,
+        plan,
+        sourceRevisionId: input.parentRevisionId,
+        done: {
+          plan: { kind: 'done', payload: plan, provider: 'rules' },
+          script: { kind: 'done', payload: draft, provider: 'claude-subscribe' }
+        }
+      });
+    }
+    return this.background(task.projectId, async () => {
+      await this.orchestrator.drive(run.id, this.productionRunners(run));
+    });
   }
 
   // --- QA review: qualitative review by the provider, plus comparative correction checks.
@@ -1272,23 +1634,19 @@ export class Studio {
         throw new Error(`Piste « ${track.label} » : fichier audio absent ou refusé`);
     }
     this.busy(source.projectId, 'generating');
-    const child = this.repo.transaction(() => {
+    const run = this.repo.transaction(() => {
       this.repo.transitionRevision(source.id, 'changes_requested');
-      return this.newRevision(
-        source.projectId,
-        source.storyboard,
-        source.id,
-        { audioRevision: 'manual' },
-        String(source.resolvedConfig.aiProvider ?? 'none'),
-        parsed
-      );
+      return this.createRevisionRun(source, parsed, 'rules');
     });
+    this.finishApproval(source.id, { decision: 'changes_requested' });
     this.say(
       source.projectId,
       'assistant',
       `Bande son mise à jour (${parsed.tracks.length} piste(s)) : nouvelle révision, image réutilisée.`
     );
-    return this.background(source.projectId, () => this.render(source.projectId, child, 0));
+    return this.background(source.projectId, async () => {
+      await this.orchestrator.drive(run.id, this.revisionRunners(run));
+    });
   }
 
   /** Everything the Studio page needs, in one read. */
@@ -1297,10 +1655,13 @@ export class Studio {
     if (!project) return null;
     const revisions = this.repo.listRevisions(projectId);
     const ids = revisions.map((r) => r.id);
+    const runs = this.repo.listRuns(projectId);
     const conversation = this.repo.conversationFor(projectId);
     return {
       project,
       revisions,
+      runs,
+      phases: this.repo.phasesFor(runs.map((r) => r.id)),
       messages: conversation ? this.repo.listMessages(conversation.id) : [],
       // Paths stay server-side; the page only learns whether a capture exists.
       feedback: this.repo

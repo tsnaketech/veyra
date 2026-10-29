@@ -127,3 +127,14 @@ Point de validation : fixtures FFmpeg, sources inchangées, contrôles récursif
 | T081 | Package audio, validation des médias et limites, configuration | Terminée ; `packages/audio/src/validation.test.ts`, configuration réelle chargée ; installation hors ligne réussie depuis le store local copié |
 | T082 | Résolution des ancrages, mixage WAV et mux AAC atomiques | Terminée ; `timeline.test.ts`, `mixing.test.ts` : onsets ±40 ms, fades, ducking ≥6 dB, mux 3 s, empreintes des sources inchangées et sortie préservée après échec |
 | T083 | Mesures, tests FFmpeg, documentation et vérification globale | Terminée ; `analysis.test.ts` ; 412 tests réussis (19 audio), `pnpm -r check` et `pnpm -r lint` réussis ; détail dans TESTING |
+
+## G11 — v0.3 Phase C : orchestration Studio
+
+Groupe indivisible : runs persistés → intégration production/révision → tests.
+Point de validation : contrôles racine et parcours audio réel sans nouveau rendu image.
+
+| ID | Travail | Statut / preuve |
+|---|---|---|
+| T084 | Intégration Studio : production, import assisté et ancien format, corrections audio/image, approbation, arrêt/reprise, snapshot | Terminée ; `production.test.ts` (production, audio, import, approbation et reprise depuis SQLite), 38 tests Studio existants inchangés réussis |
+| T085 | Orchestrateur : dépendances parallèles, tentatives, budget IA, attente externe, reprise idempotente et exclusion des drives concurrents | Terminée ; `apps/studio/src/lib/server/production.test.ts` : parallélisme, budget, tentatives, reprise, exclusion mutuelle, rollback et rendu enfant après échec |
+| T086 | Tests SQLite/FFmpeg, contrôles racine et documentation | Terminée le 2026-10-29 ; `pnpm check`, `pnpm lint`, `pnpm test` réussis directement : 500 tests, 31 fichiers, dont 52 Studio (14 nouveaux). Détail dans TESTING ; E2E et rendus HyperFrames lents non relancés |

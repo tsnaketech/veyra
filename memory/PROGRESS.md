@@ -21,3 +21,14 @@ FFmpeg, configuration et mesures ; [pipeline](../docs/video/AUDIO-PIPELINE.md).
 Prochaine intégration audio au Studio/orchestrateur à définir ; aucune DB/UI
 modifiée. Les quatre documents restaurés conservent les lignes de HEAD et leurs
 ajouts seuls ; ne pas lancer Prettier sur Markdown.
+
+
+2026-10-29 — Phase C v0.3 (T084–T086) terminée, non commitée : orchestration
+persistée intégrée au service Studio, correction audio seule avec réutilisation
+de l'image, arrêt/reprise depuis SQLite, imports assistés et validation humaine.
+Résultats directs : 500 tests, check et lint réussis ; détails dans
+[TASKS](../docs/TASKS.md) et [TESTING](../docs/TESTING.md). Les changements déjà
+présents ont été conservés ; migrations 0000–0003 et skills intacts.
+Limites : E2E et HyperFrames lents non relancés ; coordination multi-processus et
+reprise autonome après crash restent hors périmètre (D006). Prochaines tâches
+ouvertes : voir TASKS ; aucune commande UI d'orchestration ajoutée.

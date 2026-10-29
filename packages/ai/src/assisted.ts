@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { z } from "zod";
-import type { Storyboard } from "@veyra/schemas";
+import type { AudioComposition, Storyboard } from "@veyra/schemas";
 import {
   instructions,
   planInput,
@@ -44,9 +44,13 @@ export class AssistedProvider {
     });
   }
   /** Images are referenced by file name; the caller copies them next to request.json. */
-  planRequest(storyboard: Storyboard, feedback: FeedbackInput[]) {
+  planRequest(
+    storyboard: Storyboard,
+    feedback: FeedbackInput[],
+    audio: AudioComposition | null = null,
+  ) {
     return this.request("plan", instructions.plan, {
-      ...planInput(storyboard, feedback),
+      ...planInput(storyboard, feedback, audio),
       images: feedback
         .filter((item) => item.capturePath)
         .map((item) => ({

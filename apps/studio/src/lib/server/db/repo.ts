@@ -14,6 +14,10 @@ import {
   correctionBatchSchema,
   aiTaskSchema,
   qualityEvaluationSchema,
+  productionRunSchema,
+  productionPhaseSchema,
+  type ProductionRun,
+  type ProductionPhase,
   type QualityEvaluation,
   type AiTask,
   type CorrectionBatch,
@@ -497,6 +501,84 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
         .where(inArray(tables.qualityEvaluations.revisionId, revisionIds))
         .orderBy(asc(tables.qualityEvaluations.createdAt))
         .all();
+    },
+    // Orchestration: runs and phase results, with checked state transitions.
+    createRun(input: unknown) {
+      const row = productionRunSchema.parse(input);
+      db.insert(tables.productionRuns).values(row).run();
+      return row;
+    },
+    getRun(id: string) {
+      const row = db
+        .select()
+        .from(tables.productionRuns)
+        .where(eq(tables.productionRuns.id, id))
+        .get();
+      if (!row) throw new Error('Production introuvable');
+      return productionRunSchema.parse(row);
+    },
+    listRuns(projectId: string) {
+      return db
+        .select()
+        .from(tables.productionRuns)
+        .where(eq(tables.productionRuns.projectId, projectId))
+        .orderBy(asc(tables.productionRuns.createdAt))
+        .all()
+        .map((row) => productionRunSchema.parse(row));
+    },
+    updateRun(
+      id: string,
+      patch: Partial<Pick<ProductionRun, 'status' | 'revisionId' | 'aiCalls' | 'error'>>
+    ) {
+      return db.transaction(() => {
+        const row = this.getRun(id);
+        if (patch.status && patch.status !== row.status)
+          assertTransition('ProductionRun', row.status, patch.status);
+        const next = productionRunSchema.parse({ ...row, ...patch, updatedAt: Date.now() });
+        db.update(tables.productionRuns).set(next).where(eq(tables.productionRuns.id, id)).run();
+        return next;
+      });
+    },
+    createPhase(input: unknown) {
+      const row = productionPhaseSchema.parse(input);
+      db.insert(tables.productionPhases).values(row).run();
+      return row;
+    },
+    phasesFor(runIds: string[]) {
+      if (!runIds.length) return [];
+      return db
+        .select()
+        .from(tables.productionPhases)
+        .where(inArray(tables.productionPhases.runId, runIds))
+        .orderBy(asc(tables.productionPhases.createdAt))
+        .all()
+        .map((row) => productionPhaseSchema.parse(row));
+    },
+    updatePhase(
+      id: string,
+      patch: Partial<
+        Pick<
+          ProductionPhase,
+          'status' | 'attempts' | 'inputHash' | 'result' | 'error' | 'startedAt' | 'finishedAt'
+        >
+      >
+    ) {
+      return db.transaction(() => {
+        const row = db
+          .select()
+          .from(tables.productionPhases)
+          .where(eq(tables.productionPhases.id, id))
+          .get();
+        if (!row) throw new Error('Phase introuvable');
+        if (patch.status && patch.status !== row.status)
+          assertTransition('ProductionPhase', row.status, patch.status);
+        const next = productionPhaseSchema.parse({ ...row, ...patch, updatedAt: Date.now() });
+        db.update(tables.productionPhases)
+          .set(next)
+          .where(eq(tables.productionPhases.id, id))
+          .run();
+        return next;
+      });
     },
     getSetting(key: string) {
       return db.select().from(tables.appSettings).where(eq(tables.appSettings.key, key)).get()
