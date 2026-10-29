@@ -89,7 +89,7 @@ Point de validation : `evaluation.test.ts`, E2E et revue indépendante sur rendu
 |---|---|---|
 | T030 | Valider `AnthropicProvider` avec une vraie clé : storyboard, plan, revue multimodale ; ajouter un test coûteux séparé | Clé fournie par l'utilisateur |
 | T031 | Vérifier les licences HyperFrames et GSAP pour redistribution | — |
-| T032 | Panneaux redimensionnables ; audit d'accessibilité outillé | — |
+| T032 | Panneaux redimensionnables ; test avec un lecteur d'écran réel (audit contraste/cibles fait le 2026-10-28, DESIGN) | — |
 | T034 | Valider `AnthropicQualityEvaluator` avec une clé (coût par évaluation à mesurer) | T030 |
 | T037 | Rendre les cas synthétiques du jeu de référence avec images, pour mesurer un expert multimodal sur 10 cas | T065 |
 | T035 | Indexation VFR par timestamps de présentation, si des médias importés sont annotés | Besoin produit |

@@ -70,8 +70,9 @@
       <ul class="space-y-3 text-sm">
         {#each data.activity as job (job.id)}
           <li>
-            <a href={resolve('/projects/[id]', { id: job.projectId })} class="hover:text-cyan"
-              >{job.project}</a
+            <a
+              href={resolve('/projects/[id]', { id: job.projectId })}
+              class="inline-flex min-h-6 items-center hover:text-cyan">{job.project}</a
             >
             <span class="block text-xs text-muted">
               Rendu {jobLabels[job.status]} · {job.stage} · {job.progress} % · {dateTime(

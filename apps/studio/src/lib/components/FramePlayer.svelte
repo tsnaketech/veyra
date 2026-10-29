@@ -11,6 +11,7 @@
     type Storyboard
   } from '@veyra/schemas';
   import { preciseTimecode } from '#lib/ui.ts';
+  import Icon from './Icon.svelte';
 
   type Marker = { id: string; timestampMs: number; frameIndex: number | null; label: string };
   let {
@@ -127,11 +128,15 @@
 
   <div class="panel space-y-3 p-3">
     <div class="flex flex-wrap items-center gap-2 text-sm">
-      <button class="btn px-2" onclick={() => step(-1)} aria-label="Image précédente">⏮</button>
-      <button class="btn w-24" onclick={toggle} data-testid="play"
-        >{paused ? '▶ Lecture' : '⏸ Pause'}</button
+      <button class="btn px-2" onclick={() => step(-1)} aria-label="Image précédente"
+        ><Icon name="previous-frame" /></button
       >
-      <button class="btn px-2" onclick={() => step(1)} aria-label="Image suivante">⏭</button>
+      <button class="btn w-24" onclick={toggle} data-testid="play"
+        ><Icon name={paused ? 'play' : 'pause'} />{paused ? 'Lecture' : 'Pause'}</button
+      >
+      <button class="btn px-2" onclick={() => step(1)} aria-label="Image suivante"
+        ><Icon name="next-frame" /></button
+      >
       <span class="font-mono tabular-nums" data-testid="frame-info">
         Frame <span data-testid="frame-index">{frame}</span> / {Math.max(0, count - 1)} ·
         {preciseTimecode(frameMs)} / {preciseTimecode(durationMs)}
@@ -155,7 +160,7 @@
         step="1"
         value={frame}
         oninput={(e) => seekFrame(Number(e.currentTarget.value))}
-        class="w-full accent-cyan"
+        class="h-6 w-full accent-cyan"
         data-testid="scrubber"
       />
     </label>
@@ -182,10 +187,10 @@
       ></span>
     </div>
     {#if markers.length}
-      <div class="relative h-4" aria-label="Annotations sur la timeline">
+      <div class="relative h-6" aria-label="Annotations sur la timeline">
         {#each markers as marker (marker.id)}
           <button
-            class="absolute top-0 h-4 w-2 -translate-x-1 rounded-sm bg-cyan hover:bg-white"
+            class="group absolute top-0 flex h-6 w-6 -translate-x-3 justify-center"
             style="left: {(marker.timestampMs / durationMs) * 100}%"
             title={marker.label}
             aria-label="Aller à l'annotation : {marker.label}"
@@ -193,8 +198,8 @@
             onclick={() => {
               seekFrame(marker.frameIndex ?? frameAt(marker.timestampMs, rate, count));
               onMarker?.(marker.id);
-            }}
-          ></button>
+            }}><span class="h-full w-1.5 rounded-sm bg-cyan group-hover:bg-white"></span></button
+          >
         {/each}
       </div>
     {/if}

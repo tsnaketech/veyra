@@ -4,6 +4,7 @@
   import { resolve } from '$app/paths';
   import { frameTimestampMs, sceneAt } from '@veyra/schemas';
   import FramePlayer from '#lib/components/FramePlayer.svelte';
+  import Icon from '#lib/components/Icon.svelte';
   import StatusBadge from '#lib/components/StatusBadge.svelte';
   import {
     batchLabels,
@@ -43,6 +44,24 @@
   const measured = $derived(
     new Map((producedBy?.verification ?? []).map((v) => [v.feedbackId, v.verdict]))
   );
+  const sideLabels: Record<string, string> = { before: 'avant', after: 'après' };
+  const roleLabels: Record<string, string> = {
+    capture: 'capture annotée',
+    aligned: 'frame alignée',
+    sequence: 'séquence',
+    scene: 'scène'
+  };
+  /** "avant · séquence ×5, après · frame alignée" */
+  const evidenceSummary = (items: { revision: string; role: string }[]) => {
+    const counts: Record<string, number> = {};
+    for (const item of items) {
+      const key = `${sideLabels[item.revision]} · ${roleLabels[item.role]}`;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([key, n]) => (n > 1 ? `${key} ×${n}` : key))
+      .join(', ');
+  };
   const commentText = (id: string) => data.feedback.find((f) => f.id === id)?.text ?? id;
   const pendingTasks = $derived(data.tasks.filter((t) => t.status === 'awaiting_import'));
   const working = $derived(
@@ -56,6 +75,7 @@
   let frame = $state(0);
   let tab = $state<'chat' | 'video' | 'review'>('video');
   let editing = $state<string | null>(null);
+  let fileName = $state('');
   // Comments selected for the next batch; new drafts are selected by default.
   let unselected = $state<string[]>([]);
   const selected = $derived(drafts.filter((d) => !unselected.includes(d.id)));
@@ -208,13 +228,29 @@
         use:enhance
         class="flex gap-2"
       >
-        <label for="file" class="sr-only">Ajouter un fichier</label>
-        <input id="file" name="file" type="file" class="field text-xs" required />
+        <!-- Native file input kept for accessibility; its untranslatable button is visually replaced. -->
+        <input
+          id="file"
+          name="file"
+          type="file"
+          class="peer sr-only"
+          required
+          onchange={(e) => (fileName = e.currentTarget.files?.[0]?.name ?? '')}
+        />
+        <label
+          for="file"
+          class="field flex min-w-0 cursor-pointer items-center gap-2 text-xs peer-focus-visible:outline-2 peer-focus-visible:outline-cyan"
+          ><Icon name="file" class="size-4 shrink-0 text-muted" /><span class="truncate"
+            >{fileName || 'Choisir un fichier…'}</span
+          ></label
+        >
         <button class="btn">Ajouter</button>
       </form>
       {#if data.assets.length}
         <ul class="text-xs text-muted">
-          {#each data.assets as asset (asset.id)}<li>📎 {asset.name}</li>{/each}
+          {#each data.assets as asset (asset.id)}<li class="flex items-center gap-1">
+              <Icon name="file" class="size-3.5 shrink-0" />{asset.name}
+            </li>{/each}
         </ul>
       {/if}
     </div>
@@ -354,7 +390,7 @@
                 {#if comment.status === 'draft'}
                   <input
                     type="checkbox"
-                    class="mt-1 accent-cyan"
+                    class="size-6 shrink-0 accent-cyan"
                     aria-label="Inclure dans le prochain envoi"
                     checked={!unselected.includes(comment.id)}
                     onchange={(e) =>
@@ -373,7 +409,7 @@
                 {/if}
                 <div class="min-w-0 flex-1">
                   <button
-                    class="font-mono text-xs text-cyan hover:underline"
+                    class="inline-flex min-h-6 items-center font-mono text-xs text-cyan hover:underline"
                     onclick={() => goTo(comment)}
                     >{comment.frameIndex !== null
                       ? `Frame ${comment.frameIndex} · `
@@ -401,10 +437,10 @@
                         required>{comment.text}</textarea
                       >
                       <div class="flex gap-2">
-                        <button class="btn py-0.5 text-xs">Enregistrer</button>
+                        <button class="btn min-h-6 py-1 text-xs">Enregistrer</button>
                         <button
                           type="button"
-                          class="btn py-0.5 text-xs"
+                          class="btn min-h-6 py-1 text-xs"
                           onclick={() => (editing = null)}>Annuler</button
                         >
                       </div>
@@ -415,12 +451,14 @@
                   {#if comment.status === 'draft' && editing !== comment.id}
                     <div class="mt-1 flex gap-2 text-xs">
                       <button
-                        class="text-muted hover:text-ink"
+                        class="inline-flex min-h-6 items-center text-muted hover:text-ink"
                         onclick={() => (editing = comment.id)}>Modifier</button
                       >
                       <form method="POST" action="?/deleteComment" use:enhance>
                         <input type="hidden" name="id" value={comment.id} />
-                        <button class="text-muted hover:text-bad">Supprimer</button>
+                        <button class="inline-flex min-h-6 items-center text-muted hover:text-bad"
+                          >Supprimer</button
+                        >
                       </form>
                     </div>
                   {/if}
@@ -487,7 +525,9 @@
                 {#if batch.status === 'failed'}
                   <form method="POST" action="?/retryBatch" use:enhance class="mt-1">
                     <input type="hidden" name="batchId" value={batch.id} />
-                    <button class="btn py-0.5 text-xs" disabled={!!data.activity}>Relancer</button>
+                    <button class="btn min-h-6 py-1 text-xs" disabled={!!data.activity}
+                      >Relancer</button
+                    >
                   </form>
                 {/if}
               </li>
@@ -635,7 +675,7 @@
                         >{/if}
                     </p>
                   {/if}
-                  <p class="break-words">{verdict.justification}</p>
+                  <p class="text-sm break-words">{verdict.justification}</p>
                   <p class="mt-1 font-medium" data-testid="evidence-used">
                     Preuves citées ({cited.length})
                   </p>
@@ -659,7 +699,7 @@
                   {/if}
                   <p class="mt-1 text-muted" data-testid="evidence-unchecked">
                     Preuves fournies non examinées : {notSeen.length}{notSeen.length
-                      ? ` (${notSeen.map((p) => `${p.revision}/${p.role}`).join(', ')})`
+                      ? ` (${evidenceSummary(notSeen)})`
                       : ''}
                   </p>
                 </li>
@@ -724,7 +764,7 @@
         {#if revision?.videoPath && evaluation?.status !== 'awaiting_import' && evaluation?.status !== 'pending'}
           <form method="POST" action="?/evaluate" use:enhance>
             <input type="hidden" name="revisionId" value={revision.id} />
-            <button class="btn py-0.5 text-xs" disabled={!!data.activity}
+            <button class="btn min-h-6 py-1 text-xs" disabled={!!data.activity}
               >{evaluation ? "Relancer l'expertise" : "Demander l'expertise"}</button
             >
           </form>

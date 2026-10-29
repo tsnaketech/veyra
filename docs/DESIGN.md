@@ -40,4 +40,10 @@ focus (← → une image, Maj + ← → une seconde, `,` `.`, Début/Fin, Espace
 curseur de position natif par frame, libellés sur tous les champs, régions
 `aria-live` pour la conversation et les états, respect de `prefers-reduced-motion`.
 Sous 1024 px, les trois zones deviennent des onglets (Conversation, Vidéo, Revue).
-Non fait : panneaux redimensionnables, audit de contraste outillé, sous-titres.
+Audit du 2026-10-28 (script Playwright mesurant le DOM rendu, critères WCAG 2.2 AA) :
+aucun texte sous 4,5:1 sur `/`, `/settings` et le Studio (desktop 1440 px, mobile
+390 px, trois onglets) ; toutes les cibles visibles ≥ 24 × 24 px (curseur, repères
+d'annotation, cases, radios, boutons texte, liens d'activité corrigés). Icônes SVG
+décoratives (`Icon.svelte`, `aria-hidden`) à la place des glyphes et emoji ; choix
+de fichier en français (champ natif conservé pour le clavier et les lecteurs d'écran).
+Non fait : panneaux redimensionnables, sous-titres, test avec un lecteur d'écran réel.

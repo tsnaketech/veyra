@@ -56,7 +56,7 @@
               name="provider"
               value={id}
               checked={data.ai.selected === id}
-              class="mt-1 accent-cyan"
+              class="size-6 shrink-0 accent-cyan"
             />
             <span>
               <span class="font-medium">{id}</span> — {providerLabels[id]}
