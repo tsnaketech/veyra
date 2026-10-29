@@ -9,6 +9,7 @@ import {
 } from "./components";
 import {
   counterSchema,
+  visualEventSchema,
   tweenSchema,
   type BuildContext,
   type BuiltScene,
@@ -130,6 +131,7 @@ export function buildComponentScene(
     html: built.html,
     tweens: built.tweens.map((t) => tweenSchema.parse(t)),
     counters: built.counters.map((c) => counterSchema.parse(c)),
+    events: built.events.map((e) => visualEventSchema.parse(e)),
   };
 }
 
@@ -209,3 +211,5 @@ export function componentCatalog() {
     )
     .join("\n");
 }
+
+export { visualTimeline } from "./timeline";

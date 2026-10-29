@@ -8,3 +8,9 @@ Commits sur `feat/qa-expert-v0.1`, rien n'est poussé.
 Prochaine étape : T065 (validation humaine des verdicts de référence QA), T030/T074
 (fournisseurs réels), T071 (sous-compositions). Migrations 0000 à 0002 : ne plus les
 modifier (D014, D015) ; le Motion Engine n'en a ajouté aucune.
+
+2026-10-29 — Phase A v0.3 (T080) terminée, non commitée : contrats purs
+inter-agents/audio/temps et événements Motion. Voir [TASKS](../docs/TASKS.md)
+et [architecture multi-agents](../docs/ai/MULTI-AGENT-ARCHITECTURE.md).
+Contrôles récursifs : 392 tests réussis, check et lint réussis. Aucun moteur audio,
+stockage ou parcours UI ajouté ; intégration des moteurs à définir pour la suite.

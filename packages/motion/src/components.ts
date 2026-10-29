@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   baseStyle,
+  tweenEvent,
   defineComponent,
   escapeHtml,
   formatCounter,
@@ -97,6 +98,22 @@ export const AnimatedTitle = defineComponent({
         (params.subtitle
           ? `<p class="subtitle">${escapeHtml(params.subtitle)}</p>`
           : ""),
+      events: tweens.flatMap((t) =>
+        t.target.endsWith(".title .w") || t.target.endsWith(".title")
+          ? [
+              tweenEvent(
+                "title-reveal",
+                t,
+                0,
+                style.reveal === "words"
+                  ? params.title.split(/\s+/).filter(Boolean).length
+                  : 1,
+              ),
+            ]
+          : t.target.endsWith(".subtitle")
+            ? [tweenEvent("subtitle-appear", t)]
+            : [],
+      ),
       tweens,
       counters: [],
     };
@@ -166,6 +183,13 @@ export const FeatureCards = defineComponent({
               `<div class="card"><span class="card-index">${String(i + 1).padStart(2, "0")}</span><h3>${escapeHtml(card.title)}</h3>${card.text ? `<p>${escapeHtml(card.text)}</p>` : ""}</div>`,
           )
           .join("")}</div>`,
+      events: params.cards.map((_, i) =>
+        tweenEvent(
+          "card-appear",
+          tweens.find((t) => t.target.endsWith(".card"))!,
+          i,
+        ),
+      ),
       tweens,
       counters: [],
     };
@@ -259,6 +283,12 @@ export const MetricsCounter = defineComponent({
               `<div class="metric metric-${i}"><span class="value">${escapeHtml(formatCounter(0, metric))}</span><span class="label">${escapeHtml(metric.label)}</span></div>`,
           )
           .join("")}</div>`,
+      events: counters.map((c, index) => ({
+        name: "metric-count",
+        index,
+        atS: c.at,
+        endS: c.at + c.duration,
+      })),
       tweens,
       counters,
     };
@@ -351,6 +381,10 @@ export const ProductMockup = defineComponent({
         (params.caption
           ? `<p class="caption">${escapeHtml(params.caption)}</p>`
           : ""),
+      events: [
+        tweenEvent("device-appear", tweens[0]),
+        tweenEvent("bars-grow", tweens[2], 0, params.chart.length),
+      ],
       tweens,
       counters: [],
     };
@@ -427,6 +461,16 @@ export const CallToAction = defineComponent({
         (params.detail
           ? `<p class="detail">${escapeHtml(params.detail)}</p>`
           : ""),
+      events: tweens.flatMap((t) => {
+        const name = t.target.endsWith(".headline")
+          ? "headline-appear"
+          : t.target.endsWith(".button")
+            ? "button-appear"
+            : t.target.endsWith(".button-inner")
+              ? "button-pulse"
+              : null;
+        return name ? [tweenEvent(name, t)] : [];
+      }),
       tweens,
       counters: [],
     };

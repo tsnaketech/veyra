@@ -95,6 +95,7 @@ export interface BuiltScene {
   html: string;
   tweens: Tween[];
   counters: Counter[];
+  events: VisualEvent[];
 }
 export interface MotionComponent<
   P extends z.ZodType = z.ZodType,
@@ -147,4 +148,33 @@ export function formatCounter(
     numberFormats.set(counter.decimals, format);
   }
   return `${counter.prefix}${format.format(value)}${counter.suffix}`;
+}
+
+export const visualEventSchema = z
+  .object({
+    name: z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+    atS: z.number().nonnegative(),
+    endS: z.number().nonnegative(),
+    index: z.number().int().nonnegative(),
+  })
+  .strict()
+  .refine((e) => e.endS >= e.atS, "Invalid visual event interval");
+export type VisualEvent = z.infer<typeof visualEventSchema>;
+/** Derive timing from animation data, including stagger and repeated cycles. */
+export function tweenEvent(
+  name: string,
+  tween: Tween,
+  index = 0,
+  count = 1,
+): VisualEvent {
+  const atS = tween.at + index * (tween.stagger ?? 0);
+  return {
+    name,
+    index,
+    atS,
+    endS:
+      atS +
+      tween.duration * (1 + (tween.repeat ?? 0)) +
+      (count - 1) * (tween.stagger ?? 0),
+  };
 }
