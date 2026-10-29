@@ -120,9 +120,9 @@
       bind:paused
       {src}
       preload="auto"
+      controls
       class="h-full w-full"
       data-testid="player"
-      onclick={toggle}
     ></video>
   </div>
 

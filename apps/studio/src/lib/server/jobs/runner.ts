@@ -21,6 +21,7 @@ import {
 } from '@veyra/schemas';
 import type { ReviewFinding } from '@veyra/ai';
 import { mixToWav, muxAudio, resolveAudioComposition, type AudioMetadata } from '@veyra/audio';
+import { audioQualityChecks } from './audio-qa';
 import { visualTimeline } from '@veyra/motion';
 import type { createRepository } from '../db/repo';
 type Repository = ReturnType<typeof createRepository>;
@@ -228,9 +229,20 @@ export class RenderJobRunner {
             this.settings.engine.wallTimeoutMs
           )
         );
-      if (audio) checks.push(...audioPlacementChecks(audio));
+      if (audio)
+        checks.push(
+          ...audioPlacementChecks(audio),
+          ...(await audioQualityChecks(
+            outputPath,
+            metadata.durationMs,
+            revision.audio!,
+            audio.tracks,
+            this.settings.audio
+          ))
+        );
       if (this.engine.kind === 'fake-test-only')
         for (const check of checks) {
+          if (check.analysisMode === 'not-performed') continue;
           check.analysisMode = 'simulated';
           check.evidence = `FakeEngine test-only: ${check.evidence}`;
         }

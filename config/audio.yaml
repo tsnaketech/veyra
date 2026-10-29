@@ -15,5 +15,6 @@ qa:
   clippingPeakDb: -0.1
   loudnessToleranceLu: 3
   syncToleranceMs: 40
+  durationToleranceMs: 100
 cpuSeconds: 60
 timeoutMs: 120000

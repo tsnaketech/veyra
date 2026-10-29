@@ -187,3 +187,17 @@ sur les fichiers stabilisés ont réussi (Studio : 123,55 s).
 Aucun Markdown passé à Prettier. Aucun appel fournisseur réel, E2E ou rendu
 HyperFrames lent exécuté pour cette phase ; les rendus d'intégration utilisent
 `colorEngine` et FFmpeg.
+
+## Résultats du 2026-10-29, v0.3 Phase D (relancés par le Lead après intégration)
+
+| Commande | Résultat |
+|---|---|
+| `pnpm check` | Réussi ; Svelte : 0 erreur, 0 avertissement |
+| `pnpm lint` | Réussi ; Prettier et ESLint |
+| `pnpm test` | 508 réussis, 0 échec : schemas 317, config 26, storage 10, motion 13, ai 40, video 6, hyperframes-adapter 18, audio 19, studio 59 |
+| `pnpm --filter studio test:e2e` | **5 réussis, 2,0 min** ; dont « audio UI » : import WAV, arrêt/reprise de production, pistes et chronologie, commentaire de plage sur une piste, bande son modifiée avec image réutilisée, contrôle « Non réalisé » affiché |
+
+Un premier passage E2E a échoué (5 min) : nom de stockage `ast_<uuid>-…` affiché à la
+place du nom d'origine ; corrigé dans le Studio, l'attente du test est conservée.
+Le délai d'attente de `awaiting_approval` du parcours MVP passe à 90 s : la QA
+(contrôles audio inclus) se termine après l'apparition du lecteur.

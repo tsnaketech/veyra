@@ -29,6 +29,21 @@ Si `check` ne peut pas tourner, un contrôle « non exécuté » le dit. Ces éc
 déclenchent pas de nouveau rendu automatique : un nouveau rendu n'y changerait rien ;
 il faut une correction. Seuils de texte des composants : ≥ 2,6 % de la hauteur.
 
+## Contrôles audio
+
+Avec une bande son, le MP4 final reçoit des contrôles mesurés (flux, durée,
+silences, écrêtage, niveau, synchronisation des effets isolés) et une
+« Écoute qualitative » toujours `not-performed`. Seuils et détail :
+[AUDIO-PIPELINE](AUDIO-PIPELINE.md#audio-qa). Aucun ne déclenche de nouveau rendu.
+
+L'interface classe chaque contrôle en trois catégories :
+
+| Catégorie | `analysisMode` | Règle |
+|---|---|---|
+| Mesuré | `deterministic` | Valeurs mesurées en preuve. |
+| Jugement IA | `multimodal`, `text-only`, `simulated` | Appréciation d'un modèle ou du simulateur. |
+| Non réalisé | `not-performed` | Rien n'a été mesuré ni écouté ; ne peut pas être réussi (refusé par le schéma), n'est pas compté comme un échec. |
+
 ## Revue qualitative
 
 Une image par scène (au milieu de la scène) est extraite avec ffmpeg et envoyée
@@ -38,6 +53,7 @@ storyboard et des consignes de marque (`config/style-guide.md`).
 | Mode | Signification |
 |---|---|
 | `deterministic` | Mesure ffprobe/ffmpeg ; preuve = valeurs mesurées. |
+| `not-performed` | Contrôle non réalisé (voir « Contrôles audio »). |
 | `multimodal` | Le modèle a reçu des images. |
 | `text-only` | Le modèle n'a reçu que du texte ; aucune conclusion visuelle. |
 | `simulated` | Simulateur de test ; aucune analyse. Affiché « Simulé — aucun modèle ». |
@@ -126,7 +142,7 @@ dans `results/`. Commande et lecture des métriques : [TESTING](../TESTING.md).
 L'expertise est consultative : elle ne change ni les révisions ni leur état, ne
 déclenche aucune correction automatique, et l'interface affiche les désaccords
 avec les mesures. La validation humaine reste obligatoire.
-Non couverts au MVP : qualité audio (aucune piste audio générée), transitions
+Non couverts au MVP : écoute qualitative du son (voir « Contrôles audio »), transitions
 entre scènes et continuité au-delà de l'image médiane de chaque scène.
 
 ## Corrections automatiques et validation

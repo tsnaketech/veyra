@@ -347,6 +347,7 @@ export const aiTaskSchema = z.object({
 });
 export const analysisModeSchema = z.enum([
   "deterministic",
+  "not-performed",
   "multimodal",
   "text-only",
   "simulated",
@@ -365,12 +366,17 @@ const finding = {
   recommendation: z.string().min(1),
   analysisMode: analysisModeSchema,
 };
-export const qualityCheckSchema = z.object({
-  id: idSchema("qck"),
-  name: z.string().min(1),
-  passed: z.boolean(),
-  ...finding,
-});
+export const qualityCheckSchema = z
+  .object({
+    id: idSchema("qck"),
+    name: z.string().min(1),
+    passed: z.boolean(),
+    ...finding,
+  })
+  .refine(
+    (check) => check.analysisMode !== "not-performed" || !check.passed,
+    "An unperformed check cannot pass",
+  );
 export const qualityIssueSchema = z.object({
   id: idSchema("qis"),
   sceneId: idSchema("scn").nullable(),
@@ -451,7 +457,10 @@ export const qualityEvaluationSchema = z
     batchId: idSchema("cbt").nullable().default(null),
     evaluator: z.enum(["fake", "anthropic-api", "claude-subscribe"]).nullable(),
     // simulated (rules), multimodal (images actually sent / declared examined) or text-only.
-    analysisMode: analysisModeSchema.nullable().default(null),
+    analysisMode: analysisModeSchema
+      .exclude(["not-performed"])
+      .nullable()
+      .default(null),
     status: qualityEvaluationStatusSchema.default("pending"),
     verdicts: z.array(expertVerdictSchema).default([]),
     findings: z.array(expertFindingSchema).default([]),

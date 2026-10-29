@@ -138,3 +138,14 @@ Point de validation : contrôles racine et parcours audio réel sans nouveau ren
 | T084 | Intégration Studio : production, import assisté et ancien format, corrections audio/image, approbation, arrêt/reprise, snapshot | Terminée ; `production.test.ts` (production, audio, import, approbation et reprise depuis SQLite), 38 tests Studio existants inchangés réussis |
 | T085 | Orchestrateur : dépendances parallèles, tentatives, budget IA, attente externe, reprise idempotente et exclusion des drives concurrents | Terminée ; `apps/studio/src/lib/server/production.test.ts` : parallélisme, budget, tentatives, reprise, exclusion mutuelle, rollback et rendu enfant après échec |
 | T086 | Tests SQLite/FFmpeg, contrôles racine et documentation | Terminée le 2026-10-29 ; `pnpm check`, `pnpm lint`, `pnpm test` réussis directement : 500 tests, 31 fichiers, dont 52 Studio (14 nouveaux). Détail dans TESTING ; E2E et rendus HyperFrames lents non relancés |
+
+## G12 — v0.3 Phase D : interface et QA audio
+
+Groupe indivisible : mesures audio → verdicts et expertise honnête → interface accessible.
+
+| ID | Travail | Statut / preuve |
+|---|---|---|
+| T087 | Contrôles audio déterministes configurables et écoute non réalisée | Terminée ; `jobs/audio-qa.test.ts` (7 tests, médias FFmpeg réels : flux, durée, silences, écrêtage, niveau, onsets, média illisible, limites de ressources) |
+| T088 | Vérification des corrections audio et faits mesurés pour l'expert | Terminée ; verdict `applied` du ducking mesuré (`production.test.ts`), expertise simulée « audio non écouté » (`packages/ai/src/evaluation.test.ts`) |
+| T089 | Panneaux production/audio, actions et annotations par plage/piste | Terminée ; E2E « audio UI » (import, arrêt/reprise, pistes, commentaire de plage, image réutilisée) ; FramePlayer conservé |
+| T090 | Tests, E2E si Chrome disponible, documentation et mémoire | Terminée le 2026-10-29 ; 508 tests, 5/5 E2E (2,0 min), check et lint réussis, relancés par le Lead ; détail dans TESTING |

@@ -1,5 +1,6 @@
+import { audioCategorySchema } from '@veyra/schemas';
 import { error, fail } from '@sveltejs/kit';
-import { studio } from '#lib/server/jobs/index.ts';
+import { studio, settings } from '#lib/server/jobs/index.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ params }) => {
@@ -20,7 +21,53 @@ const attempt = (work: () => unknown) => {
   }
 };
 
+const parseEnd = (value: string) => {
+  if (!value.trim()) return null;
+  if (!/^(?:\d+:)?\d+(?:[.,]\d+)?$/.test(value.trim()))
+    throw new Error('Fin de plage : secondes ou mm:ss attendus');
+  const parts = value.replace(',', '.').split(':').map(Number);
+  if (parts.length === 2 && parts[1] >= 60) throw new Error('Secondes limitées à 59 dans mm:ss');
+  return Math.round((parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0]) * 1000);
+};
+const ownedRun = (projectId: string, runId: string) => {
+  if (!studio.snapshot(projectId)?.runs.some((r) => r.id === runId))
+    throw new Error('Production introuvable');
+  return runId;
+};
 export const actions: Actions = {
+  stopProduction: async ({ params, request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.stopProduction(ownedRun(params.id, str(data, 'runId'))));
+  },
+  resumeProduction: async ({ params, request }) => {
+    const data = await request.formData();
+    return attempt(() => studio.resumeProduction(ownedRun(params.id, str(data, 'runId'))));
+  },
+  importAudio: async ({ params, request }) => {
+    try {
+      const data = await request.formData();
+      const file = data.get('file');
+      if (!(file instanceof File) || !file.size) return fail(400, { error: 'Aucun fichier audio' });
+      if (file.size > settings.audio.maxFileBytes)
+        return fail(400, {
+          error: `Fichier limité à ${Math.floor(settings.audio.maxFileBytes / 1048576)} Mio`
+        });
+      const category = audioCategorySchema.parse(str(data, 'category'));
+      await studio.importAudio(params.id, file, new Uint8Array(await file.arrayBuffer()), category);
+      return { ok: true };
+    } catch (cause) {
+      return fail(400, { error: cause instanceof Error ? cause.message : 'Import impossible' });
+    }
+  },
+  reviseAudio: async ({ params, request }) => {
+    const data = await request.formData();
+    return attempt(() => {
+      const id = str(data, 'revisionId');
+      if (!studio.snapshot(params.id)?.revisions.some((r) => r.id === id))
+        throw new Error('Révision introuvable');
+      return studio.reviseAudio(id, JSON.parse(str(data, 'composition')));
+    });
+  },
   prompt: async ({ params, request }) => {
     const data = await request.formData();
     return attempt(() => studio.sendPrompt(params.id, str(data, 'prompt')));
@@ -40,6 +87,8 @@ export const actions: Actions = {
         revisionId: str(data, 'revisionId'),
         frameIndex: data.has('frameIndex') ? Number(str(data, 'frameIndex')) : null,
         timestampMs: data.has('timestampMs') ? Number(str(data, 'timestampMs')) : null,
+        rangeEndMs: parseEnd(str(data, 'rangeEnd')),
+        audioTrackId: str(data, 'audioTrackId') || null,
         text: str(data, 'text'),
         author: 'Utilisateur'
       });

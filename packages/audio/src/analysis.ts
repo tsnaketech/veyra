@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { z } from "zod";
 import { fixed } from "./mixing";
+import type { AudioLimits } from "./schemas";
 import { probeAudio, runAudioProcess } from "./validation";
 
 export const silenceOptionsSchema = z.object({
@@ -122,7 +123,11 @@ export function parseAudioMeasurements(
     silences: parseSilences(lines, durationMs),
   };
 }
-async function filterLines(path: string, filters: string): Promise<string[]> {
+async function filterLines(
+  path: string,
+  filters: string,
+  limits: AudioLimits = {},
+): Promise<string[]> {
   const lines: string[] = [];
   await runAudioProcess(
     "ffmpeg",
@@ -144,7 +149,7 @@ async function filterLines(path: string, filters: string): Promise<string[]> {
       "null",
       "-",
     ],
-    {},
+    limits,
     (line) => {
       lines.push(line);
     },
@@ -156,12 +161,15 @@ const silenceFilter = (s: z.infer<typeof silenceOptionsSchema>) =>
 export async function analyzeAudio(
   path: string,
   options: SilenceOptions = {},
+  limits: AudioLimits = {},
 ): Promise<AudioAnalysis> {
   const s = silenceOptionsSchema.parse(options),
-    meta = await probeAudio(path);
+    meta = await probeAudio(path, limits);
+  // Keep ebur128 frame logging: with framelog=quiet FFmpeg 5.1 reports I: 0.0 LUFS.
   const lines = await filterLines(
     path,
     `ebur128=peak=true,astats=metadata=0:reset=0,${silenceFilter(s)}`,
+    limits,
   );
   return {
     codec: meta.codec,
@@ -174,11 +182,12 @@ export async function analyzeAudio(
 export async function detectOnsets(
   path: string,
   options: SilenceOptions = {},
+  limits: AudioLimits = {},
 ): Promise<number[]> {
   const s = silenceOptionsSchema.parse(options),
-    meta = await probeAudio(path);
+    meta = await probeAudio(path, limits);
   const silences = parseSilences(
-    await filterLines(path, silenceFilter(s)),
+    await filterLines(path, silenceFilter(s), limits),
     meta.durationMs,
   );
   // A silence beginning at the first sample suppresses the initial onset.

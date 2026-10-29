@@ -3,6 +3,8 @@
   import { invalidateAll } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { frameTimestampMs, sceneAt } from '@veyra/schemas';
+  import AudioPanel from '#lib/components/AudioPanel.svelte';
+  import ProductionPanel from '#lib/components/ProductionPanel.svelte';
   import FramePlayer from '#lib/components/FramePlayer.svelte';
   import Icon from '#lib/components/Icon.svelte';
   import { componentName, summarizeParams } from '#lib/motion.ts';
@@ -31,6 +33,20 @@
   const jobs = $derived(data.jobs.filter((job) => job.revisionId === revision?.id));
   const job = $derived(jobs.at(-1) ?? null);
   const report = $derived(data.reports.filter((r) => r.revisionId === revision?.id).at(-1) ?? null);
+  const resolvedAudio = $derived(
+    job?.resolvedConfig.audio as
+      | {
+          tracks: { trackId: string; startMs: number; endMs: number }[];
+          issues: { trackId: string; code: string; message: string }[];
+        }
+      | undefined
+  );
+  const audioEvents = $derived(
+    data.visualEvents.find((e) => e.revisionId === revision?.id)?.events ?? []
+  );
+  const checkGroups = ['Mesuré', 'Jugement IA', 'Non réalisé'] as const;
+  const checkGroup = (mode: string) =>
+    mode === 'deterministic' ? 'Mesuré' : mode === 'not-performed' ? 'Non réalisé' : 'Jugement IA';
   const comments = $derived(data.feedback.filter((f) => f.revisionId === revision?.id));
   const drafts = $derived(comments.filter((f) => f.status === 'draft'));
   const batches = $derived(data.batches.filter((b) => b.sourceRevisionId === revision?.id));
@@ -67,6 +83,7 @@
   const pendingTasks = $derived(data.tasks.filter((t) => t.status === 'awaiting_import'));
   const working = $derived(
     !!data.activity ||
+      data.runs.some((r) => r.status === 'running') ||
       data.jobs.some((j) => j.status === 'queued' || j.status === 'running') ||
       data.revisions.some((r) => r.status === 'rendering' || r.status === 'qa') ||
       data.batches.some((b) => b.status === 'queued' || b.status === 'submitted')
@@ -298,6 +315,17 @@
           required
           maxlength="2000"
           placeholder="Décrivez la correction attendue sur cette image…"></textarea>
+        <label for="range-end" class="block text-sm"
+          >Fin de plage (facultatif, mm:ss ou secondes)</label
+        >
+        <input id="range-end" name="rangeEnd" class="field" placeholder="00:12" />
+        <label for="comment-audio-track" class="block text-sm">Piste audio (facultatif)</label>
+        <select id="comment-audio-track" name="audioTrackId" class="field"
+          ><option value="">Aucune piste ciblée</option
+          >{#each revision.audio?.tracks ?? [] as track (track.id)}<option value={track.id}
+              >{track.label}</option
+            >{/each}</select
+        >
         <div class="flex items-center gap-2">
           <button class="btn btn-primary">Ajouter</button>
           <span class="text-xs text-muted"
@@ -349,6 +377,15 @@
     aria-label="Revue"
     class="panel min-h-0 min-w-0 flex-col gap-4 overflow-y-auto p-3 text-sm {show('review')}"
   >
+    <ProductionPanel run={data.runs.at(-1) ?? null} phases={data.phases} />
+    <AudioPanel
+      assets={data.assets}
+      {revision}
+      events={audioEvents}
+      resolved={resolvedAudio ?? null}
+      maxFileBytes={data.audioMaxFileBytes}
+      busy={!!data.activity}
+    />
     {#if revision}
       <div class="space-y-2">
         <h2 class="font-medium">Actions</h2>
@@ -416,6 +453,13 @@
                       ? `Frame ${comment.frameIndex} · `
                       : ''}{preciseTimecode(comment.timestampMs)}</button
                   >
+                  {#if comment.rangeEndMs !== null}<span class="text-xs">
+                      → {preciseTimecode(comment.rangeEndMs)}</span
+                    >{/if}
+                  {#if comment.audioTrackId}<span class="text-xs">
+                      · {revision.audio?.tracks.find((t) => t.id === comment.audioTrackId)?.label ??
+                        comment.audioTrackId}</span
+                    >{/if}
                   <span class="text-xs text-muted">· {feedbackLabels[comment.status]}</span>
                   {#if editing === comment.id}
                     <form
@@ -543,6 +587,9 @@
           <p class="text-xs text-muted">{plan.summary}</p>
           <ul class="list-disc space-y-1 pl-4">
             {#each plan.changes as change, index (index)}<li>{change.instruction}</li>{/each}
+            {#each plan.audioChanges as change, index (index)}<li>
+                Audio : {change.instruction}
+              </li>{/each}
           </ul>
           {#if plan.conflicts.length}
             <div
@@ -628,26 +675,43 @@
           </p>
         {:else}
           <p class="mb-2 text-xs text-muted">
-            {report.checks.filter((c) => c.passed).length}/{report.checks.length} contrôles réussis ·
+            {report.checks.filter((c) => c.passed).length}/{report.checks.filter(
+              (c) => c.analysisMode !== 'not-performed'
+            ).length} contrôles réussis ·
             {report.analysisModes.map((m) => modeLabels[m]).join(', ')}
           </p>
-          <ul class="space-y-1">
-            {#each report.checks as check (check.id)}
-              <li class="flex gap-2">
-                <span class={check.passed ? 'text-ok' : 'text-bad'}>{check.passed ? '✓' : '✗'}</span
-                >
-                <span class="min-w-0">
-                  {check.name}
-                  <span class="block text-xs break-all text-muted"
-                    >{check.evidence} · {modeLabels[check.analysisMode]}</span
-                  >
-                  {#if !check.passed}<span class="block text-xs text-warn"
-                      >{check.recommendation}</span
-                    >{/if}
-                </span>
-              </li>
-            {/each}
-          </ul>
+          {#each checkGroups as group (group)}
+            {#if report.checks.some((c) => checkGroup(c.analysisMode) === group)}
+              <h3 class="mt-2 font-medium">{group}</h3>
+              <ul class="space-y-1">
+                {#each report.checks.filter((c) => checkGroup(c.analysisMode) === group) as check (check.id)}
+                  <li class="flex gap-2">
+                    <span
+                      class={check.analysisMode === 'not-performed'
+                        ? 'text-muted'
+                        : check.passed
+                          ? 'text-ok'
+                          : 'text-bad'}
+                      >{check.analysisMode === 'not-performed'
+                        ? '—'
+                        : check.passed
+                          ? '✓'
+                          : '✗'}</span
+                    >
+                    <span class="min-w-0">
+                      {check.name}
+                      <span class="block text-xs break-all text-muted"
+                        >{check.evidence} · {modeLabels[check.analysisMode]}</span
+                      >
+                      {#if !check.passed}<span class="block text-xs text-warn"
+                          >{check.recommendation}</span
+                        >{/if}
+                    </span>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          {/each}
         {/if}
       </div>
     {/if}
@@ -709,7 +773,7 @@
                   </p>
                   {#if measure}
                     <p class="text-muted">
-                      Mesure (storyboard + PSNR) : {verdictLabels[measure]}
+                      Mesure (image / audio) : {verdictLabels[measure]}
                       {#if measure !== verdict.verdict}<span class="text-warn">
                           — désaccord, à vérifier</span
                         >{/if}

@@ -46,8 +46,8 @@ import {
   planRevisionPhases,
   proposeAudio
 } from '@veyra/ai';
-import { getComponent } from '@veyra/motion';
-import { AudioMediaError, probeAudio } from '@veyra/audio';
+import { visualTimeline, getComponent } from '@veyra/motion';
+import { AudioMediaError, probeAudio, meanVolumeDb } from '@veyra/audio';
 import type { createRepository } from './db/repo';
 import type { RenderJobRunner, RenderSettings } from './jobs/runner';
 import { Orchestrator, type Runners } from './production';
@@ -90,6 +90,11 @@ const modeLabel = (evaluator: string | null, mode: string | null) =>
       : mode === 'text-only'
         ? 'texte seul, aucune image regardée'
         : 'non réalisée';
+// Originals are stored as `${id}-${name}`; show the uploaded name only.
+const assetName = (asset: { id: string; path: string }) => {
+  const base = asset.path.split('/').at(-1) ?? asset.id;
+  return base.startsWith(`${asset.id}-`) ? base.slice(asset.id.length + 1) : base;
+};
 const SEQUENCE_FRAMES = 5;
 const soundWords = /musique|music|\bson\b|sonore|audio|voix|bruitage|effets? sonores?/i;
 // Output defects a fresh render can fix; layout or content issues need a correction instead.
@@ -262,7 +267,10 @@ export class Studio {
         run: async (inputs) => {
           const { revisionId } = inputs.render as { revisionId: string };
           const report = this.repo.reportsFor([revisionId]).at(-1);
-          const failed = report?.checks.filter((c) => !c.passed).map((c) => c.name) ?? [];
+          const failed =
+            report?.checks
+              .filter((c) => !c.passed && c.analysisMode !== 'not-performed')
+              .map((c) => c.name) ?? [];
           return {
             kind: 'done',
             payload: { failed, failedCount: failed.length, total: report?.checks.length ?? 0 },
@@ -366,7 +374,7 @@ export class Studio {
               id: a.id,
               category: a.audio!.category,
               durationMs: Number(a.audio!.metadata!.durationMs),
-              label: a.path.split('/').at(-1)!
+              label: assetName(a)
             }))
           );
           this.say(
@@ -470,7 +478,9 @@ export class Studio {
       );
       return this.render(projectId, retry, autoFix + 1);
     }
-    const failed = report?.checks.filter((check) => !check.passed).length ?? 0;
+    const failed =
+      report?.checks.filter((check) => !check.passed && check.analysisMode !== 'not-performed')
+        .length ?? 0;
     const { batchId } = originOf(this.repo.getRevision(revision.id));
     const verification = batchId ? this.repo.getBatch(batchId).verification : null;
     const verified = verification?.length
@@ -1206,6 +1216,26 @@ export class Studio {
           verdict = 'unverifiable';
           evidence = `Comparaison impossible : ${message(error)}.`;
         }
+      const audioChanges = plan.audioChanges.filter((c) => c.feedbackId === feedbackId);
+      if (audioChanges.length) {
+        const audioVerdict = await this.verifyAudioChanges(
+          parent,
+          revision,
+          videoPath,
+          audioChanges
+        );
+        if (!changes.length) {
+          verdict = audioVerdict.verdict;
+          evidence = audioVerdict.evidence;
+        } else {
+          evidence += ' ' + audioVerdict.evidence;
+          if (verdict !== audioVerdict.verdict)
+            verdict =
+              verdict === 'unverifiable' || audioVerdict.verdict === 'unverifiable'
+                ? 'unverifiable'
+                : 'partially_applied';
+        }
+      }
       verification.push({ feedbackId, verdict, evidence });
       findings.push({
         name: `Correction ${index + 1} — ${verdictLabels[verdict]}`,
@@ -1215,7 +1245,9 @@ export class Studio {
         sceneId: changes[0]?.sceneId ?? item?.sceneId ?? null,
         evidence: `« ${item?.text.slice(0, 80) ?? feedbackId} » ${evidence}`,
         recommendation:
-          verdict === 'applied' ? 'Aucune action' : 'Vérifier visuellement et reformuler si besoin',
+          verdict === 'applied'
+            ? 'Aucune action'
+            : 'Vérifier l’image et le son, puis reformuler si besoin',
         analysisMode: 'deterministic'
       });
     }
@@ -1244,6 +1276,56 @@ export class Studio {
     }
     if (batchId) this.repo.updateBatch(batchId, { verification });
     return findings;
+  }
+
+  private async verifyAudioChanges(
+    parent: RevisionRow,
+    revision: RevisionRow,
+    videoPath: string,
+    changes: RevisionPlan['audioChanges']
+  ) {
+    try {
+      if (!parent.videoPath) throw new Error('rendu précédent absent');
+      const notes: string[] = [];
+      const outcomes: boolean[] = [];
+      for (const change of changes) {
+        const old = parent.audio?.tracks.find((t) => t.id === change.trackId);
+        if (!old) throw new Error('piste source absente');
+        const ranges = (change.patch.duck ?? [])
+          .filter(
+            (d) =>
+              d.gainDb < 0 &&
+              !old.duck.some(
+                (o) => o.startMs === d.startMs && o.endMs === d.endMs && o.gainDb <= d.gainDb
+              )
+          )
+          .map((d) => ({ startMs: d.startMs, endMs: d.endMs }));
+        if (change.patch.gainDb != null && change.patch.gainDb < old.gainDb)
+          ranges.push({ startMs: 0, endMs: Math.min(endOf(parent), endOf(revision)) });
+        if (!ranges.length)
+          throw new Error('modification audio non mesurable par une baisse de niveau');
+        for (const range of ranges) {
+          const [before, after] = await Promise.all([
+            meanVolumeDb(parent.videoPath, range.startMs, range.endMs),
+            meanVolumeDb(videoPath, range.startMs, range.endMs)
+          ]);
+          const decrease = before - after;
+          outcomes.push(decrease >= 3);
+          notes.push(
+            `Mesuré sur le mix, ${range.startMs}–${range.endMs} ms : ${before} → ${after} dB ; baisse ${decrease.toFixed(1)} dB (seuil 3 dB).`
+          );
+        }
+      }
+      return {
+        verdict: outcomes.every(Boolean) ? ('applied' as const) : ('not_applied' as const),
+        evidence: notes.join(' ')
+      };
+    } catch (error) {
+      return {
+        verdict: 'unverifiable' as const,
+        evidence: `Comparaison audio impossible : ${message(error)}.`
+      };
+    }
   }
 
   // --- Expert QA (QualityEvaluator): intent-level verdicts on a corrected revision.
@@ -1509,6 +1591,17 @@ export class Studio {
     const batch = this.repo.listBatches(revision.projectId).find((b) => b.planId === plan.id);
     const report = this.repo.reportsFor([revision.id]).at(-1);
     const pack: EvaluationInput = {
+      audio: {
+        present: Boolean(revision.audio?.tracks.length),
+        listened: false,
+        feedbackIds: plan.audioChanges.flatMap((c) => (c.feedbackId ? [c.feedbackId] : [])),
+        measurements: (report?.checks ?? [])
+          .filter(
+            (c) =>
+              c.analysisMode === 'deterministic' && /audio|sonore|silence|écrêtage/i.test(c.name)
+          )
+          .map((c) => `mesuré — ${c.name} : ${c.evidence}`)
+      },
       language: this.settings.quality.reportLanguage,
       brief: {
         prompt,
@@ -1657,6 +1750,32 @@ export class Studio {
     const ids = revisions.map((r) => r.id);
     const runs = this.repo.listRuns(projectId);
     const conversation = this.repo.conversationFor(projectId);
+    const jobs = this.repo.renderJobsFor(ids).map((job) => {
+      const audio = job.resolvedConfig.audio as
+        | {
+            tracks?: { trackId: string; startMs: number; playMs: number }[];
+            issues?: { trackId: string; code: string; message: string }[];
+          }
+        | undefined;
+      return {
+        ...job,
+        resolvedConfig: {
+          ...job.resolvedConfig,
+          ...(audio
+            ? {
+                audio: {
+                  tracks: (audio.tracks ?? []).map((t) => ({
+                    trackId: t.trackId,
+                    startMs: t.startMs,
+                    endMs: t.startMs + t.playMs
+                  })),
+                  issues: audio.issues ?? []
+                }
+              }
+            : {})
+        }
+      };
+    });
     return {
       project,
       revisions,
@@ -1669,7 +1788,15 @@ export class Studio {
         .map(({ capturePath, ...item }) => ({ ...item, hasCapture: Boolean(capturePath) })),
       batches: this.repo.listBatches(projectId),
       tasks: this.repo.listTasks(projectId).map((task) => ({ ...task, input: undefined })),
-      jobs: this.repo.renderJobsFor(ids),
+      jobs,
+      audioMaxFileBytes: this.settings.audio.maxFileBytes,
+      visualEvents: revisions.map((r) => ({
+        revisionId: r.id,
+        events: visualTimeline(r.storyboard, {
+          num: r.media?.fpsNum ?? Math.round(r.storyboard.fps),
+          den: r.media?.fpsDen ?? 1
+        })
+      })),
       reports: this.repo.reportsFor(ids),
       plans: this.repo.plansFor(ids),
       // Each evaluation with the evidence it was given (no local paths).
@@ -1677,10 +1804,11 @@ export class Studio {
         ...evaluation,
         provided: this.providedEvidence(evaluation)
       })),
-      assets: this.repo.listAssets(projectId).map(({ id, mediaType, path }) => ({
-        id,
-        mediaType,
-        name: path.split('/').at(-1) ?? id
+      assets: this.repo.listAssets(projectId).map((asset) => ({
+        id: asset.id,
+        mediaType: asset.mediaType,
+        audio: asset.audio,
+        name: assetName(asset)
       })),
       activity: this.activityFor(projectId)
     };

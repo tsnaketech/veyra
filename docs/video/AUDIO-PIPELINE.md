@@ -77,8 +77,8 @@ renomment après succès ; en cas d'échec, l'ancienne sortie reste intacte.
 
 Un champ de mesure illisible déclenche une erreur, jamais une valeur inventée.
 Une crête de silence peut être `-Infinity` : la convertir explicitement si une
-future API JSON doit la transporter. Les seuils QA de la configuration sont des
-paramètres pour les futurs contrôles ; cette phase ne produit pas de verdict QA.
+future API JSON doit la transporter. Les verdicts QA sont produits par l'appelant
+(voir « Audio QA »).
 
 ## Sécurité et exclusions
 
@@ -117,3 +117,32 @@ au-delà du limiteur. `targetLufs` est une cible QA, sans normalisation automati
   `reviseAudio` (révision enfant à storyboard identique ; la source passe
   `changes_requested`). Les corrections de mouvement et les nouveaux rendus automatiques
   conservent la bande son ; un nouveau prompt repart sans son.
+
+## Audio QA
+
+`audioQualityChecks` (`apps/studio/src/lib/server/jobs/audio-qa.ts`) mesure le MP4
+final après mux, avec les limites `cpuSeconds`/`timeoutMs` de `config/audio.yaml`.
+Seuils : section `qa` du même fichier. Aucun contrôle sans piste dans la composition.
+
+| Contrôle | Mesure | En échec si | Sévérité |
+|---|---|---|---|
+| Flux audio | ffprobe | codec ≠ AAC, fréquence ou canaux ≠ `mix` | major |
+| Durée audio | ffprobe | écart audio/vidéo > `durationToleranceMs` (100 ms) | major |
+| Silences inattendus | `silencedetect` (`silenceNoiseDb` -50 dB, `silenceMinMs` 500 ms) | silence ≥ 500 ms à l'intérieur des plages où une piste joue | minor |
+| Écrêtage | true peak `ebur128` et crête `astats` | max des deux > `clippingPeakDb` (-0,1 dBFS) | major |
+| Niveau sonore | LUFS intégré `ebur128` | écart à `master.targetLufs` > `loudnessToleranceLu` (3 LU) | minor |
+| Synchronisation audio — onsets | reprises après silence (`detectOnsets`) | effet `sfx` ancré sur un événement, isolé, à plus de `syncToleranceMs` (40 ms) | minor |
+
+Ces contrôles sont `deterministic` (« Mesuré ») et ne déclenchent pas de nouveau
+rendu automatique. Ne sont pas mesurés, en `not-performed` (« Non réalisé ») :
+
+- « Écoute qualitative », toujours : aucune écoute réelle n'a lieu ; une mesure
+  n'est pas une écoute et la validation humaine reste obligatoire ;
+- « Synchronisation audio — onsets masqués » : effet superposé à une autre piste
+  dans ±`syncToleranceMs`, aucun départ n'est déduit du mélange ;
+- tous les contrôles mesurés lorsque le média est illisible (« Flux audio » en
+  échec `major` porte alors la raison).
+
+Limites : un silence volontaire de la source dans une plage jouée est signalé ;
+ne pas utiliser `ebur128=framelog=quiet` (FFmpeg 5.1 y rapporte `I: 0.0 LUFS`).
+Règles générales des modes : [QUALITY-STANDARDS](QUALITY-STANDARDS.md).

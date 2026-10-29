@@ -1,5 +1,12 @@
 // Display labels; the state machines themselves live in @veyra/schemas.
 export const revisionLabels: Record<string, { label: string; tone: Tone }> = {
+  running: { label: 'En cours', tone: 'busy' },
+  pending: { label: 'À venir', tone: 'neutral' },
+  waiting: { label: 'En attente', tone: 'warn' },
+  stopped: { label: 'Arrêtée', tone: 'warn' },
+  completed: { label: 'Terminée', tone: 'ok' },
+  done: { label: 'Terminée', tone: 'ok' },
+  skipped: { label: 'Ignorée', tone: 'neutral' },
   draft: { label: 'Brouillon', tone: 'neutral' },
   rendering: { label: 'Rendu en cours', tone: 'busy' },
   qa: { label: 'Audit qualité en cours', tone: 'busy' },
@@ -7,7 +14,7 @@ export const revisionLabels: Record<string, { label: string; tone: Tone }> = {
   approved: { label: 'Validée', tone: 'ok' },
   changes_requested: { label: 'Révision demandée', tone: 'neutral' },
   published: { label: 'Publiée', tone: 'ok' },
-  failed: { label: 'Échec du rendu', tone: 'bad' }
+  failed: { label: 'Échec', tone: 'bad' }
 };
 export const feedbackLabels: Record<string, string> = {
   draft: 'En attente',
@@ -68,6 +75,7 @@ export const providerLabels: Record<string, string> = {
   'claude-subscribe': 'Claude Code — abonnement, mode assisté'
 };
 export const modeLabels: Record<string, string> = {
+  'not-performed': 'Non réalisé',
   deterministic: 'Déterministe (ffprobe / ffmpeg)',
   multimodal: 'Multimodal (images)',
   'text-only': 'Texte seul',

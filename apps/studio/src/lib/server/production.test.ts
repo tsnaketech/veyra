@@ -28,7 +28,7 @@ let projectId: string;
 let renders: number;
 let failRender: boolean;
 
-function studio(ai = new FakeAiProvider() as FakeAiProvider | AssistedProvider) {
+function studio(ai = new FakeAiProvider() as FakeAiProvider | AssistedProvider, review = false) {
   const settings = loadStudioSettings(loadRenderSettings(), defaultConfigDir());
   const storage = new ProjectStorage(root);
   const engine = colorEngine((id) => repo.getRevision(id).storyboard);
@@ -43,7 +43,8 @@ function studio(ai = new FakeAiProvider() as FakeAiProvider | AssistedProvider) 
         return engine.render(...args);
       }
     },
-    settings
+    settings,
+    review ? (revision, path) => app.review(revision, path) : undefined
   );
   return new Studio(repo, runner, ai, settings, storage);
 }
@@ -259,6 +260,7 @@ async function importWav(name: string, category: 'music' | 'sfx', duration: numb
 }
 
 it('plans music and effects, then applies an audio range correction without rendering the picture again', async () => {
+  app = studio(new FakeAiProvider(), true);
   await importWav('music.wav', 'music', 3);
   await importWav('pop.wav', 'sfx', 0.08);
   await app.sendPrompt(projectId, prompt);
@@ -319,6 +321,33 @@ it('plans music and effects, then applies an audio range correction without rend
     videoPath: parent.videoPath
   });
   expect(repo.getRun(production.id).status).toBe('completed');
+  expect(repo.getBatch(batch.id).verification).toContainEqual(
+    expect.objectContaining({
+      feedbackId: comment.id,
+      verdict: 'applied',
+      evidence: expect.stringContaining('Mesuré sur le mix')
+    })
+  );
+  expect(repo.reportsFor([child.id]).at(-1)?.checks).toContainEqual(
+    expect.objectContaining({
+      name: 'Écoute qualitative',
+      passed: false,
+      analysisMode: 'not-performed'
+    })
+  );
+  expect(
+    repo
+      .evaluationsFor([child.id])
+      .at(-1)
+      ?.findings.some((f) => f.justification.includes('Audio non écouté'))
+  ).toBe(true);
+  const snapshot = app.snapshot(projectId)!;
+  expect(JSON.stringify(snapshot.jobs.map((j) => j.resolvedConfig.audio))).not.toContain(
+    'assetPath'
+  );
+  expect(
+    snapshot.visualEvents.find((e) => e.revisionId === child.id)?.events.length
+  ).toBeGreaterThan(0);
 });
 
 it('imports assisted scripts into their run', async () => {

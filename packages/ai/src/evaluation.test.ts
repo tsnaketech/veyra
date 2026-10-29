@@ -261,3 +261,57 @@ describe("expert results are validated against the evaluation pack", () => {
     ).toThrow();
   });
 });
+
+it("keeps measured audio facts separate from listening and removes audio judgments", async () => {
+  const pack = input(before, [
+    comment("fdb_audio", "Baisse la musique", s1.id),
+  ]);
+  pack.audio = {
+    present: true,
+    listened: false,
+    measurements: ["mesuré — Niveau sonore : -16 LUFS"],
+    feedbackIds: ["fdb_audio"],
+  };
+  const fake = await new FakeQualityEvaluator().evaluate(pack);
+  expect(
+    fake.review.findings.some((f) =>
+      f.justification.includes("Audio non écouté"),
+    ),
+  ).toBe(true);
+  const clean = sanitizeReview(
+    {
+      verdicts: [
+        {
+          feedbackId: "fdb_audio",
+          verdict: "applied",
+          category: "content",
+          confidence: 1,
+          justification: "La musique sonne parfaitement",
+          evidence: [],
+        },
+      ],
+      findings: [
+        {
+          kind: "observation",
+          category: "aesthetic",
+          sceneId: null,
+          severity: "info",
+          confidence: 1,
+          justification: "La qualité sonore est excellente",
+          evidence: [],
+        },
+      ],
+      imagesExamined: [],
+    },
+    pack,
+  );
+  expect(clean.verdicts[0]).toMatchObject({
+    verdict: "unverifiable",
+    confidence: 0,
+  });
+  expect(clean.findings).toHaveLength(1);
+  expect(clean.findings[0].justification).toContain("Audio non écouté");
+  const request = new AssistedProvider().evaluationRequest(pack);
+  expect(JSON.stringify(request)).toContain("mesuré — Niveau sonore");
+  expect(JSON.stringify(request)).toContain("PAS écouté");
+});

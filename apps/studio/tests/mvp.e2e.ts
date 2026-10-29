@@ -35,7 +35,10 @@ test('MVP journey: prompt → real render → QA → timestamped comment → new
   await expect(page.getByText(/\[Simulé\] Storyboard/)).toBeVisible({ timeout: 30_000 });
   const player = page.getByTestId('player');
   await expect(player).toBeVisible({ timeout: 180_000 });
-  await expect(page.locator('[data-status="awaiting_approval"]').first()).toBeVisible();
+  // The player shows up while QA (video and audio checks) is still running.
+  await expect(page.locator('[data-status="awaiting_approval"]').first()).toBeVisible({
+    timeout: 90_000
+  });
 
   const qa = page.getByTestId('qa-report');
   await expect(qa).toContainText('Déterministe (ffprobe / ffmpeg)');
@@ -208,4 +211,74 @@ test('Motion Engine: catalogue, SaaS composition, targeted component correction,
     )
   );
   expect(Math.abs(Number(probe.format.duration) - 20)).toBeLessThan(0.2);
+});
+
+test('audio UI: import, production controls, tracks, range comment and picture reuse', async ({
+  page
+}, testInfo) => {
+  // Non-render waits fail fast on a wrong locator; render waits keep their long timeouts.
+  const quick = { timeout: 10_000 };
+  const wav = testInfo.outputPath('music.wav');
+  execFileSync('ffmpeg', [
+    '-nostdin',
+    '-v',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=frequency=440:sample_rate=48000:duration=3',
+    '-ac',
+    '2',
+    wav
+  ]);
+  await page.goto('/');
+  await page.getByLabel('Nom du projet').fill('Bande son', quick);
+  await page.getByRole('button', { name: 'Nouveau projet' }).click(quick);
+  await expect(page).toHaveURL(/\/projects\/prj_/, quick);
+  await page.getByLabel(/Fichier audio \(maximum/).setInputFiles(wav, quick);
+  await page.getByLabel('Catégorie du fichier').selectOption('music', quick);
+  await page.getByRole('button', { name: 'Importer l’audio' }).click(quick);
+  await expect(page.getByTestId('audio-panel')).toContainText('Valide', quick);
+  await page.getByLabel('Message à Veyra').fill(prompt, quick);
+  await page.getByRole('button', { name: 'Envoyer', exact: true }).click(quick);
+  await expect(page.getByTestId('player')).toBeVisible({ timeout: 180_000 });
+  await expect(page.locator('[data-status="awaiting_approval"]').first()).toBeVisible({
+    timeout: 90_000
+  });
+  const production = page.getByTestId('production-panel');
+  await expect(production).toContainText('Validation humaine', quick);
+  await production.getByRole('button', { name: 'Arrêter', exact: true }).click(quick);
+  await expect(production.locator('[data-status="stopped"]')).toBeVisible(quick);
+  await production.getByRole('button', { name: 'Reprendre', exact: true }).click(quick);
+  await expect(production.getByRole('button', { name: 'Arrêter', exact: true })).toBeVisible(quick);
+  await expect(page.getByTestId('player')).toHaveJSProperty('muted', false, quick);
+  await expect(page.getByTestId('player')).toHaveJSProperty('controls', true, quick);
+  await expect(page.getByTestId('audio-timeline')).toContainText('music.wav', quick);
+  await expect(page.getByTestId('qa-report')).toContainText('Non réalisé', quick);
+  await expect(page.getByTestId('qa-report')).toContainText('aucune écoute réelle', quick);
+  await page.getByTestId('scrubber').fill('240', quick);
+  await page
+    .getByLabel(/Commentaire à la frame 240/)
+    .fill('Entre 00:08 et 00:12, diminue la musique.', quick);
+  await page.getByLabel(/Fin de plage/).fill('00:12', quick);
+  await page.getByLabel('Piste audio (facultatif)').selectOption({ label: 'music.wav' }, quick);
+  await page
+    .locator('form[action="?/comment"]')
+    .getByRole('button', { name: 'Ajouter', exact: true })
+    .click(quick);
+  await expect(page.getByTestId('comment')).toContainText('00:12.000', quick);
+  await expect(page.getByTestId('comment')).toContainText('music.wav', quick);
+  const before = await page.getByTestId('player').getAttribute('src', quick);
+  await page.getByLabel('Gain (dB)', { exact: true }).fill('-24', quick);
+  await page.getByLabel('Fichier de la piste').selectOption({ label: 'music.wav' }, quick);
+  await page.getByLabel('Catégorie de la piste').selectOption('sfx', quick);
+  await page.getByLabel('Ancrage', { exact: true }).selectOption('event', quick);
+  await page.getByLabel('Événement', { exact: true }).selectOption({ index: 1 }, quick);
+  await page.getByRole('button', { name: 'Ajouter à la composition' }).click(quick);
+  await page.getByRole('button', { name: 'Enregistrer la bande son' }).click(quick);
+  await expect(page.getByTestId('player')).not.toHaveAttribute('src', before!, { timeout: 90_000 });
+  await expect(page.getByTestId('qa-report')).toContainText('Vidéo réutilisée', {
+    timeout: 90_000
+  });
+  await expect(page.getByTestId('audio-panel')).toContainText('-24 dB', quick);
 });
