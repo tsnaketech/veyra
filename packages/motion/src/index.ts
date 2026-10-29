@@ -91,8 +91,9 @@ export function normalizeComponent(ref: {
   return {
     id: component.id,
     version: component.version,
-    params: params as SceneComponent["params"],
-    style: style as SceneComponent["style"],
+    // JSON round trip drops optional keys left undefined by Zod.
+    params: JSON.parse(JSON.stringify(params)) as SceneComponent["params"],
+    style: JSON.parse(JSON.stringify(style)) as SceneComponent["style"],
   };
 }
 export const componentLabel = (ref: { id: string; params: unknown }) => {
@@ -196,4 +197,14 @@ export function motionCss(width: number, height: number) {
 .scene .button-inner{display:inline-block;font-size:${px(3.6)};font-weight:700;color:#0b0d17;background:#fff;border-radius:999px;padding:${px(1.8)} ${px(4.5)};box-shadow:0 0 0 ${px(0.6)} var(--accent)}
 .scene .detail{font-size:${px(3)};opacity:.92;letter-spacing:.04em}
 `;
+}
+
+/** Catalogue given to models: what each component is for, its timing and its parameters. */
+export function componentCatalog() {
+  return motionComponents
+    .map(
+      (c) =>
+        `- ${c.id} (${c.name}) : ${c.description} Durée ${c.timing.minMs}–${c.timing.maxMs} ms. Paramètres : ${JSON.stringify(z.toJSONSchema(c.params))} Style : ${JSON.stringify(z.toJSONSchema(c.style))}`,
+    )
+    .join("\n");
 }

@@ -180,6 +180,9 @@ importers:
       '@veyra/hyperframes-adapter':
         specifier: workspace:*
         version: link:../../packages/hyperframes-adapter
+      '@veyra/motion':
+        specifier: workspace:*
+        version: link:../../packages/motion
       '@veyra/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
@@ -286,6 +289,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 1.3.0
         version: 1.3.0(zod@4.6.7)
+      '@veyra/motion':
+        specifier: workspace:*
+        version: link:../motion
       '@veyra/schemas':
         specifier: workspace:*
         version: link:../schemas

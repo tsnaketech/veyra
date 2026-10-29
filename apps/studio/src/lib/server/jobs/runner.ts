@@ -8,6 +8,7 @@ import {
   writeComposition,
   renderResultSchema,
   progressSchema,
+  type CompositionCheck,
   type VideoEngine
 } from '@veyra/hyperframes-adapter';
 import { deterministicChecks, ProcessError } from '@veyra/video';
@@ -125,6 +126,16 @@ export class RenderJobRunner {
         this.settings.style
       );
       writeComposition(workspace.composition, files);
+      // Layout, contrast, runtime and motion checks in a real browser, before encoding.
+      this.repo.updateRenderProgress(jobId, 2, 'check');
+      let compositionCheck: CompositionCheck | null = null;
+      let checkError: string | null = null;
+      try {
+        compositionCheck = await this.engine.check(workspace.composition);
+      } catch (error) {
+        checkError = error instanceof Error ? error.message : String(error);
+      }
+      const renderStarted = Date.now();
       const outputPath = this.storage.renderPath(revision.projectId, revision.id, jobId);
       const result = renderResultSchema.parse(
         await this.engine.render(
@@ -148,6 +159,7 @@ export class RenderJobRunner {
       if (resolve(result.path) !== outputPath || result.engine !== this.engine.kind)
         throw new Error('Engine result does not match job');
       stderrTail = result.stderrTail;
+      const renderSeconds = (Date.now() - renderStarted) / 1000;
       this.repo.updateRevision(revision.id, { videoPath: result.path });
       this.repo.transitionRevision(revision.id, 'qa');
       this.repo.updateRenderProgress(jobId, 95, 'qa');
@@ -176,6 +188,10 @@ export class RenderJobRunner {
           fps: this.settings.engine.fps
         },
         this.settings.quality
+      );
+      checks.push(
+        ...compositionChecks(compositionCheck, checkError),
+        renderPerformanceCheck(renderSeconds, durationMs / 1000, this.settings.engine.wallTimeoutMs)
       );
       if (this.engine.kind === 'fake-test-only')
         for (const check of checks) {
@@ -235,6 +251,93 @@ export class RenderJobRunner {
     }
     return this.repo.getRenderJob(jobId);
   }
+}
+const checkGroups = [
+  {
+    name: 'Mise en page (marges, débordements)',
+    sections: ['layout'],
+    severity: 'major',
+    advice: 'Raccourcir le texte ou changer de composant'
+  },
+  {
+    name: 'Lisibilité (contraste WCAG AA)',
+    sections: ['contrast'],
+    severity: 'major',
+    advice: 'Augmenter le contraste du texte'
+  },
+  {
+    name: 'Exécution de la composition',
+    sections: ['lint', 'runtime'],
+    severity: 'major',
+    advice: 'Corriger la composition'
+  },
+  {
+    name: 'Animations et transitions (conseils HyperFrames)',
+    sections: ['motion', 'craft'],
+    severity: 'minor',
+    advice: 'Revoir le rythme et les transitions'
+  }
+] as const;
+/** Turns `hyperframes check` sections into QA checks; warnings stay visible as evidence. */
+export function compositionChecks(check: CompositionCheck | null, error: string | null) {
+  if (!check)
+    return [
+      {
+        id: newId('qck'),
+        name: 'Contrôle de composition HyperFrames',
+        passed: false,
+        severity: 'minor',
+        timestamp: 0,
+        evidence: `Non exécuté : ${error ?? 'erreur inconnue'}`.slice(0, 2000),
+        recommendation: 'Relancer le rendu ; vérifier Chrome headless',
+        analysisMode: 'deterministic'
+      } as const
+    ];
+  return checkGroups.map((group) => {
+    const findings = group.sections.flatMap((s) => check.sections[s]?.findings ?? []);
+    const errors = findings.filter((f) => f.severity === 'error');
+    const passed = errors.length === 0;
+    return {
+      id: newId('qck'),
+      name: group.name,
+      passed,
+      severity: passed ? ('info' as const) : group.severity,
+      timestamp: Math.round((errors[0]?.time ?? 0) * 1000),
+      evidence: JSON.stringify({
+        erreurs: errors.length,
+        avertissements: findings.length - errors.length,
+        constats: findings
+          .slice(0, 5)
+          .map(
+            (f) =>
+              `${f.code}${f.time !== undefined ? `@${f.time}s` : ''} : ${f.message.slice(0, 140)}`
+          )
+      }),
+      recommendation: passed ? 'No action required' : group.advice,
+      analysisMode: 'deterministic' as const
+    };
+  });
+}
+export function renderPerformanceCheck(
+  renderSeconds: number,
+  videoSeconds: number,
+  wallTimeoutMs: number
+) {
+  const passed = renderSeconds * 1000 <= wallTimeoutMs * 0.8;
+  return {
+    id: newId('qck'),
+    name: 'Performance de rendu',
+    passed,
+    severity: passed ? ('info' as const) : ('minor' as const),
+    timestamp: 0,
+    evidence: JSON.stringify({
+      renduSecondes: Math.round(renderSeconds * 10) / 10,
+      videoSecondes: videoSeconds,
+      tempsReel: Math.round((renderSeconds / Math.max(videoSeconds, 0.001)) * 100) / 100
+    }),
+    recommendation: passed ? 'No action required' : 'Simplifier la composition ou réduire la durée',
+    analysisMode: 'deterministic' as const
+  };
 }
 // Keep one runner per server process. No worker or background server is started on import.
 const runners = new WeakMap<Repository, RenderJobRunner>();

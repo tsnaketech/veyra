@@ -36,6 +36,7 @@ import {
   type RevisionProposal,
   type StoryboardDraft
 } from '@veyra/ai';
+import { getComponent } from '@veyra/motion';
 import type { createRepository } from './db/repo';
 import type { RenderJobRunner, RenderSettings } from './jobs/runner';
 
@@ -78,6 +79,8 @@ const modeLabel = (evaluator: string | null, mode: string | null) =>
         ? 'texte seul, aucune image regardée'
         : 'non réalisée';
 const SEQUENCE_FRAMES = 5;
+// Output defects a fresh render can fix; layout or content issues need a correction instead.
+const RETRYABLE = new Set(['duration', 'resolution', 'fps', 'codec', 'non-empty', 'black-frames']);
 
 export class Studio {
   private activity = new Map<string, Activity>();
@@ -200,8 +203,14 @@ export class Studio {
       this.label(
         `Storyboard « ${draft.title} » : ${storyboard.scenes.length} scènes, ${total / 1000} s.\n` +
           storyboard.scenes
-            .map((scene, i) => `${i + 1}. ${scene.text} (${scene.duration / 1000} s)`)
-            .join('\n'),
+            .map(
+              (scene, i) =>
+                `${i + 1}. ${scene.component ? `${getComponent(scene.component.id).name} — ` : ''}${scene.text} (${scene.duration / 1000} s)`
+            )
+            .join('\n') +
+          (kind === 'fake' && storyboard.scenes.some((s) => s.component)
+            ? "\nParamètres d'exemple (fonctionnalités, chiffres) à remplacer par les vôtres."
+            : ''),
         kind
       )
     );
@@ -254,6 +263,7 @@ export class Studio {
     const technical = report?.checks.filter(
       (check) =>
         !check.passed &&
+        RETRYABLE.has(check.name) &&
         check.analysisMode === 'deterministic' &&
         (check.severity === 'major' || check.severity === 'critical')
     );

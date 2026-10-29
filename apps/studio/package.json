@@ -64,7 +64,8 @@
     "@veyra/storage": "workspace:*",
     "@veyra/hyperframes-adapter": "workspace:*",
     "@veyra/video": "workspace:*",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "@veyra/motion": "workspace:*"
   },
   "packageManager": "pnpm@12.6.0"
 }

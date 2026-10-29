@@ -177,7 +177,15 @@ export class FakeQualityEvaluator implements QualityEvaluator {
           outcomes.push(-sign);
           notes.push(`animation ${was} → ${now} ms (${t.faster})`);
         }
-        if (quoted && /texte|remplace|écri|text/.test(text)) {
+        const button =
+          next.component?.id === "call-to-action" && /bouton|button/.test(text);
+        if (quoted && button) {
+          const wanted = (quoted[1] ?? quoted[2]).trim();
+          const now = String(next.component!.params.buttonLabel ?? "");
+          const was = String(old.component?.params.buttonLabel ?? "");
+          outcomes.push(now === wanted ? 1 : now === was ? 0 : -1);
+          notes.push(t.text(now, wanted));
+        } else if (quoted && /texte|titre|remplace|écri|text/.test(text)) {
           const wanted = (quoted[1] ?? quoted[2]).trim();
           outcomes.push(
             next.text === wanted ? 1 : next.text === old.text ? 0 : -1,

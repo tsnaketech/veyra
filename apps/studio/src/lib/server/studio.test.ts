@@ -2,15 +2,14 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeEngine, type VideoEngine } from '@veyra/hyperframes-adapter';
 import { ProjectStorage } from '@veyra/storage';
-import { probe, runProcess } from '@veyra/video';
 import { AssistedProvider, FakeAiProvider, type AiProvider } from '@veyra/ai';
 import { createRepository } from './db/repo';
+import { colorEngine as sharedColorEngine } from './test-engines';
 import * as schema from './db/schema';
 import { defaultConfigDir, loadRenderSettings, RenderJobRunner } from './jobs/runner';
 import { loadStudioSettings, Studio } from './studio';
@@ -22,60 +21,7 @@ const slowDown = "À 12 secondes, ralentis l'animation du texte.";
 type Repo = ReturnType<typeof createRepository>;
 let client: Database.Database, root: string, repo: Repo;
 
-/**
- * Test engine producing real H.264 files: one solid colour per scene, derived from the
- * scene text and animation. Editing a scene changes its pixels; other scenes stay identical.
- */
-function colorEngine(): VideoEngine {
-  return {
-    kind: 'hyperframes',
-    validate: (dir) => new FakeEngine().validate(dir),
-    preview: (dir) => new FakeEngine().preview(dir),
-    async render(_dir, opts) {
-      const revisionId = /revisions\/(rev_[^/]+)\//.exec(opts.outputPath)![1];
-      const { storyboard } = repo.getRevision(revisionId);
-      const inputs = storyboard.scenes.flatMap((scene) => {
-        // High bit set on each channel: bright enough never to trip black-frame detection.
-        const color = [
-          ...createHash('sha1')
-            .update(`${scene.text}|${JSON.stringify(scene.animation)}`)
-            .digest()
-            .subarray(0, 3)
-        ]
-          .map((byte) => (0x80 | byte).toString(16))
-          .join('');
-        return [
-          '-f',
-          'lavfi',
-          '-i',
-          `color=c=0x${color}:s=${storyboard.width}x${storyboard.height}:r=30:d=${scene.duration / 1000}`
-        ];
-      });
-      await runProcess(
-        'ffmpeg',
-        [
-          '-nostdin',
-          '-v',
-          'error',
-          ...inputs,
-          '-filter_complex',
-          `concat=n=${storyboard.scenes.length}:v=1:a=0`,
-          '-c:v',
-          'libx264',
-          '-preset',
-          'ultrafast',
-          '-pix_fmt',
-          'yuv420p',
-          opts.outputPath
-        ],
-        { timeoutMs: 60000 }
-      );
-      return { path: opts.outputPath, engine: 'hyperframes', stderrTail: '' };
-    },
-    inspect: (file) => probe(file),
-    check: (dir) => new FakeEngine().check(dir)
-  };
-}
+const colorEngine = () => sharedColorEngine((id) => repo.getRevision(id).storyboard);
 // Test-only engine whose probe is reported as a real measurement, so deterministic QA applies.
 function measuredEngine(durationMs: number): VideoEngine {
   const fake = new FakeEngine({
