@@ -115,7 +115,8 @@ it("clips to source/video ends, fills looped music and preserves absolute duck t
     assets,
     3000,
   );
-  expect(result.tracks.map((t) => t.playMs)).toEqual([2500, 2500]);
+  // 2000 ms source from 500 ms: 1500 ms left, even if durationMs asks for more.
+  expect(result.tracks.map((t) => t.playMs)).toEqual([1500, 2500]);
   expect(result.tracks[1].fadeOutMs).toBe(2500);
   expect(result.tracks[1].duck[0].startMs).toBe(1000);
 });

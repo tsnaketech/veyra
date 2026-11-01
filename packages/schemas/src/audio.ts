@@ -41,7 +41,12 @@ export const audioTrackSchema = z
     loop: z.boolean().default(false),
     duck: z.array(duckSchema).default([]),
   })
-  .refine((t) => !t.loop || t.category === "music", "Only music can loop");
+  .refine((t) => !t.loop || t.category === "music", "Only music can loop")
+  // -stream_loop restarts the file from 0, not from the entry point.
+  .refine(
+    (t) => !t.loop || t.sourceInMs === 0,
+    "A looped track starts at sourceInMs 0",
+  );
 export const audioCompositionSchema = z.object({
   schemaVersion: z.literal(1),
   tracks: z.array(audioTrackSchema),

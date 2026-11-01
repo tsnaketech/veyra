@@ -32,3 +32,9 @@ présents ont été conservés ; migrations 0000–0003 et skills intacts.
 Limites : E2E et HyperFrames lents non relancés ; coordination multi-processus et
 reprise autonome après crash restent hors périmètre (D006). Prochaines tâches
 ouvertes : voir TASKS ; aucune commande UI d'orchestration ajoutée.
+
+2026-11-01 — v0.3 phases D et E commitées (d57c381, 3ad6a73, puis corrections de
+revue). Développement par sous-agents Claude Code (Architecture, Frontend, Audio
+Engineer, Integration Fix, Testing, Independent Reviewer) intégré et revérifié par
+le Lead. Limites restantes : voir AUDIO-PIPELINE « Limites connues » et TASKS T094.
+Prochaine étape : selon priorité utilisateur ; aucun push ni PR.

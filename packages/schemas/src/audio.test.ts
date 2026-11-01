@@ -35,6 +35,7 @@ it.each([
   { assetId: "atr_x" },
   { category: "other" },
   { category: "sfx", loop: true },
+  { category: "music", loop: true, sourceInMs: 500 },
   { durationMs: 0 },
   { sourceInMs: -1 },
   { gainDb: 13 },

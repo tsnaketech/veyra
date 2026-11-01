@@ -73,7 +73,7 @@ export function resolveAudioComposition(
     }
     const playMs = track.loop
       ? duration - startMs
-      : Math.min(track.durationMs ?? remaining, duration - startMs);
+      : Math.min(track.durationMs ?? remaining, remaining, duration - startMs);
     tracks.push(
       resolvedTrackSchema.parse({
         trackId: track.id,

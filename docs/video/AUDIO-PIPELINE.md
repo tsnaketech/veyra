@@ -146,3 +146,17 @@ rendu automatique. Ne sont pas mesurés, en `not-performed` (« Non réalisé »
 Limites : un silence volontaire de la source dans une plage jouée est signalé ;
 ne pas utiliser `ebur128=framelog=quiet` (FFmpeg 5.1 y rapporte `I: 0.0 LUFS`).
 Règles générales des modes : [QUALITY-STANDARDS](QUALITY-STANDARDS.md).
+
+## Limites connues après revue indépendante (v0.3)
+
+- La vérification d'une atténuation mesure le volume du mix complet : une piste
+  atténuée sous une autre peut baisser de moins de 3 dB et donner un faux
+  `not_applied`. À rendre `unverifiable` quand d'autres pistes couvrent la plage.
+- « Niveau sonore » compare à `master.targetLufs` sans normalisation du mix : il
+  échoue souvent (gravité mineure). `master.truePeakDb` n'est pas appliqué au mix.
+- Une boucle musicale démarre obligatoirement à `sourceInMs` 0 (`-stream_loop`
+  reprend le fichier depuis son début).
+- L'import lit le fichier en mémoire avant le contrôle de taille : borne d'usage
+  local, pas une protection contre un client hostile.
+- Les appels d'expertise QA ne sont pas comptés dans `maxAiCalls` ; un arrêt
+  pendant le rendu n'interrompt pas les re-rendus d'auto-correction de la phase.

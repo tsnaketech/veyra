@@ -527,6 +527,28 @@ it('resumes a run orphaned by a crash, from a new orchestrator over the same dat
   expect(script).toHaveBeenCalledTimes(1);
 });
 
+it('resumes a crashed run that the UI stopped before resuming it', async () => {
+  const run = create(plan(['script', 'motion']));
+  repo.updatePhase(orchestrator.phases(run.id)[0].id, { status: 'running', attempts: 1 });
+  const fresh = new Orchestrator(repo, () => {});
+  // After a restart the panel only offers « Arrêter » on a 'running' run.
+  fresh.stop(run.id);
+  const result = await fresh.resume(run.id, {
+    script: { run: async () => done(draft) },
+    motion: { run: async () => done(motionPayload) }
+  });
+  expect(result.status).toBe('completed');
+});
+
+it('keeps an approval given while the production is stopped', async () => {
+  await app.sendPrompt(projectId, prompt);
+  const [run] = repo.listRuns(projectId);
+  app.stopProduction(run.id);
+  app.approve(run.revisionId!);
+  await app.resumeProduction(run.id);
+  expect(repo.getRun(run.id).status).toBe('completed');
+});
+
 it('fails a phase whose payload breaks its contract, keeping the invalid envelope', async () => {
   const run = create(plan(['script', 'motion']));
   const result = await orchestrator.drive(run.id, {

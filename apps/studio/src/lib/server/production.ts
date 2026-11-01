@@ -142,13 +142,16 @@ export class Orchestrator {
   async resume(runId: string, runners: Runners) {
     await this.driving.get(runId);
     const run = this.repo.getRun(runId);
-    const orphan = run.status === 'running' && !this.driving.has(runId);
+    // No drive in this process: phases still 'running' were interrupted (crash), even
+    // if the run was stopped from the UI afterwards.
+    const idle = !this.driving.has(runId);
+    const orphan = run.status === 'running' && idle;
     if (run.status !== 'failed' && run.status !== 'stopped' && !orphan)
       throw new Error('Seule une production en échec ou arrêtée peut reprendre');
     for (const row of this.phases(runId)) {
-      if (orphan && row.status === 'running')
+      if (idle && row.status === 'running')
         this.repo.updatePhase(row.id, { status: 'failed', error: 'Interrompue (redémarrage)' });
-      if (row.status === 'failed' || (orphan && row.status === 'running'))
+      if (row.status === 'failed' || (idle && row.status === 'running'))
         this.repo.updatePhase(row.id, { status: 'pending', attempts: 0 });
     }
     this.repo.updateRun(runId, { status: 'running', error: null });

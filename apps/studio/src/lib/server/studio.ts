@@ -986,7 +986,9 @@ export class Studio {
   private finishApproval(revisionId: string, payload: Record<string, string>) {
     const revision = this.repo.getRevision(revisionId);
     for (const run of this.repo.listRuns(revision.projectId)) {
-      if (run.revisionId !== revisionId || run.status !== 'waiting') continue;
+      // A stopped run keeps the decision: resuming it then completes the run.
+      if (run.revisionId !== revisionId || (run.status !== 'waiting' && run.status !== 'stopped'))
+        continue;
       if (
         !this.orchestrator
           .phases(run.id)
@@ -998,7 +1000,11 @@ export class Studio {
         payload,
         provider: 'human'
       });
-      void this.orchestrator.drive(run.id, {});
+      this.orchestrator
+        .drive(run.id, {})
+        .catch((error: unknown) =>
+          this.say(revision.projectId, 'system', `Échec de la production : ${message(error)}`)
+        );
     }
   }
 
@@ -1114,34 +1120,48 @@ export class Studio {
       this.repo.updateTask(taskId, { error: `Résultat non conforme : ${message(error)}` });
       throw new Error('Résultat non conforme au schéma attendu', { cause: error });
     }
-    this.busy(task.projectId, 'generating');
-    this.repo.updateTask(taskId, { status: 'imported', error: null });
     const input = task.input as { prompt: string; parentRevisionId: string | null; runId?: string };
+    this.busy(task.projectId, 'generating');
     let run: ProductionRun;
+    try {
+      run = this.acceptStoryboard(task.projectId, input, draft);
+    } catch (error) {
+      // A refused import releases the project and leaves the task importable.
+      this.activity.delete(task.projectId);
+      throw error;
+    }
+    this.repo.updateTask(taskId, { status: 'imported', error: null });
+    return this.background(task.projectId, async () => {
+      await this.orchestrator.drive(run.id, this.productionRunners(run));
+    });
+  }
+
+  private acceptStoryboard(
+    projectId: string,
+    input: { prompt: string; parentRevisionId: string | null; runId?: string },
+    draft: StoryboardDraft
+  ): ProductionRun {
     if (input.runId) {
       this.orchestrator.complete(input.runId, 'script', {
         kind: 'done',
         payload: draft,
         provider: 'claude-subscribe'
       });
-      run = this.repo.getRun(input.runId);
-    } else {
-      const brief = this.productionBrief(task.projectId, input.prompt);
-      const plan = planProduction(brief, this.productionBudget());
-      run = this.orchestrator.create({
-        projectId: task.projectId,
-        kind: 'production',
-        brief,
-        plan,
-        sourceRevisionId: input.parentRevisionId,
-        done: {
-          plan: { kind: 'done', payload: plan, provider: 'rules' },
-          script: { kind: 'done', payload: draft, provider: 'claude-subscribe' }
-        }
-      });
+      return this.repo.getRun(input.runId);
     }
-    return this.background(task.projectId, async () => {
-      await this.orchestrator.drive(run.id, this.productionRunners(run));
+    // Legacy exports carry no run: create one with the imported script.
+    const brief = this.productionBrief(projectId, input.prompt);
+    const plan = planProduction(brief, this.productionBudget());
+    return this.orchestrator.create({
+      projectId,
+      kind: 'production',
+      brief,
+      plan,
+      sourceRevisionId: input.parentRevisionId,
+      done: {
+        plan: { kind: 'done', payload: plan, provider: 'rules' },
+        script: { kind: 'done', payload: draft, provider: 'claude-subscribe' }
+      }
     });
   }
 
