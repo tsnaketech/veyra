@@ -1,12 +1,17 @@
 import { z } from 'zod';
+import { storyboardDraftSchema } from '@veyra/ai';
+import { inputHash } from '@veyra/schemas/hash';
 import {
   agentResultSchema,
-  inputHash,
+  audioCompositionSchema,
+  motionCompositionSchema,
   newId,
   type Phase,
   type ProductionPhase,
   type ProductionPlan,
-  type ProductionRun
+  type ProductionRun,
+  productionPlanSchema,
+  reviewPlanSchema
 } from '@veyra/schemas';
 import type { createRepository } from './db/repo';
 
@@ -34,12 +39,28 @@ export type Runners = Partial<Record<Phase, PhaseRunner>>;
 
 const envelope = agentResultSchema(z.json());
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+// Payload contract of each phase; other phases carry free JSON.
+const payloadSchemas: Record<ProductionRun['kind'], Partial<Record<Phase, z.ZodType>>> = {
+  production: {
+    plan: productionPlanSchema,
+    script: storyboardDraftSchema,
+    motion: motionCompositionSchema,
+    audio: audioCompositionSchema
+  },
+  revision: {
+    plan: z.union([reviewPlanSchema, audioCompositionSchema]),
+    motion: motionCompositionSchema,
+    audio: audioCompositionSchema
+  }
+};
 
 /**
  * Drives a Director plan: phases run when their dependencies are done (independent
- * phases in parallel), results are persisted as agent result envelopes, a phase whose
- * inputs did not change is never recomputed, failures are retried up to the plan's
- * limit, a stop is honoured between phases, and a run resumes where it stopped.
+ * phases in parallel), payloads are validated against their phase contract and persisted
+ * as agent result envelopes, a completed phase is never re-run within its run (there is
+ * no cross-run cache: inputHash is provenance only), failures are retried up to the
+ * plan's limit, a stop is honoured between phases, and a run resumes where it stopped,
+ * including after a crash of this single process.
  * It is provider-agnostic: runners decide which agent or engine does the work.
  */
 export class Orchestrator {
@@ -113,15 +134,23 @@ export class Orchestrator {
     this.log(run.projectId, 'Production arrêtée par l’utilisateur.');
   }
 
-  /** Resumes a failed or stopped run from its first unfinished phase. */
+  /**
+   * Resumes a failed or stopped run from its first unfinished phase. A run still
+   * 'running' without a drive in this process was orphaned by a crash: its 'running'
+   * phases are failed then reset like any failed phase.
+   */
   async resume(runId: string, runners: Runners) {
     await this.driving.get(runId);
     const run = this.repo.getRun(runId);
-    if (run.status !== 'failed' && run.status !== 'stopped')
+    const orphan = run.status === 'running' && !this.driving.has(runId);
+    if (run.status !== 'failed' && run.status !== 'stopped' && !orphan)
       throw new Error('Seule une production en échec ou arrêtée peut reprendre');
-    for (const row of this.phases(runId))
-      if (row.status === 'failed')
+    for (const row of this.phases(runId)) {
+      if (orphan && row.status === 'running')
+        this.repo.updatePhase(row.id, { status: 'failed', error: 'Interrompue (redémarrage)' });
+      if (row.status === 'failed' || (orphan && row.status === 'running'))
         this.repo.updatePhase(row.id, { status: 'pending', attempts: 0 });
+    }
     this.repo.updateRun(runId, { status: 'running', error: null });
     return this.drive(runId, runners);
   }
@@ -239,20 +268,37 @@ export class Orchestrator {
   ) {
     const spec = run.plan.phases.find((p) => p.phase === row.phase)!;
     const done = this.phases(run.id).filter((p) => spec.dependsOn.includes(p.phase) && p.result);
+    const checked = payloadSchemas[run.kind][row.phase]?.safeParse(outcome.payload);
+    const errors =
+      checked && !checked.success
+        ? checked.error.issues.map((i) => `${i.path.join('.') || 'payload'} : ${i.message}`)
+        : [];
     const result = envelope.parse({
       id: row.id,
       schemaVersion: 1,
-      agent: spec.agent === 'engine' || spec.agent === 'human' ? 'director' : spec.agent,
+      agent: spec.agent,
       phase: row.phase,
       revisionId: outcome.revisionId ?? run.revisionId,
       dependsOn: done.map((p) => p.id),
       provider: outcome.provider,
       provenance: { inputHash: hash, createdAt: Date.now(), model: outcome.model ?? null },
       warnings: outcome.warnings ?? [],
-      errors: [],
-      validation: outcome.validation ?? 'valid',
+      errors,
+      validation: errors.length ? 'invalid' : (outcome.validation ?? 'valid'),
       payload: JSON.parse(JSON.stringify(outcome.payload ?? null))
     });
+    if (errors.length) {
+      const error = `Résultat de la phase ${row.phase} non conforme au contrat : ${errors.slice(0, 3).join(' ; ')}`;
+      // A preset phase (pending) has nothing to fail: the caller's transaction rolls back.
+      if (row.status !== 'pending')
+        this.repo.updatePhase(row.id, {
+          status: 'failed',
+          result: result as never,
+          error,
+          finishedAt: Date.now()
+        });
+      throw new Error(error);
+    }
     this.repo.transaction(() => {
       if (row.status === 'pending')
         this.repo.updatePhase(row.id, {
@@ -262,7 +308,7 @@ export class Orchestrator {
         });
       this.repo.updatePhase(row.id, {
         status: 'done',
-        result: { ...result, owner: spec.agent } as never,
+        result: result as never,
         finishedAt: Date.now(),
         error: null
       });

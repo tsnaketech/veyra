@@ -57,8 +57,17 @@ export function planRevisionPhases(
     audioChanges: unknown[];
   },
   budget: { maxAiCalls: number; maxRenders: number },
+  sourceAudio?: AudioComposition | null,
 ) {
   const motion = plan.changes.some((c) => Object.keys(c.patch).length > 0);
+  // shortcut: duck windows are absolute and do not follow shifted scenes; a human checks them.
+  const warnings =
+    plan.changes.some((c) => c.patch.durationMs !== undefined) &&
+    sourceAudio?.tracks.some((t) => t.duck.length > 0)
+      ? [
+          "fenêtres d'atténuation en temps absolu : vérifier après décalage des scènes",
+        ]
+      : [];
   const audio = plan.audioChanges.length > 0;
   const agents = [
     "review" as const,
@@ -94,6 +103,7 @@ export function planRevisionPhases(
     plan: result,
     affectedAgents: agents,
     affectedPhases: result.phases.map((p) => p.phase),
+    warnings,
   };
 }
 

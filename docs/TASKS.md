@@ -149,3 +149,12 @@ Groupe indivisible : mesures audio → verdicts et expertise honnête → interf
 | T088 | Vérification des corrections audio et faits mesurés pour l'expert | Terminée ; verdict `applied` du ducking mesuré (`production.test.ts`), expertise simulée « audio non écouté » (`packages/ai/src/evaluation.test.ts`) |
 | T089 | Panneaux production/audio, actions et annotations par plage/piste | Terminée ; E2E « audio UI » (import, arrêt/reprise, pistes, commentaire de plage, image réutilisée) ; FramePlayer conservé |
 | T090 | Tests, E2E si Chrome disponible, documentation et mémoire | Terminée le 2026-10-29 ; 508 tests, 5/5 E2E (2,0 min), check et lint réussis, relancés par le Lead ; détail dans TESTING |
+
+## G13 — v0.3 Phase E : corrections d'audit et validation réelle
+
+| ID | Travail | Statut / preuve |
+|---|---|---|
+| T091 | Corrections de l'audit d'architecture : reprise après crash, révision suivie par run, payloads validés par phase, attribution engine/human, garde VFR, avertissements ducking et ancrages, budget de rendus, `inputHash` hors bundle client, D019 | Terminée ; tests ciblés dans `production.test.ts`, `studio.test.ts`, `agents.test.ts`, `production.test.ts` (schemas) |
+| T092 | Validation conservée quand l'utilisateur valide pendant l'expertise QA | Terminée ; runner `human-approval` ; test de régression (échoue sans le correctif) |
+| T093 | E2E audiovisuel réel en 11 étapes et migration 0003 → 0004 | Terminée ; `tests/v03-audiovisual.e2e.ts` (onsets à ≤ 0,1 ms de card-appear, ffprobe aac 48 kHz 20 s, image réutilisée au bit près, duck mesuré −11,9 dB), `db/migration.test.ts` |
+| T094 | Revue indépendante et corrections | En cours |

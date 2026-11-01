@@ -193,7 +193,8 @@ export class RenderJobRunner {
           durationMs: metadata.durationMs,
           startMs: metadata.startMs ?? 0,
           frameCount: metadata.frameCount ?? frameCount(metadata.durationMs, rate),
-          constantFrameRate: metadata.constantFrameRate ?? true
+          // An engine that cannot prove CFR is not assumed CFR (probe compares r/avg rates).
+          constantFrameRate: metadata.constantFrameRate ?? false
         }
       });
       const durationMs = Math.max(

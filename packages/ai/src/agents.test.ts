@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { audioCompositionSchema } from "@veyra/schemas";
 import {
   FakeAiProvider,
   isAudioFeedback,
@@ -93,6 +94,36 @@ describe("Director", () => {
       budget,
     );
     expect(both.affectedAgents).toEqual(["review", "motion", "audio"]);
+  });
+  it("flags absolute duck windows when a correction shifts scenes", () => {
+    const audio = audioCompositionSchema.parse({
+      schemaVersion: 1,
+      tracks: [
+        {
+          id: "atr_music",
+          assetId: "ast_music",
+          category: "music",
+          label: "Musique",
+          anchor: { type: "absolute", atMs: 0 },
+          duck: [{ startMs: 1000, endMs: 2000, gainDb: -12 }],
+        },
+      ],
+    });
+    const shift = {
+      changes: [{ patch: { durationMs: 5000 } }],
+      audioChanges: [],
+    };
+    expect(planRevisionPhases(shift, budget, audio).warnings).toEqual([
+      "fenêtres d'atténuation en temps absolu : vérifier après décalage des scènes",
+    ]);
+    expect(
+      planRevisionPhases(
+        { changes: [{ patch: { text: "x" } }], audioChanges: [] },
+        budget,
+        audio,
+      ).warnings,
+    ).toEqual([]);
+    expect(planRevisionPhases(shift, budget, null).warnings).toEqual([]);
   });
 });
 

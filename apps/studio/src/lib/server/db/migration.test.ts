@@ -129,3 +129,68 @@ it('upgrades 0002 data to 0003: rows are kept and the audio columns start empty'
   expect(client.pragma('foreign_key_check')).toEqual([]);
   client.close();
 });
+
+it('upgrades 0003 data to 0004: rows are kept and production runs and phases are constrained', () => {
+  dir = mkdtempSync(join(tmpdir(), 'veyra-mig-'));
+  cpSync('drizzle', dir, { recursive: true });
+  const journal = JSON.parse(readFileSync(join(dir, 'meta/_journal.json'), 'utf8'));
+  journal.entries = journal.entries.slice(0, 4);
+  writeFileSync(join(dir, 'meta/_journal.json'), JSON.stringify(journal));
+  const client = new Database(':memory:');
+  client.pragma('foreign_keys = ON');
+  migrate(drizzle(client), { migrationsFolder: dir });
+  const tables = () =>
+    client
+      .prepare(
+        `select name from sqlite_master where type='table' and name like 'production_%' order by name`
+      )
+      .all();
+  expect(tables()).toEqual([]);
+  const storyboard = JSON.stringify({ scenes: [], width: 1920, height: 1080, fps: 30 });
+  const audio = JSON.stringify({ schemaVersion: 1, tracks: [] });
+  client.exec(`insert into projects values ('prj_1','P','{}',1,1)`);
+  client
+    .prepare(
+      `insert into video_revisions (id,project_id,status,storyboard,resolved_config,audio,silent_video_path,created_at,updated_at) values ('rev_1','prj_1','awaiting_approval',?,'{}',?,'/v.mp4',1,1)`
+    )
+    .run(storyboard, audio);
+  client.exec(
+    `insert into feedback (id,project_id,revision_id,timestamp_ms,range_end_ms,audio_track_id,text,status,author,created_at,updated_at) values ('fdb_1','prj_1','rev_1',8000,12000,'atr_1','c','draft','u',1,1)`
+  );
+  const before = {
+    revisions: client.prepare('select * from video_revisions').all(),
+    feedback: client.prepare('select * from feedback').all()
+  };
+
+  migrate(drizzle(client), { migrationsFolder: 'drizzle' });
+  expect(tables()).toEqual([{ name: 'production_phases' }, { name: 'production_runs' }]);
+  expect(client.prepare('select * from video_revisions').all()).toEqual(before.revisions);
+  expect(client.prepare('select * from feedback').all()).toEqual(before.feedback);
+
+  const run = (id: string, status: string) =>
+    client
+      .prepare(
+        `insert into production_runs (id,project_id,kind,status,plan,revision_id,created_at,updated_at) values (?,'prj_1','production',?,'{}','rev_1',1,1)`
+      )
+      .run(id, status);
+  const phase = (id: string, runId: string, name: string, status: string) =>
+    client
+      .prepare(
+        `insert into production_phases (id,run_id,phase,agent,status,created_at,updated_at) values (?,?,?,'director',?,1,1)`
+      )
+      .run(id, runId, name, status);
+  run('run_1', 'waiting');
+  expect(() => run('run_2', 'paused')).toThrow(/CHECK/);
+  phase('phs_1', 'run_1', 'plan', 'done');
+  expect(() => phase('phs_2', 'run_1', 'script', 'cancelled')).toThrow(/CHECK/);
+  expect(() => phase('phs_3', 'run_1', 'plan', 'pending')).toThrow(/UNIQUE/);
+  expect(() => phase('phs_4', 'run_x', 'plan', 'pending')).toThrow(/FOREIGN KEY/);
+  expect(client.prepare('select status, ai_calls from production_runs').all()).toEqual([
+    { status: 'waiting', ai_calls: 0 }
+  ]);
+  expect(client.prepare('select status, attempts from production_phases').all()).toEqual([
+    { status: 'done', attempts: 0 }
+  ]);
+  expect(client.pragma('foreign_key_check')).toEqual([]);
+  client.close();
+});

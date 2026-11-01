@@ -278,3 +278,31 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   tag, version inchangée après `marketplace update` et `plugin update`. Une étape
   manuelle par clone (RUNBOOK). Écart de version avec le CLI de rendu (0.8.209), levé
   le même jour : CLI aligné sur 0.8.214 (rendus identiques au pixel, voir TESTING).
+
+## D019 — Orchestrateur persisté mono-processus et enveloppes validées par phase
+
+- Date : 2026-10-29
+- Statut : acceptée
+- Contexte : un audit d'architecture de la v0.3 a relevé un run bloqué après un
+  arrêt brutal, des payloads de phase jamais validés, une attribution `director`
+  fictive des phases `engine`/`human`, une garde CFR jamais appelée hors tests,
+  un budget `maxRenders` déclaré mais non appliqué et un commentaire promettant
+  plus d'idempotence que le code n'en fournit.
+- Options envisagées : file de tâches multi-processus avec verrous ; cache des
+  phases par `inputHash` entre runs ; orchestrateur unique en mémoire adossé à
+  SQLite.
+- Décision et justification : orchestrateur unique par processus Studio, état
+  persisté dans SQLite (runs, phases, transitions de `core.ts`) ; un run `running`
+  sans exécution en mémoire est orphelin et reprend. Chaque résultat est une
+  enveloppe d'agent (`agent` métier, `engine` ou `human`) dont le payload est
+  validé par le contrat de sa phase avant persistance ; un écart fait échouer la
+  phase (`validation: invalid`, `errors`). Un ancrage audio unique : `absolute`
+  (fixe) ou `event` (suit la scène), sans mélange. CFR uniquement : VFR refusé, et
+  un CFR non mesuré n'est pas supposé. Idempotence : une phase terminée n'est
+  jamais rejouée dans son run ; aucun cache entre runs par hash (`inputHash` est
+  une provenance). Plus simple et vérifiable qu'une file distribuée, suffisant
+  pour un Studio local.
+- Conséquences : pas de coordination multi-processus ; deux processus sur la même
+  base ne doivent pas piloter le même run. Les fenêtres de ducking absolues et les
+  ancrages inrésolus sont signalés `needs-human` avant rendu, pas corrigés.
+  Détail : [MULTI-AGENT-ARCHITECTURE](ai/MULTI-AGENT-ARCHITECTURE.md).

@@ -9,10 +9,12 @@ import {
   extractFramesByIndex
 } from '@veyra/video';
 import {
+  assertConstantFrameRate,
   frameAt,
   frameCount,
   frameTimestampMs,
   newId,
+  resolveAnchor,
   sceneAt,
   type CorrectionBatch,
   type CorrectionVerdict,
@@ -46,7 +48,7 @@ import {
   planRevisionPhases,
   proposeAudio
 } from '@veyra/ai';
-import { visualTimeline, getComponent } from '@veyra/motion';
+import { visualTimeline, getComponent, registryVersion } from '@veyra/motion';
 import { AudioMediaError, probeAudio, meanVolumeDb } from '@veyra/audio';
 import type { createRepository } from './db/repo';
 import type { RenderJobRunner, RenderSettings } from './jobs/runner';
@@ -234,6 +236,26 @@ export class Studio {
       render: {
         run: async (inputs) => {
           const { revisionId } = inputs.composition as { revisionId: string };
+          // Renders of this run: its composed revision and the automatic re-render children.
+          const owned = new Set([revisionId]);
+          for (let grew = true; grew;) {
+            grew = false;
+            for (const r of this.repo.listRevisions(run.projectId)) {
+              const origin = r.resolvedConfig.origin as Record<string, unknown> | undefined;
+              if (
+                !owned.has(r.id) &&
+                r.parentRevisionId &&
+                owned.has(r.parentRevisionId) &&
+                (origin?.autoFix !== undefined || origin?.renderRetry !== undefined)
+              ) {
+                owned.add(r.id);
+                grew = true;
+              }
+            }
+          }
+          const { maxRenders } = run.plan.budget;
+          const remaining = maxRenders - this.repo.renderJobsFor([...owned]).length;
+          if (remaining <= 0) throw new Error(`Budget de rendus épuisé (${maxRenders})`);
           let target = this.repo.getRevision(this.repo.getRun(run.id).revisionId ?? revisionId);
           // Failed revisions are immutable; retry the render in a child, keeping completed phases.
           if (target.status === 'failed') {
@@ -250,8 +272,9 @@ export class Studio {
             );
             this.repo.updateRun(run.id, { revisionId: target.id });
           }
-          await this.render(run.projectId, target, 0);
-          const revision = this.repo.listRevisions(run.projectId).at(-1)!;
+          const revision = this.repo.getRevision(
+            await this.render(run.projectId, target, 0, remaining)
+          );
           this.repo.updateRun(run.id, { revisionId: revision.id });
           const job = this.repo.renderJobsFor([revision.id]).at(-1);
           if (job?.status !== 'succeeded') throw new Error(job?.error ?? 'Échec du rendu');
@@ -277,6 +300,22 @@ export class Studio {
             provider: 'engine',
             validation: 'needs-human'
           };
+        }
+      },
+      // The approve button shows while expert QA still runs: a decision taken then is kept.
+      'human-approval': {
+        run: async () => {
+          const { revisionId } = this.repo.getRun(run.id);
+          const status = revisionId ? this.repo.getRevision(revisionId).status : null;
+          if (status === 'approved')
+            return { kind: 'done', payload: { approvedRevisionId: revisionId }, provider: 'human' };
+          if (status === 'changes_requested')
+            return {
+              kind: 'done',
+              payload: { decision: 'changes_requested' },
+              provider: 'human'
+            };
+          return { kind: 'waiting' };
         }
       }
     };
@@ -359,7 +398,7 @@ export class Studio {
               kind
             )
           );
-          return { kind: 'done', payload: { storyboard }, provider: 'rules' };
+          return { kind: 'done', payload: { storyboard, registryVersion }, provider: 'rules' };
         }
       },
       audio: {
@@ -434,8 +473,10 @@ export class Studio {
   private async render(
     projectId: string,
     revision: Pick<VideoRevision, 'id' | 'storyboard'>,
-    autoFix: number
-  ): Promise<void> {
+    autoFix: number,
+    /** Renders still allowed by the run's budget, this one included. */
+    budget = Infinity
+  ): Promise<string> {
     const now = Date.now();
     const job = this.repo.createRenderJob({
       id: newId('rnd'),
@@ -449,7 +490,7 @@ export class Studio {
     this.repo.touchProject(projectId);
     if (done.status !== 'succeeded') {
       this.say(projectId, 'system', `Échec du rendu : ${done.error ?? 'inconnu'}`);
-      return;
+      return revision.id;
     }
     const report = this.repo.reportsFor([revision.id]).at(-1);
     // Only clearly identified technical defects are retried automatically; creative changes wait for a human.
@@ -460,7 +501,7 @@ export class Studio {
         check.analysisMode === 'deterministic' &&
         (check.severity === 'major' || check.severity === 'critical')
     );
-    if (technical?.length && autoFix < this.settings.quality.maxAutoFixAttempts) {
+    if (technical?.length && autoFix < this.settings.quality.maxAutoFixAttempts && budget > 1) {
       this.repo.transitionRevision(revision.id, 'changes_requested');
       this.say(
         projectId,
@@ -476,7 +517,7 @@ export class Studio {
         String(source.resolvedConfig.aiProvider ?? 'none'),
         source.audio
       );
-      return this.render(projectId, retry, autoFix + 1);
+      return this.render(projectId, retry, autoFix + 1, budget - 1);
     }
     const failed =
       report?.checks.filter((check) => !check.passed && check.analysisMode !== 'not-performed')
@@ -498,6 +539,7 @@ export class Studio {
       await this.requestEvaluation(revision.id).catch((error: unknown) =>
         this.say(projectId, 'system', `Expertise QA impossible : ${message(error)}`)
       );
+    return revision.id;
   }
 
   // --- Annotations: saved locally, never sent to the AI and never rendered on their own.
@@ -517,6 +559,8 @@ export class Studio {
     const max = this.settings.app.review.maxCommentLength;
     if (text.length > max) throw new Error(`Commentaire limité à ${max} caractères`);
     const media = revision.media;
+    // Frame indices are only exact at a constant frame rate (VFR refused).
+    assertConstantFrameRate(media);
     let frameIndex: number | null = null;
     let timestampMs: number;
     if (media && input.frameIndex != null) {
@@ -830,7 +874,8 @@ export class Studio {
     const manual = 'tracks' in payload;
     const routing = planRevisionPhases(
       manual ? { changes: [], audioChanges: [payload] } : payload,
-      this.productionBudget()
+      this.productionBudget(),
+      source.audio
     );
     const plan: ProductionPlan = {
       ...routing.plan,
@@ -851,6 +896,8 @@ export class Studio {
         plan: {
           kind: 'done',
           provider,
+          warnings: routing.warnings,
+          validation: routing.warnings.length ? 'needs-human' : 'valid',
           payload: manual
             ? payload
             : {
@@ -882,7 +929,8 @@ export class Studio {
               source.storyboard,
               plan!.changes,
               this.settings.app.maxDurationSeconds * 1000
-            )
+            ),
+            registryVersion
           }
         })
       },
@@ -913,11 +961,22 @@ export class Studio {
               this.repo.updateBatch(batch.id, { status: 'applied', resultRevisionId: revision.id });
             return revision;
           });
+          // Anchors that no longer resolve are reported before the render, not only after it.
+          const events = visualTimeline(child.storyboard, {
+            num: Math.round(child.storyboard.fps),
+            den: 1
+          });
+          const warnings = (child.audio?.tracks ?? []).flatMap((track) => {
+            const resolved = resolveAnchor(track.anchor, events);
+            return 'error' in resolved ? [`Piste ${track.label} : ${resolved.error.message}`] : [];
+          });
           return {
             kind: 'done',
             payload: { revisionId: child.id },
             revisionId: child.id,
-            provider: 'engine'
+            provider: 'engine',
+            warnings,
+            validation: warnings.length ? 'needs-human' : 'valid'
           };
         }
       }

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import { idSchema, storyboardSchema, revisionPlanSchema } from "./core";
 export { qualityReportSchema } from "./core";
@@ -58,16 +57,6 @@ export const productionPlanSchema = z.object({
   }),
   reason: z.string().min(1),
 });
-export const scriptSpecificationSchema = z.object({
-  title: z.string(),
-  beats: z.array(
-    z.object({
-      sceneRef: z.number().int().nonnegative(),
-      narration: z.string().optional(),
-      intent: z.string(),
-    }),
-  ),
-});
 export const storyboardSpecification = storyboardSchema;
 export const motionCompositionSchema = z.object({
   storyboard: storyboardSchema,
@@ -82,7 +71,8 @@ export function agentResultSchema<T extends z.ZodType>(payloadSchema: T) {
   return z.object({
     id: idSchema("phs"),
     schemaVersion: z.literal(1),
-    agent: agentIdSchema,
+    // Engine and human phases are attributed to themselves, as in the plan.
+    agent: z.union([agentIdSchema, z.enum(["engine", "human"])]),
     phase: phaseSchema,
     revisionId: idSchema("rev").nullable(),
     dependsOn: z.array(idSchema("phs")),
@@ -104,20 +94,6 @@ export function agentResultSchema<T extends z.ZodType>(payloadSchema: T) {
     validation: z.enum(["pending", "valid", "invalid", "needs-human"]),
     payload: payloadSchema,
   });
-}
-/** JSON values only: reject lossy inputs rather than hash an ambiguous encoding. */
-export function inputHash(value: unknown): string {
-  const json = z.json().parse(value);
-  const stable = (v: z.infer<ReturnType<typeof z.json>>): string => {
-    if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
-    if (v !== null && typeof v === "object")
-      return `{${Object.keys(v)
-        .sort()
-        .map((k) => `${JSON.stringify(k)}:${stable(v[k])}`)
-        .join(",")}}`;
-    return JSON.stringify(v);
-  };
-  return createHash("sha256").update(stable(json)).digest("hex");
 }
 export type ProductionBrief = z.infer<typeof productionBriefSchema>;
 export type ProductionPlan = z.infer<typeof productionPlanSchema>;

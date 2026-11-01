@@ -23,7 +23,7 @@ let client: Database.Database, root: string, repo: Repo;
 
 const colorEngine = () => sharedColorEngine((id) => repo.getRevision(id).storyboard);
 // Test-only engine whose probe is reported as a real measurement, so deterministic QA applies.
-function measuredEngine(durationMs: number): VideoEngine {
+function measuredEngine(durationMs: number, constantFrameRate = true): VideoEngine {
   const fake = new FakeEngine({
     probe: {
       durationMs,
@@ -33,7 +33,8 @@ function measuredEngine(durationMs: number): VideoEngine {
       codec: 'h264',
       audioStreams: [],
       size: 100,
-      blackSegments: []
+      blackSegments: [],
+      constantFrameRate
     }
   });
   return {
@@ -360,4 +361,15 @@ it('refuses work without AI and rejects comments outside the video', async () =>
   await expect(
     app.addAnnotation({ revisionId: revision.id, timestampMs: 25000, text: 'x', author: 'u' })
   ).rejects.toThrow(/hors de la vidéo/);
+});
+
+it('refuses frame annotations on a variable frame rate render', async () => {
+  const app = studio(new FakeAiProvider(), measuredEngine(20000, false));
+  const project = app.createProject('VFR');
+  await app.sendPrompt(project.id, prompt);
+  const [revision] = repo.listRevisions(project.id);
+  expect(revision.media?.constantFrameRate).toBe(false);
+  await expect(
+    app.addAnnotation({ revisionId: revision.id, frameIndex: 10, text: 'x', author: 'u' })
+  ).rejects.toThrow(/fréquence variable/);
 });

@@ -2,18 +2,17 @@ import { expect, it } from "vitest";
 import { z } from "zod";
 import {
   agentResultSchema,
-  inputHash,
   motionCompositionSchema,
   newId,
   productionBriefSchema,
   productionPlanSchema,
   reviewPlanSchema,
   revisionPlanSchema,
-  scriptSpecificationSchema,
   storyboardSchema,
   storyboardSpecification,
 } from "./index";
 import { qualityReportSchema as contractReport } from "./production";
+import { inputHash } from "./hash";
 import { qualityReportSchema } from "./core";
 it("hashes nested JSON independently of key order, preserving array order", () => {
   expect(inputHash({ b: [{ z: 1, a: 2 }], a: 3 })).toBe(
@@ -52,13 +51,15 @@ const result = {
 it("validates a typed result envelope and new prefixes", () => {
   const schema = agentResultSchema(z.object({ value: z.number() }));
   expect(schema.parse(result).payload).toEqual({ value: 1 });
+  for (const agent of ["engine", "human"])
+    expect(schema.parse({ ...result, agent }).agent).toBe(agent);
   expect(newId("run")).toMatch(/^run_/);
   for (const patch of [
     { id: "run_a" },
     { dependsOn: ["rev_a"] },
     { revisionId: "phs_a" },
     { schemaVersion: 2 },
-    { agent: "engine" },
+    { agent: "unknown" },
     { phase: "unknown" },
     { provider: "unknown" },
     { validation: "ok" },
@@ -98,7 +99,7 @@ it("extends an existing revision plan and preserves sparse audio patches", () =>
   expect(extended.audioChanges[0].patch).toEqual({ gainDb: -3 });
   expect(revisionPlanSchema.parse(plan)).toEqual(plan);
 });
-it("validates brief, script and engine/human ownership", () => {
+it("validates brief and engine/human ownership", () => {
   const brief = {
     prompt: "Démo",
     targetDurationMs: 20000,
@@ -110,12 +111,6 @@ it("validates brief, script and engine/human ownership", () => {
   expect(
     productionBriefSchema.safeParse({ ...brief, targetDurationMs: -1 }).success,
   ).toBe(false);
-  expect(
-    scriptSpecificationSchema.safeParse({
-      title: "Démo",
-      beats: [{ sceneRef: 0, intent: "Présenter" }],
-    }).success,
-  ).toBe(true);
   const plan = {
     phases: [
       {

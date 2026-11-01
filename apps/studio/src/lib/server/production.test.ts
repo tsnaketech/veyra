@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { ProjectStorage } from '@veyra/storage';
 import { runProcess } from '@veyra/video';
 import { AssistedProvider, FakeAiProvider, planProduction } from '@veyra/ai';
-import type { Phase, ProductionPlan } from '@veyra/schemas';
+import { newId, type Phase, type ProductionPlan } from '@veyra/schemas';
 import { createRepository } from './db/repo';
 import * as schema from './db/schema';
 import { defaultConfigDir, loadRenderSettings, RenderJobRunner } from './jobs/runner';
@@ -27,6 +27,7 @@ let orchestrator: Orchestrator;
 let projectId: string;
 let renders: number;
 let failRender: boolean;
+let onRender: (() => void) | null;
 
 function studio(ai = new FakeAiProvider() as FakeAiProvider | AssistedProvider, review = false) {
   const settings = loadStudioSettings(loadRenderSettings(), defaultConfigDir());
@@ -39,6 +40,7 @@ function studio(ai = new FakeAiProvider() as FakeAiProvider | AssistedProvider, 
       ...engine,
       render: async (...args: Parameters<typeof engine.render>) => {
         renders++;
+        onRender?.();
         if (failRender) throw new Error('Rendu indisponible');
         return engine.render(...args);
       }
@@ -57,6 +59,7 @@ beforeEach(() => {
   repo = createRepository(db);
   renders = 0;
   failRender = false;
+  onRender = null;
   app = studio();
   projectId = app.createProject('Production').id;
   orchestrator = new Orchestrator(repo, () => {});
@@ -71,6 +74,16 @@ const done = (payload: unknown = {}) => ({
   payload,
   provider: 'rules' as const
 });
+// Minimal payloads satisfying each phase contract.
+const draft = {
+  title: 'draft',
+  scenes: [{ text: 'Bonjour', durationMs: 2000, enter: 'fade', animationMs: 500 }]
+};
+const motionPayload = {
+  storyboard: { scenes: [], width: 1920, height: 1080, fps: 30 },
+  registryVersion: 1
+};
+const audioPayload = { schemaVersion: 1, tracks: [] };
 function plan(names: Phase[], attempts = 1, maxAiCalls = 3): ProductionPlan {
   const full = planProduction(
     { audio: { wanted: true, assetIds: ['ast_music'] } },
@@ -111,22 +124,22 @@ it('respects dependencies and starts motion and audio before either finishes', a
     script: {
       run: async () => {
         started.push('script');
-        return done({ title: 'draft' });
+        return done(draft);
       }
     },
     motion: {
       run: async (inputs) => {
-        expect(inputs.script).toEqual({ title: 'draft' });
+        expect(inputs.script).toEqual(draft);
         started.push('motion');
         await gate.promise;
-        return done();
+        return done(motionPayload);
       }
     },
     audio: {
       run: async () => {
         started.push('audio');
         await gate.promise;
-        return done();
+        return done(audioPayload);
       }
     },
     composition: {
@@ -146,7 +159,7 @@ it('respects dependencies and starts motion and audio before either finishes', a
 
 it('retries up to maxAttempts and resumes only the failed phase', async () => {
   const run = create(plan(['script', 'motion'], 2));
-  const script = vi.fn(async () => done());
+  const script = vi.fn(async () => done(draft));
   const motion = vi.fn(async () => {
     throw new Error('échec');
   });
@@ -155,7 +168,7 @@ it('retries up to maxAttempts and resumes only the failed phase', async () => {
   ).toBe('failed');
   expect(script).toHaveBeenCalledTimes(1);
   expect(motion).toHaveBeenCalledTimes(2);
-  const repaired = vi.fn(async () => done());
+  const repaired = vi.fn(async () => done(motionPayload));
   expect(
     (await orchestrator.resume(run.id, { script: { run: script }, motion: { run: repaired } }))
       .status
@@ -166,12 +179,12 @@ it('retries up to maxAttempts and resumes only the failed phase', async () => {
 
 it('stops between phases and resumes without recomputing completed work', async () => {
   const run = create(plan(['script', 'motion']));
-  const motion = vi.fn(async () => done());
+  const motion = vi.fn(async () => done(motionPayload));
   const runners: Runners = {
     script: {
       run: async () => {
         orchestrator.stop(run.id);
-        return done();
+        return done(draft);
       }
     },
     motion: { run: motion }
@@ -184,11 +197,11 @@ it('stops between phases and resumes without recomputing completed work', async 
 
 it('fails the phase when the AI budget is exhausted', async () => {
   const run = create(plan(['script', 'motion'], 2, 1));
-  const motion = vi.fn(async () => done());
+  const motion = vi.fn(async () => done(motionPayload));
   expect(
     (
       await orchestrator.drive(run.id, {
-        script: { usesAi: true, run: async () => done() },
+        script: { usesAi: true, run: async () => done(draft) },
         motion: { usesAi: true, run: motion }
       })
     ).status
@@ -201,7 +214,7 @@ it('fails the phase when the AI budget is exhausted', async () => {
 it('waits without a runner and finishes after an external result', async () => {
   const run = create(plan(['script']));
   expect((await orchestrator.drive(run.id, {})).status).toBe('waiting');
-  orchestrator.complete(run.id, 'script', done({ title: 'import' }));
+  orchestrator.complete(run.id, 'script', done(draft));
   expect((await orchestrator.drive(run.id, {})).status).toBe('completed');
 });
 
@@ -210,7 +223,7 @@ it('does not execute duplicate drives concurrently', async () => {
   const gate = deferred();
   const script = vi.fn(async () => {
     await gate.promise;
-    return done();
+    return done(draft);
   });
   const first = orchestrator.drive(run.id, { script: { run: script } });
   const second = orchestrator.drive(run.id, { script: { run: script } });
@@ -227,9 +240,37 @@ it('persists phase results until human approval and exposes them in the snapshot
   expect(phases.at(-1)).toMatchObject({ phase: 'human-approval', status: 'waiting' });
   expect(phases.slice(0, -1).every((p) => p.status === 'done' && p.result)).toBe(true);
   expect(phases.find((p) => p.phase === 'qa')?.result?.validation).toBe('needs-human');
+  const composition = phases.find((p) => p.phase === 'composition')?.result;
+  expect(composition?.agent).toBe('engine');
+  expect(composition).not.toHaveProperty('owner');
   expect(app.snapshot(projectId)).toMatchObject({ runs: [run], phases });
   app.approve(run.revisionId!);
   expect(repo.getRun(run.id).status).toBe('completed');
+});
+
+it('keeps an approval given while QA still runs, before the human-approval phase', async () => {
+  // The approve button is shown as soon as the revision awaits approval, before QA ends.
+  const reportsFor = repo.reportsFor.bind(repo);
+  let approved = false;
+  const spy = vi.spyOn(repo, 'reportsFor').mockImplementation((ids) => {
+    const run = repo.listRuns(projectId)[0];
+    const qaRunning =
+      run && repo.phasesFor([run.id]).some((p) => p.phase === 'qa' && p.status === 'running');
+    if (!approved && qaRunning) {
+      approved = true;
+      app.approve(ids[0]);
+    }
+    return reportsFor(ids);
+  });
+  await app.sendPrompt(projectId, prompt);
+  spy.mockRestore();
+  const [run] = repo.listRuns(projectId);
+  expect(approved).toBe(true);
+  expect(repo.getRun(run.id).status).toBe('completed');
+  expect(repo.phasesFor([run.id]).at(-1)).toMatchObject({
+    phase: 'human-approval',
+    status: 'done'
+  });
 });
 
 async function importWav(name: string, category: 'music' | 'sfx', duration: number) {
@@ -470,4 +511,101 @@ it('resumes a failed render in a child without rerunning completed phases', asyn
   expect(repo.getRevision(failed.id)).toEqual(failed);
   expect(repo.phasesFor([run.id]).find((p) => p.phase === 'script')).toEqual(script);
   expect(repo.getRun(run.id)).toMatchObject({ status: 'waiting', revisionId: child.id });
+});
+
+it('resumes a run orphaned by a crash, from a new orchestrator over the same database', async () => {
+  const run = create(plan(['script', 'motion']));
+  // The process died while the script phase was running.
+  repo.updatePhase(orchestrator.phases(run.id)[0].id, { status: 'running', attempts: 1 });
+  const fresh = new Orchestrator(repo, () => {});
+  const script = vi.fn(async () => done(draft));
+  const result = await fresh.resume(run.id, {
+    script: { run: script },
+    motion: { run: async () => done(motionPayload) }
+  });
+  expect(result.status).toBe('completed');
+  expect(script).toHaveBeenCalledTimes(1);
+});
+
+it('fails a phase whose payload breaks its contract, keeping the invalid envelope', async () => {
+  const run = create(plan(['script', 'motion']));
+  const result = await orchestrator.drive(run.id, {
+    script: { run: async () => done(draft) },
+    motion: { run: async () => done({ storyboard: 'x' }) }
+  });
+  expect(result.status).toBe('failed');
+  const motion = orchestrator.phases(run.id).find((p) => p.phase === 'motion')!;
+  expect(motion.status).toBe('failed');
+  expect(motion.error).toMatch(/phase motion non conforme au contrat/);
+  expect(motion.result).toMatchObject({ validation: 'invalid', agent: 'motion' });
+  expect((motion.result!.errors as string[]).length).toBeGreaterThan(0);
+});
+
+it('records the revision rendered from its own target when another revision appears', async () => {
+  onRender = () => {
+    onRender = null;
+    const now = Date.now() + 1000;
+    repo.createRevision({
+      id: newId('rev'),
+      projectId,
+      parentRevisionId: null,
+      storyboard: { scenes: [], width: 1920, height: 1080, fps: 30 },
+      audio: null,
+      resolvedConfig: { origin: {}, aiProvider: 'none' },
+      videoPath: null,
+      error: null,
+      createdAt: now,
+      updatedAt: now
+    });
+  };
+  await app.sendPrompt(projectId, prompt);
+  const [run] = repo.listRuns(projectId);
+  const [rendered, other] = repo.listRevisions(projectId);
+  expect(other).toBeDefined();
+  expect(run).toMatchObject({ status: 'waiting', revisionId: rendered.id });
+  expect(rendered.status).toBe('awaiting_approval');
+});
+
+it('enforces the render budget across resumes', async () => {
+  failRender = true;
+  await app.sendPrompt(projectId, prompt);
+  const [run] = repo.listRuns(projectId);
+  for (let i = 1; i < run.plan.budget.maxRenders; i++) await app.resumeProduction(run.id);
+  expect(renders).toBe(run.plan.budget.maxRenders);
+  await app.resumeProduction(run.id);
+  expect(renders).toBe(run.plan.budget.maxRenders);
+  expect(repo.getRun(run.id)).toMatchObject({
+    status: 'failed',
+    error: expect.stringMatching(/Budget de rendus épuisé/)
+  });
+});
+
+it('reports audio anchors that no longer resolve before rendering', async () => {
+  const asset = await importWav('music.wav', 'music', 3);
+  await app.sendPrompt(projectId, prompt);
+  const [parent] = repo.listRevisions(projectId);
+  await app.reviseAudio(parent.id, {
+    schemaVersion: 1,
+    tracks: [
+      {
+        id: newId('atr'),
+        assetId: asset.id,
+        category: 'music',
+        label: 'Musique',
+        anchor: {
+          type: 'event',
+          sceneId: parent.storyboard.scenes[0].id,
+          event: 'absent',
+          offsetMs: 0
+        }
+      }
+    ]
+  });
+  const run = repo.listRuns(projectId).at(-1)!;
+  const composition = repo.phasesFor([run.id]).find((p) => p.phase === 'composition')!;
+  expect(composition.status).toBe('done');
+  expect(composition.result).toMatchObject({
+    validation: 'needs-human',
+    warnings: [expect.stringMatching(/Événement absent/)]
+  });
 });

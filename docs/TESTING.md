@@ -201,3 +201,23 @@ Un premier passage E2E a échoué (5 min) : nom de stockage `ast_<uuid>-…` aff
 place du nom d'origine ; corrigé dans le Studio, l'attente du test est conservée.
 Le délai d'attente de `awaiting_approval` du parcours MVP passe à 90 s : la QA
 (contrôles audio inclus) se termine après l'apparition du lecteur.
+
+## Résultats du 2026-10-29, v0.3 Phase E (relancés par le Lead après intégration)
+
+| Commande | Résultat |
+|---|---|
+| `pnpm check` / `pnpm lint` | Réussis |
+| `pnpm --filter studio build` | Réussi ; plus d'externalisation de `node:crypto` dans le bundle client |
+| `pnpm test` | 517 réussis : schemas 317, config 26, storage 10, motion 13, ai 41, video 6, hyperframes-adapter 18, audio 19, studio 67 |
+| `pnpm --filter studio test:e2e` | **6 réussis, 2,7 min** ; `v03-audiovisual.e2e.ts` 37,6 s sur rendu HyperFrames réel |
+
+Parcours `v03-audiovisual` : projet, composition SaaS, import de deux WAV générés
+par FFmpeg, trois pops ancrés sur `card-appear`, MP4 vérifié par ffprobe (h264 +
+aac 48 kHz, 2 canaux, 20 s), onsets mesurés à 0,06–0,08 ms des événements visuels
+(tolérance 40 ms), commentaire de plage 8–12 s, plan audio, révision v3 avec image
+identique au bit près et v2 inchangée, QA « Mesuré » / « Non réalisé », verdict
+`applied` (−11,9 dB mesurés), validation humaine et run `completed`.
+Limite : la musique bouclée chevauche les pops, le contrôle d'onsets de
+l'application est donc `not-performed` ; la synchronisation est prouvée par la
+mesure indépendante du test. Démo réelle : `projects/_demo/demo-audio.mp4`
+(ignoré par git) produite dans le worktree du Testing Agent.
