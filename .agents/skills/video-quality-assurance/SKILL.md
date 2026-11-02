@@ -30,4 +30,6 @@ description: Use when changing QA checks or reports (packages/video deterministi
   correction sont `minor` : ils n'en déclenchent jamais.
 - Le QA ne valide jamais une révision : elle reste `awaiting_approval` jusqu'à l'action humaine.
 
+- Contre-expertise manuelle seulement : `ffmpeg-skill` (`probe.py`, `check.py --platform`, `python3 -B`) ; jamais appelé par le QA automatique. qc-skill : POC non réalisé ([SKILLS-STRATEGY](../../../docs/ai/SKILLS-STRATEGY.md)).
+
 Référence : [QUALITY-STANDARDS](../../../docs/video/QUALITY-STANDARDS.md).

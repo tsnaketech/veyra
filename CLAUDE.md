@@ -10,6 +10,10 @@ Les consignes communes sont dans `AGENTS.md` ; ne pas les recopier ici.
   (prompt-to-video, video-rendering, video-review, video-quality-assurance,
   veyra-assisted-task). Composants animés : docs/video/MOTION-ENGINE.md.
   Les charger avant de modifier le domaine correspondant.
+- Skills externes (GSAP pour la 2D, Three.js pour la 3D seulement, playwright-cli,
+  ffmpeg-skill, remotion-best-practices) : à la demande, un seul à la fois, après
+  le skill Veyra du domaine ; jamais dans le pipeline. Matrice et règles :
+  [SKILLS-STRATEGY](docs/ai/SKILLS-STRATEGY.md).
 - Vérifications : `pnpm test`, `pnpm check`, `pnpm lint` ; rendu réel et
   parcours complet : voir [TESTING](docs/TESTING.md) (Chrome headless requis).
 - Lancer le Studio en local avec `VEYRA_AI_PROVIDER=fake` pour les tests ; ne

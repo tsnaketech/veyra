@@ -165,8 +165,19 @@ Source : [OPENMONTAGE-SKILLS-EVALUATION](research/OPENMONTAGE-SKILLS-EVALUATION.
 
 | ID | Travail | Statut / preuve attendue |
 |---|---|---|
-| T095 | `animated-title` (`reveal: words`) : supprimer le « flash » du titre complet avant la révélation | À faire ; test de rendu image par image sur les premières frames |
+| T095 | `animated-title` (`reveal: words`) : supprimer le « flash » du titre complet avant la révélation | À faire ; cause reproduite (`immediateRender:false` sur les entrées décalées, SKILLS-STRATEGY § 6.1) ; test de rendu image par image sur les premières frames |
 | T096 | `feature-cards` : supprimer la double entrée des cartes ; `call-to-action` : titre avant bouton et mention | À faire ; frames de contrôle |
 | T097 | Mots orphelins et `align: left` déséquilibré dans les composants | À faire ; aperçus réels |
 | T098 | Enrichir `prompt-to-video` et `instructions.storyboard` : règles de récit et règle anti-provisoires (pas de « alterner align ») | À faire après T095–T097 ; nouvel A/B ≥ 3 essais, ablation et relecture humaine |
 | T099 | Règles sonores de l'Audio Agent (une musique, niveau et avance des effets, transitions) | À faire ; validation à l'écoute humaine |
+
+## G15 — Skills externes et v0.4 (à planifier)
+
+Source : [SKILLS-STRATEGY](ai/SKILLS-STRATEGY.md), sections 2, 6, 8 et 11. Audit du 2026-11-02 : documentation, `.gitignore` et consignes de skills seulement.
+
+| ID | Travail | Statut / preuve attendue |
+|---|---|---|
+| T100 | FFmpeg de la machine : recompiler 9.0.2 avec libx264, zlib, freetype et libass, ou revenir à la version Debian ; actualiser RUNBOOK | **Bloquant**, décision de l'utilisateur. Constaté : `test:slow` 2 échecs, `@veyra/audio` 3/19 échecs, `@veyra/video` en échec avec 9.0.2 ; tout réussit avec `/usr/bin` en tête du `PATH`. Preuve attendue : mêmes commandes et `ffmpeg-skill doctor` réussis |
+| T101 | Normalisation de sonie dans l'Audio Engine (`loudnorm` en deux passes, cible dans `config/audio.yaml`) et contrôle « Diffusion » consultatif | À faire ; contrôle « Niveau sonore » réussi sur un rendu réel |
+| T102 | POC qc-skill (commit `a53c30d`) dans un venv isolé sous bwrap : photosensibilité BT.1702, contraste WCAG par zone, plage de luminance sur les vidéos du banc A/B | En attente de l'autorisation d'exécuter du code externe ; comparaison avec les mesures Veyra |
+| T103 | POC Three.js (copie locale épinglée, `hf-seek`, rendu WebGL sous bwrap) | Seulement sur besoin produit approuvé ; aucune dépendance avant |

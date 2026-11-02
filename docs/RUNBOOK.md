@@ -2,6 +2,10 @@
 
 Prérequis vérifiés le 2026-10-28 : Node 24.19, pnpm 12.6.0, ffmpeg/ffprobe 5.1.9,
 bwrap et prlimit (util-linux), outils de compilation pour better-sqlite3.
+Le `ffmpeg` trouvé en premier dans le `PATH` doit fournir libx264 et l'encodeur PNG
+(`ffmpeg -encoders | grep -E "libx264|png"`). Le 2026-11-02, un FFmpeg 9.0.2 compilé
+sans eux dans `/usr/local/bin` a fait échouer le rendu réel et les tests : voir
+[SKILLS-STRATEGY § 2](ai/SKILLS-STRATEGY.md#2-blocage-ffmpeg-constaté-à-traiter-en-premier).
 
 ## Installation
 

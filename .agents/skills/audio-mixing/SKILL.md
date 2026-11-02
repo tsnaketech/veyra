@@ -23,6 +23,8 @@ description: Use when touching mixing, mux or audio measurements (packages/audio
   une autre piste, le contrôle est `not-performed`.
 - Aucun contrôle audio ne déclenche de nouveau rendu automatique.
 
+- `ffmpeg-skill` (`loudness.py --measure`) sert de contre-mesure manuelle ; il ne remplace ni `mixToWav` ni `muxAudio`. `loudnorm` et `ebur128` diffèrent d'environ 0,3 LU.
+
 Vérifier avec de vrais médias FFmpeg (lavfi `sine`, `anullsrc`, sinus écrêté,
 trou de silence), jamais avec des mesures simulées :
 `pnpm --filter @veyra/audio test`, `pnpm --filter studio test`, `pnpm check`.

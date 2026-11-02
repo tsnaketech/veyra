@@ -38,3 +38,10 @@ revue). Développement par sous-agents Claude Code (Architecture, Frontend, Audi
 Engineer, Integration Fix, Testing, Independent Reviewer) intégré et revérifié par
 le Lead. Limites restantes : voir AUDIO-PIPELINE « Limites connues » et TASKS T094.
 Prochaine étape : selon priorité utilisateur ; aucun push ni PR.
+
+2026-11-02 — Audit des skills externes et des candidats kajisho5 :
+[SKILLS-STRATEGY](../docs/ai/SKILLS-STRATEGY.md). **À revérifier en reprise** : le
+FFmpeg 9.0.2 de `/usr/local/bin` (sans libx264 ni PNG) casse le rendu et les tests
+(T100) ; tant qu'il n'est pas corrigé, lancer les tests avec `PATH=/usr/bin:$PATH`.
+POC qc-skill (T102) bloqué : exécution de code externe refusée par l'environnement.
+Prochaine étape : T100, puis T095 (cause reproduite).

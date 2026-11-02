@@ -13,6 +13,9 @@ description: Use when touching HyperFrames composition, the bwrap sandbox, the r
 - Les erreurs du CLI arrivent souvent sur stdout : `ProcessError.stderrTail` contient la fin de stdout + stderr.
 - Une révision dont le rendu échoue passe à `failed` ; on ne la réutilise pas.
 
+- Animation : charger `gsap-core` ou `gsap-timeline` (skills externes) avant de modifier les tweens ; les règles HyperFrames priment. Three.js seulement après un POC 3D approuvé ; aucun code Remotion ([SKILLS-STRATEGY](../../../docs/ai/SKILLS-STRATEGY.md)).
+- `ffmpeg` du `PATH` avec libx264 et PNG ; sinon le rendu échoue (`hyperframes.mjs render exited 1`).
+
 Prérequis machine : `hyperframes browser ensure` (Chrome headless dans `~/.cache/hyperframes`).
 Vérifier : `pnpm --filter @veyra/hyperframes-adapter test:slow` (rendu réel 6 s + 5 composants 20 s).
 Référence : [VIDEO-PIPELINE](../../../docs/video/VIDEO-PIPELINE.md).

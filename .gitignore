@@ -18,5 +18,13 @@ coverage/
 /.agents/skills/media-use/
 /.agents/skills/remotion-to-hyperframes/
 /.agents/skills/slideshow/
+# Other external skills (installed by the user, documented in docs/ai/SKILLS-STRATEGY.md).
+/.agents/skills/gsap-*/
+/.agents/skills/threejs-*/
+/.agents/skills/playwright-cli/
+/.agents/skills/remotion-best-practices/
+/.agents/skills/ffmpeg-skill/
 # Written by `npx skills`: records hashes but no ref or commit, so it cannot restore exact versions.
 /skills-lock.json
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
