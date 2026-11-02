@@ -158,3 +158,15 @@ Groupe indivisible : mesures audio → verdicts et expertise honnête → interf
 | T092 | Validation conservée quand l'utilisateur valide pendant l'expertise QA | Terminée ; runner `human-approval` ; test de régression (échoue sans le correctif) |
 | T093 | E2E audiovisuel réel en 11 étapes et migration 0003 → 0004 | Terminée ; `tests/v03-audiovisual.e2e.ts` (onsets à ≤ 0,1 ms de card-appear, ffprobe aac 48 kHz 20 s, image réutilisée au bit près, duck mesuré −11,9 dB), `db/migration.test.ts` |
 | T094 | Revue indépendante et corrections | Terminée ; revue par un sous-agent sans code écrit : 0 critique, 2 majeures, 6 mineures. Corrigées avec tests (rouges sans correctif) : validation pendant un arrêt (M1), reprise d'un run interrompu puis arrêté (M2), import assisté refusé sans verrou (m1), promesse non gérée (m2), boucle avec point d'entrée refusée (m3), lecture bornée à la source (m4). Limites documentées : m5, m6 et points « Info » ([AUDIO-PIPELINE](video/AUDIO-PIPELINE.md)) |
+
+## G14 — Suites de l'évaluation des skills créatifs (à planifier)
+
+Source : [OPENMONTAGE-SKILLS-EVALUATION](research/OPENMONTAGE-SKILLS-EVALUATION.md), sections 8, 11 et 12.
+
+| ID | Travail | Statut / preuve attendue |
+|---|---|---|
+| T095 | `animated-title` (`reveal: words`) : supprimer le « flash » du titre complet avant la révélation | À faire ; test de rendu image par image sur les premières frames |
+| T096 | `feature-cards` : supprimer la double entrée des cartes ; `call-to-action` : titre avant bouton et mention | À faire ; frames de contrôle |
+| T097 | Mots orphelins et `align: left` déséquilibré dans les composants | À faire ; aperçus réels |
+| T098 | Enrichir `prompt-to-video` et `instructions.storyboard` : règles de récit et règle anti-provisoires (pas de « alterner align ») | À faire après T095–T097 ; nouvel A/B ≥ 3 essais, ablation et relecture humaine |
+| T099 | Règles sonores de l'Audio Agent (une musique, niveau et avance des effets, transitions) | À faire ; validation à l'écoute humaine |
