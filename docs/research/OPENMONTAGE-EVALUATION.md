@@ -7,6 +7,13 @@ soumettre à un avocat spécialisé.
 
 ## 1. Synthèse et recommandation
 
+> Mise à jour du 2026-11-02 : Veyra est désormais destiné à un usage personnel et
+> local. La conclusion a été réévaluée par un prototype réel (scénario A) et une
+> analyse de l'effort du scénario B : voir la **partie 2** (sections 12 à 19).
+> La recommandation reste de garder Veyra comme moteur ; la licence n'est plus le
+> motif principal.
+
+
 **Recommandation : conserver Veyra comme moteur, ne pas intégrer de code
 OpenMontage, et combler les manques de Veyra en appelant directement les
 bibliothèques amont qu'OpenMontage enveloppe (faster-whisper, Piper, librosa,
@@ -312,3 +319,220 @@ et les schémas `brief`, `script`, `scene_plan`, `edit_decisions`,
 `test_music_library.py`, `tests/contracts/test_phase3_contracts.py`.
 Commits : `195eab2` (examiné), `8190911` (suppression de la CLA), `53e34e6`,
 `cbf3962`, `85a6347` (correctifs de sécurité), `git log` et `git shortlog`.
+
+---
+
+# Partie 2 — Prototype fonctionnel (2026-11-02)
+
+Contexte : Veyra devient un outil personnel et local. Pour un usage privé sans
+distribution ni service offert à des tiers, les obligations de l'AGPL (§4–6
+distribution, §13 réseau) ne sont en principe pas déclenchées
+(interprétation, pas un avis juridique). La question devient donc purement
+technique : OpenMontage fait-il gagner du temps ?
+
+Choix de l'utilisateur après le scénario A : **option 3**, le scénario B est
+réduit à une évaluation de l'effort d'adaptation ; aucun adaptateur n'est
+développé et le moteur Veyra n'est pas modifié.
+
+## 12. Scénario A — production réelle avec OpenMontage
+
+### Environnement
+
+| Élément | Valeur (mesurée) |
+|---|---|
+| Laboratoire | `/home/user/project/openmontage-lab/` (hors du dépôt Veyra, conservé) |
+| OpenMontage | Clone séparé, HEAD détaché `195eab24478dc9363326aec437aefc3701635ddf`, source non modifiée (`git status` : seuls des fichiers ignorés) |
+| Python | venv créé par `uv` 0.12.3 (pas d'`ensurepip` sur l'hôte), Python 3.11.2 système |
+| Dépendances Python | `uv pip install --only-binary :all: -r requirements.txt` : 46 paquets, roues uniquement, 1,4 s ; versions non verrouillées (`pip-freeze.txt`) |
+| Node | `npm install --ignore-scripts --save-exact hyperframes@0.8.214 gsap@3.14.2` : 126 paquets, 3,2 s |
+| Non installé | `remotion-composer` (npm), `piper-tts`, dernière version npx d'HyperFrames, `.env` |
+| Isolation | `bin/sbx` : `bwrap --unshare-all` (réseau seulement pour pip/npm), `--clearenv`, HOME en tmpfs, `/usr` et `/etc` en lecture seule, seul le labo en écriture, cache Chrome d'HyperFrames en lecture seule, `timeout` + `prlimit --cpu=3600 --fsize=4G --nproc=4096` |
+| Exécution | `bin/omtool <outil> <in.json> <out.json>` : `python -I runner/run_tool.py` dans `sbx`, réseau coupé, liste blanche de 12 outils locaux, refus si `.env` présent, import d'un seul module (pas de `tool_registry.discover()`) ; `bin/omcp` pilote `lib/checkpoint.py` |
+
+### Déroulé (pipeline `animated-explainer`, mécanismes officiels uniquement)
+
+| Étape | Mécanisme | Rédigé par l'agent | Outils exécutés | Résultat |
+|---|---|---|---|---|
+| research | `write_checkpoint` | research_brief (sources locales `file://`) | — | completed |
+| proposal | porte d'approbation (`GATE VIOLATION` vérifiée) | proposal_packet, decision_log | `hyperframes_compose` doctor ; état `tts_selector` et `image_selector` : **indisponibles** | completed |
+| script, scene_plan | portes d'approbation | script, scene_plan (4 scènes) | — | completed |
+| assets | porte d'approbation | asset_manifest | `audio_probe`, `scene_detect`, `frame_sampler`, `video_trimmer`, `music_library`, `audio_mixer` | narration et images générées impossibles hors ligne et sans clé |
+| edit | `write_checkpoint` | edit_decisions (HyperFrames, mode « atelier ») | — | completed |
+| compose | `video_compose` → `hyperframes_compose render_existing` (`check` puis `render --strict`) + revue finale | `index.html` (2 corrections après `check`) | `hyperframes_compose` check ×4, `scaffold_workspace`, `video_compose` | final_review « pass » |
+| publish | porte d'approbation | — | `export_bundle` | exporté |
+
+Temps mesurés (`logs/timings.txt`) : outils 0,1–1,4 s chacun ; `check` 5,1 s ;
+**rendu 50,7 s** (42,4 s côté HyperFrames) ; pipeline complet environ 6 min,
+surtout de la rédaction. 9 outils OpenMontage exécutés, 2 seulement interrogés.
+
+Résultat : `projects/om-lab-a/renders/final.mp4`, vérifié indépendamment par le
+Lead : h264 1920×1080, 30/1 i/s, 600 images, 20,00 s ; aac 48 kHz stéréo
+20,01 s ; 7,7 Mo. Frames examinées à 6,8 s (rail des 8 étapes) et 12 s (média
+importé `demo-audio.mp4` 3 → 9 s dans un cadre, trois étiquettes) : rendu net.
+Défaut visuel mineur : léger rectangle autour de l'étiquette « Média importé ».
+
+### Limites constatées pendant l'exécution
+
+- La génération HyperFrames standard (`scaffold_workspace`) écrit GSAP depuis un
+  CDN : `check` réseau coupé échoue (`ERR_INTERNET_DISCONNECTED`). Contournement
+  officiel : mode « atelier » avec un `gsap.min.js` local.
+- Le blocage d'HyperFrames sur 0.8.214 tient seulement à la présence de
+  `node_modules` dans un dossier parent ; le contrôle d'OpenMontage annonce
+  0.8.229 (cache npm) alors que 0.8.214 s'exécute.
+- `audio_mixer` échoue avec ffmpeg 5.1 (Debian 12) quand une entrée est un AAC
+  dans un MP4 (`loudnorm` + `aresample` : « Cannot select channel layout ») :
+  entrée convertie en WAV 48 kHz. `loudnorm` en une passe : −15,3 LUFS pour une
+  cible de −16. L'opération `extract` force du 16 kHz mono.
+- Le schéma `edit_decisions` interdit `type` et `text` dans les cuts que le
+  générateur HyperFrames lit : un fichier valide affiche le champ `reason`.
+- La revue finale déclare `narration_present: true` sans voix et conclut
+  « pass » sans comparer la transcription au script.
+- Les portes d'approbation sont un booléen écrit par l'agent lui-même.
+- `doctor` renvoie `success: true` même quand Chrome ne démarre pas.
+- Le README annonce recherche web, images générées, narration, musique trouvée
+  et sous-titres : **rien de cela ne s'exécute hors ligne et sans clé**.
+
+## 13. Contrôle audio du rendu du scénario A
+
+Mesures FFmpeg (`ebur128`, `astats`, `silencedetect`, `volumedetect`) du
+2026-11-02. **Aucune écoute humaine n'a été réalisée** ; ces mesures ne
+remplacent pas une écoute.
+
+| Mesure | Valeur | Lecture (seuils de `config/audio.yaml` de Veyra) |
+|---|---|---|
+| Loudness intégrée | −15,3 LUFS | Dans la cible −16 ± 3 |
+| Plage de loudness (LRA) | 8,0 LU | Variation marquée entre sections |
+| Crête vraie | −1,1 dBTP | Sous la limite d'écrêtage −0,1 ; 2 échantillons au maximum, facteur de plateau 0 : pas d'écrêtage |
+| RMS global | −17,5 dB | — |
+| Plancher de bruit | −52,2 dB | — |
+| Décalage DC | −0,000026 | Négligeable |
+| Silences (< −50 dB, ≥ 0,3 s) | Aucun | Pas de trou |
+| Volume moyen 0–3 / 3–8 / 8–15 / 15–20 s | −17,9 / −17,5 / −15,6 / −22,0 dB | Section du média importé plus forte de ~2 dB ; clôture plus basse de ~4–6 dB |
+| Début (0,2 s) / fin (dernière seconde) | −37,6 / −33,9 dB | Fondus d'entrée et de sortie présents |
+| Différence gauche − droite | moyenne −54,8 dB, max −10,5 dB | Contenu quasi mono |
+| Durées | vidéo 20,000 s, audio 20,010 s | Écart 10 ms, sous la tolérance 100 ms |
+
+Anomalies techniques : aucune bloquante. À signaler : contenu quasi mono, chute
+de niveau de la clôture, normalisation à une passe. Qualité perçue, équilibre
+musique/média et intelligibilité : **non évalués** (pas d'écoute).
+
+## 14. Scénario B — effort d'adaptation (non implémenté)
+
+Constat de départ : OpenMontage **n'a aucun outil d'édition ciblée**. La
+composition modifiable est le `index.html` rédigé par l'agent ; la « correction »
+consiste à éditer ce fichier puis à **re-rendre toute la vidéo**
+(`render_existing`). Les checkpoints n'invalident pas les étapes aval
+(`lib/checkpoint.py:627-640`). Veyra fait déjà nativement commentaire → plan →
+patch → révision enfant → re-rendu, avec vérification avant/après.
+
+Changements nécessaires (estimations, ±50 %, jours-développeur) :
+
+| # | Changement | Où | Estimation |
+|---|---|---|---|
+| 1 | Importer une vidéo externe comme révision : synthétiser un `Storyboard` depuis `scene_plan` (secondes → ms, identifiants `scn_`), copier le MP4 dans le stockage, sonder `media` | `packages/schemas` (origine « externe »), `studio.ts`, action et formulaire du Studio | 1–1,5 |
+| 2 | Lier la révision au projet OpenMontage (identifiant, chemin du workspace, commit figé) | `resolvedConfig` de la révision | 0,5 |
+| 3 | Traduire un plan de correction (patchs de scène : texte, durée, paramètres) en modifications de `index.html` : soit par une demande assistée `claude-subscribe` (Claude Code édite le HTML, Veyra valide), soit en générant le HTML depuis un modèle maîtrisé, ce qui revient à refaire le Motion Engine | nouvelle tâche assistée ou générateur | 2–3 |
+| 4 | Lancer le re-rendu dans le bac à sable (`omtool video_compose`), archiver les checkpoints aval, gérer erreurs et délais | moteur de rendu « openmontage » derrière `RenderEngine` | 1–1,5 |
+| 5 | Importer la nouvelle révision enfant ; QA déterministe et vérification PSNR des corrections (fonctionnent sur tout MP4 si les scènes sont alignées) | `jobs/runner.ts`, `studio.ts` | 1 |
+| 6 | Tests (dont E2E réel), revue de sécurité de l'appel inter-processus | tests Studio, adaptateur | 1–1,5 |
+| | **Total** | | **≈ 7–9 jours** |
+
+Résultat attendu : la même boucle de correction que Veyra possède déjà, mais avec
+un rendu complet via OpenMontage et une étape d'édition du HTML confiée à un
+LLM. Le gain fonctionnel est nul pour ce scénario ; seule la provenance du
+rendu change.
+
+## 15. Capacités absentes de Veyra et utiles en usage personnel
+
+| Priorité | Capacité | Constat dans OpenMontage | Intérêt |
+|---|---|---|---|
+| 1 | Normalisation de loudness | `loudnorm` une passe dans `audio_mixer` | Niveau homogène des exports ; Veyra n'a qu'un limiteur |
+| 2 | Transcription avec horodatage par mot | `tools/analysis/transcriber.py` (faster-whisper) ; non exécuté ici | Sous-titres, ancres audio sur mots, QA de la voix |
+| 3 | Sous-titres SRT/VTT et incrustation | `tools/subtitle/subtitle_gen.py` (logique simple) | Accessibilité, réseaux sociaux |
+| 4 | TTS local optionnel | `piper_tts.py` (expérimental) ; non exécuté (voix non téléchargée) | Voix off sans service payant |
+| 5 | Détection de beats et de tempo | script de skill librosa, non testé | Synchroniser coupes et animations sur la musique |
+| 6 | Contrôles QA visuels supplémentaires | `visual_qa.py` : images noires, occultation des sous-titres | Compléter les contrôles déterministes |
+| 7 | Ducking automatique sur la voix | compresseur sidechain dans `audio_mixer` | Option aux fenêtres explicites de Veyra |
+| 8 | Profils de format | `lib/media_profiles.py` | Formats vertical, carré, 4K prêts |
+
+Non retenus : génération d'images ou de vidéos et musique générée (fournisseurs
+payants ou GPU lourd), banque SFX sans provenance, Remotion, lip-sync
+(Wav2Lip non commercial).
+
+## 16. Bibliothèques indépendantes à réutiliser directement
+
+Licences et versions vérifiées le 2026-11-02 sur PyPI et Hugging Face ; capacités
+FFmpeg vérifiées sur l'hôte (ffmpeg 5.1.9 Debian, `--enable-gpl`,
+`--enable-libass`).
+
+| Rôle | Bibliothèque (version) | Licence vérifiée | Contraintes techniques |
+|---|---|---|---|
+| Normalisation | FFmpeg `loudnorm` (hôte) | FFmpeg compilé GPL (outil système, appelé en processus) | Deux passes (mesure puis application) ; aucune dépendance nouvelle ; à ajouter dans `packages/audio` |
+| Ducking automatique | FFmpeg `sidechaincompress` (hôte) | idem | Disponible ; paramétrage à calibrer |
+| Sous-titres incrustés | FFmpeg `subtitles` via libass (hôte) | idem | Ou rendu HTML dans la composition HyperFrames ; SRT/VTT à générer soi-même |
+| Transcription par mot | faster-whisper 1.2.1 (CTranslate2 4.8.4) | MIT / MIT | Python ≥ 3.9 ; modèles `Systran/faster-whisper-*` sous MIT (non gated) ; **téléchargement des poids à faire une fois, à la main, puis chemin local et mode hors ligne** ; CPU possible (lent sur large) |
+| Synthèse vocale | piper-tts 1.8.0 | **GPL-3.0-or-later** (fork `OHF-voice/piper1-gpl`) ; dépôt des voix `rhasspy/piper-voices` MIT | Appel en processus séparé (binaire `piper`) ; licence propre à chaque voix : fr_FR-siwis **CC-BY 4.0**, fr_FR-upmc **CC-BY-SA 4.0**, fr_FR-tom **AGPLv3** ; voix à télécharger manuellement |
+| Beats et tempo | librosa 0.11.0 | ISC | **librosa 1.0.0 exige Python ≥ 3.12** : rester en 0.11 avec Python 3.11 ; dépend de numba (BSD), soundfile (BSD-3), soxr (**LGPL-2.1+**), audioread (MIT) |
+| Inférence ONNX (Piper) | onnxruntime 1.31.1 | MIT | Python ≥ 3.11 |
+
+Règles d'intégration communes : processus séparé en argv, bac à sable sans
+réseau à l'exécution, modèles et voix stockés localement avec empreinte,
+versions figées, sorties validées par Zod côté Veyra. Aucune de ces briques
+n'impose OpenMontage.
+
+## 17. Comparaison finale
+
+Légende : **M** = mesuré dans ce projet ; **E** = estimé ; **C** = constaté à la
+lecture du code.
+
+| Critère | OpenMontage (prototype) | Veyra (existant) |
+|---|---|---|
+| Temps d'intégration | Labo et rendu A : une session d'agent (~14 min d'agent, M) ; scénario B : 7–9 j (E) | 0 j : déjà en place (M) |
+| Fonctions réutilisées | 9 outils exécutés, dont 1 de rendu et 1 de mixage ; 5 fonctions de checkpoint (M) | — |
+| Rendu | HyperFrames 0.8.214 identique ; 20 s 1080p en 50,7 s (M) | HyperFrames 0.8.214 ; parcours E2E audiovisuel complet 37,6–41,7 s (M) |
+| Qualité visuelle | Composition entièrement rédigée par l'agent ; correcte (M, frames) | Registre de composants et paramètres validés (M, E2E) |
+| Audio | Mix −15,3 LUFS, quasi mono, `loudnorm` une passe ; bug AAC contourné (M) | Ancres sur événements visuels à ≤ 0,1 ms, duck mesuré −11,9 dB (M) ; pas de `loudnorm` (C) |
+| Corrections ciblées | Aucune : édition manuelle du HTML + re-rendu complet (C) | Commentaire frame → plan → patch → révision enfant, image réutilisée si seul le son change (M) |
+| Stabilité des corrections | Non mesurable sans adaptateur | Vérification avant/après PSNR et volume (M) |
+| QA | Revue finale permissive (fausse « narration présente ») (M) | Mesuré / IA / non réalisé distingués (M) |
+| Dépendances | 46 paquets Python non verrouillés + 126 npm ; SDK openai/google installés (M) | Monorepo pnpm verrouillé (C) |
+| Sécurité | Sûr seulement dans le bac à sable du labo ; CDN, npx non figé, `.env` à l'import, code LLM (`math_animate`) (C) | bwrap sans réseau, argv, limites de ressources (C) |
+| Maintenabilité | Comportement défini par des prompts ; dépôt très actif sans API stable (C) | Contrats Zod et tests (M) |
+| Interventions manuelles | 12 étapes manuelles, 5 approbations auto-écrites (M) | Validation humaine uniquement (M) |
+| Ce qui fonctionne hors ligne sans clé | ffmpeg/ffprobe, checkpoints, schémas, HyperFrames figé, export (M) | Tout le pipeline (fournisseur `fake` ou assisté) (M) |
+
+## 18. Conclusion de la partie 2
+
+**Décision proposée : C — utiliser certaines bibliothèques indépendamment ;
+garder Veyra comme moteur principal ; ne pas intégrer OpenMontage maintenant.**
+
+- A (moteur principal) est écarté : OpenMontage n'a ni édition ciblée ni QA
+  fiable, et toute sa partie créative est rédigée par l'agent.
+- B (moteur complémentaire) coûterait 7–9 jours (E) pour reproduire une boucle
+  que Veyra possède déjà, avec un rendu par le même HyperFrames.
+- D n'est pas nécessaire : l'expérience a identifié des briques utiles, que l'on
+  peut prendre en amont d'OpenMontage.
+
+Ce qui changerait la décision : une API d'édition ou de re-rendu partiel dans
+OpenMontage, un besoin fort de génération d'images ou de vidéos par
+fournisseurs, ou l'adoption de Remotion.
+
+Fonctionnalités à récupérer, par priorité (sans l'architecture OpenMontage) :
+
+1. Normalisation `loudnorm` deux passes dans `packages/audio` (FFmpeg seul).
+2. Transcription par mot avec faster-whisper, en processus isolé, modèles locaux.
+3. Sous-titres SRT/VTT générés depuis la transcription, incrustés dans la
+   composition HyperFrames.
+4. Voix off locale Piper optionnelle (voix CC-BY choisie, attribution).
+5. Détection de beats librosa 0.11 et ancres audio « beat » / « mot ».
+6. Contrôles QA visuels : images noires, occultation des sous-titres.
+7. Ducking automatique `sidechaincompress` en option.
+8. Profils de format supplémentaires.
+
+## 19. Limites de la partie 2
+
+- Aucune écoute humaine du rendu ; aucun test de Piper, faster-whisper,
+  librosa ou Remotion (non installés).
+- Le scénario B n'a pas été exécuté : son coût est une estimation.
+- Les durées d'agent dépendent du modèle et ne sont pas des durées humaines.
+- Le laboratoire n'est pas versionné ; il reste en place pour vérification.
