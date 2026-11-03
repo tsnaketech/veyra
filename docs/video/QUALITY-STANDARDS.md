@@ -44,6 +44,102 @@ L'interface classe chaque contrôle en trois catégories :
 | Jugement IA | `multimodal`, `text-only`, `simulated` | Appréciation d'un modèle ou du simulateur. |
 | Non réalisé | `not-performed` | Rien n'a été mesuré ni écouté ; ne peut pas être réussi (refusé par le schéma), n'est pas compté comme un échec. |
 
+## Photosensibilité (flashs, mesure technique)
+
+Module `packages/video/src/photosensitivity.ts` : `detectFlashes` (pur, images
+en niveaux de gris) et `analyzeFlashes` (décodage FFmpeg en flux), check
+« Photosensibilité (flashs, mesure technique) » via `photosensitivityCheck`.
+Méthode indépendante, **inspirée** des lignes directrices sur les flashs
+(ITU-R BT.1702) : ce n'est **pas** une validation de conformité. Exécuté par le
+runner après chaque nouveau rendu ; une erreur de décodage donne un check
+`not-performed` (`minor`) avec le message, sans faire échouer le rendu.
+
+- **Décodage** : `ffprobe` puis `ffmpeg -nostdin -protocol_whitelist file`,
+  `scale=W:H:flags=area,format=gray`, `-f rawvideo` vers un tube ; ≈ 14 400 pixels
+  (160×90 en 16:9, proportions conservées), une image en mémoire à la fois, délai
+  (120 s) et plafond d'images (108 000) qui font échouer l'analyse.
+- **Fréquence d'images** : `r_frame_rate` doit égaler `avg_frame_rate` (même
+  critère que `probe`). Sinon résultat « non mesuré » : `analysisMode`
+  `not-performed`, `passed: false`, `minor`.
+- **Luminance (hypothèse)** : code Y normalisé (16–235 en plage limitée, 0–255 en
+  pleine), EOTF gamma 2,2, affichage supposé de 200 cd/m². `format=gray` fait
+  convertir par FFmpeg la plage limitée (ou non étiquetée) en plage pleine :
+  `analyzeFlashes` passe donc `colorRange: "full"` au détecteur et rapporte la
+  plage d'origine (`sourceColorRange`).
+- **Transition par pixel** : suivi de l'extremum courant ; transition quand
+  l'écart atteint ≥ 20 cd/m² et que le côté sombre est < 160 cd/m², puis sens
+  inversé et extremum réinitialisé. Avant la première transition, minimum et
+  maximum sont suivis.
+- **Événement global** : part de l'écran ayant transité dans le même sens sur
+  0,1 s (3 images à 30 i/s, pour les fondus non uniformes) ≥ 25 % ; seuls les
+  événements de sens alterné sont retenus. Une seconde série au seuil de 10 %
+  sert aux petites zones.
+- **Flash** = paire de transitions opposées : flashs/s = transitions dans une
+  fenêtre glissante d'1 s (écart < 1 000 ms) / 2.
+- **Gravité** : > 3 flashs/s sur ≥ 25 % → `major` ; > 2 et ≤ 3 flashs/s sur
+  ≥ 25 %, ou > 3 flashs/s sur ≥ 10 % → `minor` (« à vérifier par un humain ») ;
+  sinon `info`, réussi. Un fondu, une coupe ou un flash isolé (≤ 2 flashs/s)
+  passe.
+- **Preuve** : JSON en français (fps, images analysées, max flashs/s aux deux
+  seuils, surface max, pire fenêtre avec frame et début/fin en ms, 20 premières
+  transitions horodatées avec leur index de frame) ; `timestamp` = début de la
+  pire fenêtre.
+- **Aucune correction automatique** : le nom n'est pas dans `RETRYABLE`.
+
+Limites et faux positifs possibles : stroboscope voulu par l'auteur, scintillement
+de compression ou de bruit sur de grandes zones sombres, petites zones très
+contrastées proches de 10 % ; motifs à rayures (réguliers) et flashs rouges
+saturés **non évalués** ; luminance d'affichage, gamma et surface de l'écran
+supposés (pas d'angle de vue) ; résolution réduite qui peut gommer des détails
+fins ; vidéos à fréquence variable non mesurées.
+
+## Contraste mesuré sur l'image rendue
+
+Module `packages/video/src/text-contrast.ts` : `contrastFromPixels` (pur),
+`measureTextContrast` (FFmpeg) et le check « Contraste mesuré sur l'image
+rendue » (`textContrastCheck`), exécuté par le runner avec la photosensibilité
+(`renderedPictureChecks`) après chaque nouveau rendu (pas pour une image
+réutilisée).
+
+- **Source des zones** : uniquement les constats `contrast_aa_failure` de
+  `hyperframes check --json` (boîte DOM `bbox` en px CSS de la composition,
+  `time`, `text`, `fg`, `ratio`, `requiredRatio`, `large`, `severity`). Aucune
+  zone n'est déduite des pixels. Une boîte n'est mesurée qu'à son instant `time`
+  (image d'index `frameAt(time)`), jamais à d'autres instants.
+- **Extraction** : une image par zone (`-ss` un demi-intervalle avant l'image
+  visée, car FFmpeg écarte les images antérieures à la cible), recadrage de la
+  boîte arrondie vers l'extérieur, bornée à l'image et mise à l'échelle si la
+  vidéo n'a pas la taille de la composition, `rawvideo rgb24` ; 20 zones au plus.
+- **Mesure** : luminance relative WCAG 2.x par pixel ; seuil d'Otsu (histogramme
+  de 4 096 classes) ; la classe « encre » est celle dont la médiane est la plus
+  proche de la luminance de `fg` (classe minoritaire seulement si `fg` manque) ;
+  ratio = (L1 + 0,05) / (L2 + 0,05) sur les médianes des deux classes.
+- **Garde-fous** (zone « non mesurable », raison donnée) : boîte hors image ;
+  hauteur < 6 px ou surface < 40 px² ; boîte uniforme ; part d'encre hors
+  [2 %, 70 %] ; séparation (variance inter-classes / variance totale) < 0,5. Fond
+  dont le rapport p90/p10 de luminance (formule WCAG) dépasse 1,5 : mesure gardée,
+  marquée « fond hétérogène, confiance faible ». Constat HyperFrames `warning`
+  (texte animé, transitoire) : mesuré et étiqueté « transitoire ».
+- **Verdict** : réussi si toutes les zones mesurables atteignent `requiredRatio`
+  (3 en grand texte, 4,5 sinon) ; échec `minor`, `timestamp` = instant de la pire
+  zone. Aucune zone exposée : `not-performed` (`info`), « HyperFrames n'expose
+  aucune zone (N textes validés par son contrôle DOM, non remesurés sur
+  l'image) ». Contrôle HyperFrames absent, aucune zone mesurable ou erreur
+  d'extraction : `not-performed` (`minor`), avec la raison.
+- **Relation avec HyperFrames** : « Lisibilité (contraste WCAG AA) » reste le
+  contrôle principal (`major`). Ce contrôle-ci confirme ou nuance ses échecs
+  sur les pixels réellement encodés. La preuve donne, par zone, le texte, la
+  frame, le ratio mesuré, le ratio HF, le ratio requis et le statut, ainsi que la
+  couverture : « X zones remesurées sur Y textes contrôlés par HyperFrames ».
+- **Non mesuré** : les textes validés par HyperFrames (il n'exporte pas leurs
+  boîtes) et tous les autres instants que celui de chaque boîte.
+- **Limites** : les bords anticrénelés et le sous-échantillonnage 4:2:0
+  rapprochent les médianes (ratio un peu sous-estimé) ; tolérance d'intégration
+  0,4 sur un texte blanc sur #2563EB (5,17:1 théorique) ; une boîte mal placée
+  (élément animé) est en général rejetée par la part d'encre, sans garantie.
+- **Aucune correction automatique** : ni ce contrôle ni la photosensibilité ne
+  figurent dans `RETRYABLE` (`studio.ts`).
+
 ## Revue qualitative
 
 Une image par scène (au milieu de la scène) est extraite avec ffmpeg et envoyée

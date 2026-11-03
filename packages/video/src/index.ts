@@ -9,6 +9,8 @@ import {
 } from "@veyra/schemas";
 import { runProcess } from "./process";
 export { runProcess, ProcessError, type ProcessOptions } from "./process";
+export * from "./photosensitivity";
+export * from "./text-contrast";
 export const probeSchema = z.object({
   durationMs: z.number().nonnegative(),
   codec: z.string(),
