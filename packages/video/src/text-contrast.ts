@@ -62,6 +62,11 @@ export type PixelContrast =
       notes: string[];
     }
   | { status: "unmeasurable"; reason: string };
+export interface ContrastSample {
+  timeMs: number;
+  frameIndex?: number;
+  result: PixelContrast;
+}
 export interface ZoneMeasurement {
   text?: string;
   selector?: string;
@@ -71,7 +76,12 @@ export interface ZoneMeasurement {
   requiredRatio: number;
   transient: boolean;
   crop?: { x: number; y: number; width: number; height: number };
+  /** Chosen sample (best reliable ratio); `timeMs`/`frameIndex` are its instant. */
   result: PixelContrast;
+  /** Every instant measured for this box. */
+  samples: ContrastSample[];
+  /** Reliable ratios differ by more than 20 %. */
+  variable: boolean;
 }
 
 const channel = (c: number) => {
@@ -232,7 +242,47 @@ export interface MeasureTextContrastOptions {
   timeoutMs?: number;
 }
 
-/** Extracts the frame at each zone's `time` and measures its box. Zones are not reused at other times. */
+export const MAX_INSTANTS_PER_ZONE = 5;
+/** Spread of reliable ratios (max/min − 1) above which a zone is labelled variable. */
+export const VARIABLE_RATIO_SPREAD = 0.2;
+
+const reliable = (r: PixelContrast) =>
+  r.status === "measured" && r.confidence === "normal";
+
+/**
+ * Picks a zone's verdict among its samples: the best reliable ratio (a text fails
+ * only if it stays below the floor at its most legible instant); otherwise a
+ * low-confidence measurement, otherwise the first sample.
+ */
+export function pickZoneSample(samples: ContrastSample[]): {
+  sample: ContrastSample;
+  variable: boolean;
+} {
+  if (!samples.length) throw new Error("No contrast sample");
+  const ratios = samples.flatMap((s) =>
+    reliable(s.result) && s.result.status === "measured"
+      ? [{ s, ratio: s.result.ratio }]
+      : [],
+  );
+  if (ratios.length) {
+    const best = ratios.reduce((a, b) => (b.ratio > a.ratio ? b : a));
+    const min = Math.min(...ratios.map((r) => r.ratio));
+    return {
+      sample: best.s,
+      variable: best.ratio / min - 1 > VARIABLE_RATIO_SPREAD,
+    };
+  }
+  return {
+    sample: samples.find((s) => s.result.status === "measured") ?? samples[0],
+    variable: false,
+  };
+}
+
+/**
+ * Re-measures each zone's box at `time` and at each instant of `times` (deduplicated,
+ * at most 5). The DOM box is the one HyperFrames read at `time`, assumed fixed at the
+ * other instants: the guards reject crops that no longer frame the text.
+ */
 export async function measureTextContrast(
   videoPath: string,
   zones: ContrastZone[],
@@ -253,12 +303,25 @@ export async function measureTextContrast(
       requiredRatio: zone.requiredRatio ?? (zone.large ? 3 : 4.5),
       transient: zone.severity === "warning",
     };
-    const fail = (reason: string, extra = {}) =>
+    const fail = (
+      reason: string,
+      extra: Partial<ContrastSample> & { crop?: ZoneMeasurement["crop"] } = {},
+    ) => {
+      const sample = {
+        timeMs: extra.timeMs ?? 0,
+        frameIndex: extra.frameIndex,
+        result: { status: "unmeasurable", reason } as const,
+      };
       out.push({
         ...base,
-        ...extra,
-        result: { status: "unmeasurable", reason },
+        timeMs: extra.timeMs,
+        frameIndex: extra.frameIndex,
+        crop: extra.crop,
+        result: sample.result,
+        samples: extra.timeMs === undefined ? [] : [sample],
+        variable: false,
       });
+    };
     if (i >= CONTRAST_LIMITS.maxZones) {
       fail(`au-delà de ${CONTRAST_LIMITS.maxZones} zones`);
       continue;
@@ -267,15 +330,15 @@ export async function measureTextContrast(
       fail("boîte ou instant absent du constat HyperFrames");
       continue;
     }
-    const timeMs = Math.round(zone.time * 1000);
-    const frameIndex = rate ? frameAt(timeMs, rate, count) : undefined;
+    const firstMs = Math.round(zone.time * 1000);
+    const firstFrame = rate ? frameAt(firstMs, rate, count) : undefined;
     const crop = cropBox(
       zone.bbox,
       { width: options.compositionWidth, height: options.compositionHeight },
       stream,
     );
     if (!crop) {
-      fail("boîte hors image", { timeMs, frameIndex });
+      fail("boîte hors image", { timeMs: firstMs, frameIndex: firstFrame });
       continue;
     }
     if (
@@ -283,61 +346,82 @@ export async function measureTextContrast(
       crop.width * crop.height < CONTRAST_LIMITS.minAreaPx
     ) {
       fail(`boîte trop petite (${crop.width}×${crop.height} px)`, {
-        timeMs,
-        frameIndex,
+        timeMs: firstMs,
+        frameIndex: firstFrame,
         crop,
       });
       continue;
     }
-    // Input -ss drops frames whose pts is before the target: aim half a frame early.
-    const seek =
-      rate && frameIndex !== undefined
-        ? frameIndex === 0
-          ? 0
-          : frameSeekSeconds(frameIndex - 1, rate)
-        : zone.time;
-    let pixels: Uint8Array | null = null;
-    await streamFrames(
-      path,
-      [
-        "-nostdin",
-        "-v",
-        "error",
-        "-protocol_whitelist",
-        "file",
-        "-ss",
-        String(seek),
-        "-i",
-        path,
-        "-map",
-        "0:v:0",
-        "-frames:v",
-        "1",
-        "-vf",
-        `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}:exact=1,format=rgb24`,
-        "-threads",
-        "1",
-        "-f",
-        "rawvideo",
-        "pipe:1",
-      ],
-      crop.width * crop.height * 3,
-      1,
-      timeoutMs,
-      (frame) => {
-        pixels = Uint8Array.from(frame);
-      },
-    );
-    if (!pixels) {
-      fail("image introuvable à cet instant", { timeMs, frameIndex, crop });
-      continue;
+    // `time` first, then the other failing instants; one sample per distinct frame.
+    const instants = new Map<string, { timeMs: number; frameIndex?: number }>();
+    for (const t of [zone.time, ...(zone.times ?? [])]) {
+      if (!(t >= 0) || instants.size >= MAX_INSTANTS_PER_ZONE) continue;
+      const timeMs = Math.round(t * 1000);
+      const frameIndex = rate ? frameAt(timeMs, rate, count) : undefined;
+      const key = String(frameIndex ?? timeMs);
+      if (!instants.has(key)) instants.set(key, { timeMs, frameIndex });
     }
+    const samples: ContrastSample[] = [];
+    for (const { timeMs, frameIndex } of instants.values()) {
+      // Input -ss drops frames whose pts is before the target: aim half a frame early.
+      const seek =
+        rate && frameIndex !== undefined
+          ? frameIndex === 0
+            ? 0
+            : frameSeekSeconds(frameIndex - 1, rate)
+          : timeMs / 1000;
+      let pixels: Uint8Array | null = null;
+      await streamFrames(
+        path,
+        [
+          "-nostdin",
+          "-v",
+          "error",
+          "-protocol_whitelist",
+          "file",
+          "-ss",
+          String(seek),
+          "-i",
+          path,
+          "-map",
+          "0:v:0",
+          "-frames:v",
+          "1",
+          "-vf",
+          `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}:exact=1,format=rgb24`,
+          "-threads",
+          "1",
+          "-f",
+          "rawvideo",
+          "pipe:1",
+        ],
+        crop.width * crop.height * 3,
+        1,
+        timeoutMs,
+        (frame) => {
+          pixels = Uint8Array.from(frame);
+        },
+      );
+      samples.push({
+        timeMs,
+        frameIndex,
+        result: pixels
+          ? contrastFromPixels(pixels, crop.width, crop.height, zone.fg)
+          : {
+              status: "unmeasurable",
+              reason: "image introuvable à cet instant",
+            },
+      });
+    }
+    const { sample, variable } = pickZoneSample(samples);
     out.push({
       ...base,
-      timeMs,
-      frameIndex,
+      timeMs: sample.timeMs,
+      frameIndex: sample.frameIndex,
       crop,
-      result: contrastFromPixels(pixels, crop.width, crop.height, zone.fg),
+      result: sample.result,
+      samples,
+      variable,
     });
   }
   return out;
@@ -350,7 +434,8 @@ export function textContrastCheck(
   measurements: ZoneMeasurement[],
   section: ContrastSection | undefined,
 ): QualityCheck {
-  const validated = section?.passed ?? section?.checked;
+  // HyperFrames counts element × sample checks, not texts.
+  const hfCoverage = `HyperFrames a fait ${section?.checked ?? "?"} vérifications élément × instant (${section?.passed ?? "?"} réussies) ; les textes qui réussissent ne sont pas exposés et ne sont pas remesurés`;
   const notPerformed = (
     evidence: unknown,
     severity: "info" | "minor",
@@ -376,9 +461,15 @@ export function textContrastCheck(
     );
   if (!measurements.length)
     return notPerformed(
-      `Non mesuré : HyperFrames n'expose aucune zone (${validated ?? "?"} textes validés par son contrôle DOM, non remesurés sur l'image).`,
+      `Non mesuré : HyperFrames n'expose aucune zone (${hfCoverage}).`,
       "info",
     );
+  const label = (r: PixelContrast, transient: boolean) =>
+    r.status === "measured"
+      ? transient
+        ? "transitoire"
+        : "mesuré"
+      : `non mesurable : ${r.reason}`;
   const zones = measurements.map((m) => ({
     texte: m.text,
     frame: m.frameIndex,
@@ -386,31 +477,50 @@ export function textContrastCheck(
     ratioMesure: m.result.status === "measured" ? m.result.ratio : null,
     ratioHyperFrames: m.hfRatio,
     requis: m.requiredRatio,
-    statut:
-      m.result.status === "measured"
-        ? m.transient
-          ? "transitoire"
-          : "mesuré"
-        : `non mesurable : ${m.result.reason}`,
+    statut: label(m.result, m.transient),
     ...(m.result.status === "measured"
       ? {
           confiance: m.result.confidence === "low" ? "faible" : "normale",
-          notes: m.result.notes,
+          notes: [
+            ...m.result.notes,
+            ...(m.result.confidence === "low" ? ["hors verdict"] : []),
+            ...(m.variable ? ["variable (animation probable)"] : []),
+          ],
         }
       : {}),
+    mesures: m.samples.map((s) => ({
+      frame: s.frameIndex,
+      ms: s.timeMs,
+      ratio: s.result.status === "measured" ? s.result.ratio : null,
+      statut:
+        s.result.status === "measured"
+          ? s.result.confidence === "low"
+            ? "mesuré (confiance faible)"
+            : "mesuré"
+          : `non mesurable : ${s.result.reason}`,
+    })),
   }));
   const measured = measurements.filter((m) => m.result.status === "measured");
+  const trusted = measurements.filter((m) => reliable(m.result));
   const evidence = {
-    couverture: `${measured.length} zones remesurées sur ${section.checked ?? "?"} textes contrôlés par HyperFrames ; textes validés par HyperFrames non remesurés (zones non exposées)`,
+    couverture: `${measured.length} zones remesurées ; ${hfCoverage}`,
+    zonesFiables: trusted.length,
     zones,
     methode:
-      "Luminance relative WCAG 2.x par pixel dans la boîte DOM fournie par HyperFrames, à l'instant de la boîte ; seuil d'Otsu ; encre = classe la plus proche de la couleur DOM ; ratio des médianes",
+      "Luminance relative WCAG 2.x par pixel dans la boîte DOM fournie par HyperFrames ; boîte relevée à l'instant `time`, supposée fixe aux autres instants en échec (`times`, 5 au plus ; les garde-fous rejettent les rognages incohérents) ; seuil d'Otsu ; encre = classe la plus proche de la couleur DOM ; ratio des médianes ; ratio retenu = meilleur ratio fiable de la zone ; mesures à confiance faible exclues du verdict",
   };
-  if (!measured.length) return notPerformed(evidence, "minor");
+  if (!trusted.length)
+    return notPerformed(
+      {
+        ...evidence,
+        raison: "aucune zone n'a de mesure fiable (confiance normale)",
+      },
+      "minor",
+    );
   const ratioOf = (m: ZoneMeasurement) =>
     m.result.status === "measured" ? m.result.ratio / m.requiredRatio : 1;
-  const worst = measured.reduce((a, b) => (ratioOf(b) < ratioOf(a) ? b : a));
-  const passed = measured.every((m) => ratioOf(m) >= 1);
+  const worst = trusted.reduce((a, b) => (ratioOf(b) < ratioOf(a) ? b : a));
+  const passed = trusted.every((m) => ratioOf(m) >= 1);
   return qualityCheckSchema.parse({
     id: newId("qck"),
     name: TEXT_CONTRAST_CHECK_NAME,

@@ -10,6 +10,9 @@ import {
   relativeLuminance,
   runProcess,
   textContrastCheck,
+  pickZoneSample,
+  type ContrastSample,
+  type PixelContrast,
   type ZoneMeasurement,
 } from "./index";
 
@@ -195,75 +198,88 @@ describe("cropBox", () => {
 });
 
 describe("textContrastCheck", () => {
-  const zone = (
-    ratio: number | null,
-    extra: Partial<ZoneMeasurement> = {},
-  ): ZoneMeasurement => ({
-    text: "01",
-    timeMs: 1389,
-    frameIndex: 41,
-    hfRatio: 2.42,
-    requiredRatio: 3,
-    transient: false,
-    result:
-      ratio === null
-        ? { status: "unmeasurable", reason: "boîte hors image" }
-        : {
-            status: "measured",
-            ratio,
-            inkLuminance: 0.1,
-            backgroundLuminance: 0.03,
-            inkShare: 0.2,
-            separation: 0.9,
-            backgroundSpread: 1.1,
-            confidence: "normal",
-            notes: [],
-          },
-    ...extra,
+  const measured = (
+    ratio: number,
+    confidence: "normal" | "low" = "normal",
+  ): PixelContrast => ({
+    status: "measured",
+    ratio,
+    inkLuminance: 0.1,
+    backgroundLuminance: 0.03,
+    inkShare: 0.2,
+    separation: 0.9,
+    backgroundSpread: confidence === "low" ? 2 : 1.1,
+    confidence,
+    notes: confidence === "low" ? ["fond hétérogène, confiance faible"] : [],
   });
+  const zone = (
+    result: PixelContrast | null,
+    extra: Partial<ZoneMeasurement> = {},
+  ): ZoneMeasurement => {
+    const r = result ?? {
+      status: "unmeasurable" as const,
+      reason: "boîte hors image",
+    };
+    return {
+      text: "01",
+      timeMs: 1389,
+      frameIndex: 41,
+      hfRatio: 2.42,
+      requiredRatio: 3,
+      transient: false,
+      result: r,
+      samples: [{ timeMs: 1389, frameIndex: 41, result: r }],
+      variable: false,
+      ...extra,
+    };
+  };
+  const hf = { checked: 10, passed: 8 };
   it("without a HyperFrames section or zones it is not performed", () => {
     expect(textContrastCheck([], undefined)).toMatchObject({
       analysisMode: "not-performed",
       passed: false,
     });
-    const none = textContrastCheck([], {
-      checked: 41,
-      passed: 41,
-      findings: [],
-    });
+    const none = textContrastCheck([], { checked: 41, passed: 41 });
     expect(none).toMatchObject({
       analysisMode: "not-performed",
       passed: false,
       severity: "info",
     });
     expect(none.evidence).toContain(
-      "41 textes validés par son contrôle DOM, non remesurés",
+      "41 vérifications élément × instant (41 réussies)",
+    );
+    expect(none.evidence).not.toMatch(/\d+ textes/);
+  });
+  it("coverage counts element × instant checks, never texts", () => {
+    const check = textContrastCheck([zone(measured(2.4))], hf);
+    const { couverture } = JSON.parse(check.evidence);
+    expect(couverture).toBe(
+      "1 zones remesurées ; HyperFrames a fait 10 vérifications élément × instant (8 réussies) ; les textes qui réussissent ne sont pas exposés et ne sont pas remesurés",
     );
   });
-  it("a measured failure is minor, timestamped at the worst zone", () => {
-    const check = textContrastCheck([zone(3.2, { timeMs: 500 }), zone(2.4)], {
-      checked: 41,
-      passed: 29,
-    });
+  it("a reliable failure is minor, timestamped at the worst zone", () => {
+    const check = textContrastCheck(
+      [zone(measured(3.2), { timeMs: 500 }), zone(measured(2.4))],
+      hf,
+    );
     expect(check).toMatchObject({
       analysisMode: "deterministic",
       passed: false,
       severity: "minor",
       timestamp: 1389,
     });
-    const evidence = JSON.parse(check.evidence);
-    expect(evidence.couverture).toContain("2 zones remesurées sur 41 textes");
-    expect(evidence.zones[1]).toMatchObject({
+    expect(JSON.parse(check.evidence).zones[1]).toMatchObject({
       frame: 41,
       ratioMesure: 2.4,
       ratioHyperFrames: 2.42,
       requis: 3,
+      mesures: [{ frame: 41, ms: 1389, ratio: 2.4, statut: "mesuré" }],
     });
   });
-  it("labels transient zones and passes when all measured zones pass", () => {
+  it("labels transient zones and passes when all reliable zones pass", () => {
     const check = textContrastCheck(
-      [zone(3.5, { transient: true }), zone(null)],
-      { checked: 5 },
+      [zone(measured(3.5), { transient: true }), zone(null)],
+      hf,
     );
     expect(check).toMatchObject({
       passed: true,
@@ -274,12 +290,77 @@ describe("textContrastCheck", () => {
     expect(zones[0].statut).toBe("transitoire");
     expect(zones[1].statut).toBe("non mesurable : boîte hors image");
   });
-  it("only unmeasurable zones: not performed", () => {
-    expect(textContrastCheck([zone(null)], { checked: 5 })).toMatchObject({
-      analysisMode: "not-performed",
-      passed: false,
-      severity: "minor",
+  it("low-confidence measurements stay visible but out of the verdict", () => {
+    // A reliable pass plus a low-confidence 1.2: passes, the 1.2 is shown as "hors verdict".
+    const check = textContrastCheck(
+      [zone(measured(3.5)), zone(measured(1.2, "low"), { timeMs: 3000 })],
+      hf,
+    );
+    expect(check).toMatchObject({ passed: true, timestamp: 0 });
+    const zones = JSON.parse(check.evidence).zones;
+    expect(zones[1]).toMatchObject({
+      ratioMesure: 1.2,
+      confiance: "faible",
+      notes: expect.arrayContaining(["hors verdict"]),
     });
+    expect(JSON.parse(check.evidence).zonesFiables).toBe(1);
+  });
+  it("no reliable measurement: not performed, with the reason", () => {
+    for (const zones of [[zone(null)], [zone(measured(1.2, "low"))]]) {
+      const check = textContrastCheck(zones, hf);
+      expect(check).toMatchObject({
+        analysisMode: "not-performed",
+        passed: false,
+        severity: "minor",
+      });
+      expect(JSON.parse(check.evidence).raison).toContain("aucune zone");
+    }
+  });
+});
+
+describe("pickZoneSample", () => {
+  const s = (frameIndex: number, result: PixelContrast): ContrastSample => ({
+    frameIndex,
+    timeMs: frameIndex * 33,
+    result,
+  });
+  const m = (
+    ratio: number,
+    confidence: "normal" | "low" = "normal",
+  ): PixelContrast => ({
+    status: "measured",
+    ratio,
+    inkLuminance: 0,
+    backgroundLuminance: 0,
+    inkShare: 0.2,
+    separation: 0.9,
+    backgroundSpread: 1,
+    confidence,
+    notes: [],
+  });
+  it("keeps the best reliable ratio and flags a > 20 % spread", () => {
+    // Fade: 1.47 at the first failing instant, 2.42 once fully shown; a low-confidence 4 is ignored.
+    const picked = pickZoneSample([
+      s(41, m(1.47)),
+      s(75, m(2.42)),
+      s(108, m(4, "low")),
+      s(141, { status: "unmeasurable", reason: "x" }),
+    ]);
+    expect(picked.sample.frameIndex).toBe(75);
+    expect(picked.variable).toBe(true);
+    expect(pickZoneSample([s(1, m(2.4)), s(2, m(2.5))]).variable).toBe(false);
+  });
+  it("falls back to a low-confidence then to the first sample", () => {
+    expect(
+      pickZoneSample([
+        s(1, { status: "unmeasurable", reason: "x" }),
+        s(2, m(1.1, "low")),
+      ]).sample.frameIndex,
+    ).toBe(2);
+    expect(
+      pickZoneSample([s(3, { status: "unmeasurable", reason: "x" })]).sample
+        .frameIndex,
+    ).toBe(3);
   });
 });
 
@@ -348,5 +429,29 @@ describe.skipIf(!existsSync(font))("measureTextContrast (real FFmpeg)", () => {
       status: "unmeasurable",
       reason: "boîte hors image",
     });
+  });
+
+  it("re-measures the same box at every failing instant and keeps the best", async () => {
+    // First failing instant before the text appears, later ones once it is shown.
+    const [zone] = await measureTextContrast(
+      clip,
+      [
+        {
+          code: "contrast_aa_failure",
+          severity: "error",
+          fg: "rgb(255,255,255)",
+          requiredRatio: 4.5,
+          bbox: { x: 190, y: 190, width: 180, height: 140 },
+          time: 0.4,
+          times: [0.4, 0.6, 0.6, 0.7, 0.8, 0.9, 0.95],
+        },
+      ],
+      { compositionWidth: 1280, compositionHeight: 720 },
+    );
+    // Deduplicated per frame, at most 5 instants, `time` first.
+    expect(zone.samples.map((s) => s.frameIndex)).toEqual([12, 18, 21, 24, 27]);
+    expect(zone.samples[0].result.status).toBe("unmeasurable");
+    expect(zone.result.status).toBe("measured");
+    expect(zone.frameIndex).toBeGreaterThanOrEqual(18);
   });
 });

@@ -104,9 +104,12 @@ réutilisée).
 - **Source des zones** : uniquement les constats `contrast_aa_failure` de
   `hyperframes check --json` (boîte DOM `bbox` en px CSS de la composition,
   `time`, `text`, `fg`, `ratio`, `requiredRatio`, `large`, `severity`). Aucune
-  zone n'est déduite des pixels. Une boîte n'est mesurée qu'à son instant `time`
-  (image d'index `frameAt(time)`), jamais à d'autres instants.
-- **Extraction** : une image par zone (`-ss` un demi-intervalle avant l'image
+  zone n'est déduite des pixels. La boîte est remesurée à `time` (premier échec)
+  et à chaque instant de `times` (dédupliqués par image, 5 au plus). La boîte DOM
+  est celle relevée à `time`, supposée fixe aux autres instants : les garde-fous
+  rejettent les rognages incohérents (élément déplacé). Aucun autre instant n'est
+  mesuré.
+- **Extraction** : une image par instant (`-ss` un demi-intervalle avant l'image
   visée, car FFmpeg écarte les images antérieures à la cible), recadrage de la
   boîte arrondie vers l'extérieur, bornée à l'image et mise à l'échelle si la
   vidéo n'a pas la taille de la composition, `rawvideo rgb24` ; 20 zones au plus.
@@ -120,23 +123,35 @@ réutilisée).
   dont le rapport p90/p10 de luminance (formule WCAG) dépasse 1,5 : mesure gardée,
   marquée « fond hétérogène, confiance faible ». Constat HyperFrames `warning`
   (texte animé, transitoire) : mesuré et étiqueté « transitoire ».
-- **Verdict** : réussi si toutes les zones mesurables atteignent `requiredRatio`
-  (3 en grand texte, 4,5 sinon) ; échec `minor`, `timestamp` = instant de la pire
-  zone. Aucune zone exposée : `not-performed` (`info`), « HyperFrames n'expose
-  aucune zone (N textes validés par son contrôle DOM, non remesurés sur
-  l'image) ». Contrôle HyperFrames absent, aucune zone mesurable ou erreur
-  d'extraction : `not-performed` (`minor`), avec la raison.
+- **Ratio retenu par zone** : le meilleur ratio parmi ses mesures fiables
+  (statut mesuré, confiance normale) : un texte n'échoue que s'il reste sous le
+  seuil même à son instant le plus lisible (un fondu n'est pas jugé sur sa
+  première image). Ratios fiables écartés de plus de 20 % : note « variable
+  (animation probable) ». Toutes les mesures (frame, ratio, statut) restent en
+  preuve.
+- **Verdict** : seules les zones à mesure fiable comptent ; réussi si toutes
+  atteignent `requiredRatio` (3 en grand texte, 4,5 sinon) ; échec `minor`,
+  `timestamp` = instant retenu de la pire zone. Une mesure à confiance faible
+  reste visible en preuve (« hors verdict ») mais ne compte ni dans le verdict ni
+  dans le pire ratio. Aucune zone exposée : `not-performed` (`info`). Contrôle
+  HyperFrames absent, aucune mesure fiable ou erreur d'extraction :
+  `not-performed` (`minor`), avec la raison.
 - **Relation avec HyperFrames** : « Lisibilité (contraste WCAG AA) » reste le
   contrôle principal (`major`). Ce contrôle-ci confirme ou nuance ses échecs
   sur les pixels réellement encodés. La preuve donne, par zone, le texte, la
   frame, le ratio mesuré, le ratio HF, le ratio requis et le statut, ainsi que la
-  couverture : « X zones remesurées sur Y textes contrôlés par HyperFrames ».
+  couverture : « X zones remesurées ; HyperFrames a fait N vérifications
+  élément × instant (M réussies) ; les textes qui réussissent ne sont pas
+  exposés et ne sont pas remesurés ». `checked`/`passed` de HyperFrames comptent
+  des couples élément × échantillon, pas des textes.
 - **Non mesuré** : les textes validés par HyperFrames (il n'exporte pas leurs
-  boîtes) et tous les autres instants que celui de chaque boîte.
+  boîtes) et les instants hors de `time`/`times` de chaque boîte.
 - **Limites** : les bords anticrénelés et le sous-échantillonnage 4:2:0
   rapprochent les médianes (ratio un peu sous-estimé) ; tolérance d'intégration
   0,4 sur un texte blanc sur #2563EB (5,17:1 théorique) ; une boîte mal placée
-  (élément animé) est en général rejetée par la part d'encre, sans garantie.
+  (élément animé) est en général rejetée par la part d'encre, sans garantie ;
+  mesuré sur rendu HyperFrames réel : un texte en fondu donne 1,47 au premier
+  échec puis 2,36 à son meilleur instant (HF : 2,42).
 - **Aucune correction automatique** : ni ce contrôle ni la photosensibilité ne
   figurent dans `RETRYABLE` (`studio.ts`).
 

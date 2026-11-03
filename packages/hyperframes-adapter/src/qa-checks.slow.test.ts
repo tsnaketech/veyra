@@ -294,6 +294,27 @@ it("labels a fading low-contrast text consistently with HyperFrames", async () =
         m.transient ? "transitoire" : "mesuré",
       );
   }
+  // The fading zone is judged at its most legible failing instant, not at its first one.
+  const fade = result.measurements.find((m) => /Fondu/.test(m.text ?? ""));
+  if (fade) {
+    const reliable = fade.samples.flatMap((s) =>
+      s.result.status === "measured" && s.result.confidence === "normal"
+        ? [s.result.ratio]
+        : [],
+    );
+    expect(fade.samples.length).toBeGreaterThan(1);
+    const fadeZone = result.zones.find((z) => /Fondu/.test(z.text ?? ""))!;
+    expect(fade.samples[0].timeMs).toBe(Math.round(fadeZone.time! * 1000));
+    if (reliable.length) {
+      expect(fade.result.status === "measured" && fade.result.ratio).toBe(
+        Math.max(...reliable),
+      );
+      if (Math.max(...reliable) / Math.min(...reliable) - 1 > 0.2)
+        expect(
+          evidenceJson.zones[result.measurements.indexOf(fade)].notes,
+        ).toContain("variable (animation probable)");
+    }
+  }
 }, 240000);
 
 it("FeatureCards (violet and blue accents) exposes no failing zone: contrast check not-performed", async () => {
