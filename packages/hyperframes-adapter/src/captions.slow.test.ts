@@ -12,6 +12,14 @@ import {
   HyperFramesEngine,
   type CompositionCheck,
 } from "./index";
+import {
+  firstFrameAtOrAfter,
+  parseSrt,
+  parseWebVtt,
+  quantizeCues,
+  toSrt,
+  toWebVtt,
+} from "@veyra/schemas";
 import { captionFixture, layerFor } from "./captions.fixture";
 import { Sandbox } from "./sandbox";
 
@@ -259,3 +267,70 @@ it("word-highlight switches words exactly at their frames, on render and on jump
   expect(word(0, shots.get(0)).count).toBe(0);
   expect(word(9, shots.get(9)).count).toBeGreaterThan(20);
 }, 300000);
+
+// T114 / CA-3: SRT/VTT exported from the PROBED video match the burned MP4 frame by frame;
+// the clean MP4 never shows the band.
+describe.each([24, 30])("burned + clean exports at %i fps", (fps) => {
+  it("SRT/VTT cues map to the frames where the band is present", async () => {
+    const board = { ...film, fps };
+    const rate = { num: fps, den: 1 };
+    const track = captionFixture(cues, bandStyle);
+    const layer = layerFor(track, rate, 3000);
+    const id = `rev_exp-${fps}`;
+    const paths = storage.ensureRevision("prj_captions", id);
+    const render = async (name: string, captions?: unknown) => {
+      writeComposition(
+        paths.composition,
+        compose(board, board, theme, captions),
+      );
+      return (
+        await engine.render(paths.composition, {
+          revisionDir: paths.revision,
+          outputPath: storage.renderPath("prj_captions", id, `rnd_${name}`),
+          quality: "draft",
+          fps,
+        })
+      ).path;
+    };
+    const burned = await render("burned", layer);
+    const clean = await render("clean");
+    const probed = await engine.inspect(burned);
+    expect(probed.frameRate).toEqual(rate);
+    expect(probed.constantFrameRate).toBe(true);
+    const measured = quantizeCues(
+      track.cues,
+      probed.frameRate!,
+      probed.frameCount!,
+    );
+    expect(measured).toEqual(layer.cues);
+    const fromSrt = parseSrt(toSrt(track, measured));
+    const fromVtt = parseWebVtt(toWebVtt(track, measured));
+    expect(fromVtt).toEqual(fromSrt);
+    const spans = fromSrt.map((c) => [
+      firstFrameAtOrAfter(c.startMs, rate),
+      firstFrameAtOrAfter(c.endMs, rate),
+    ]);
+    expect(spans).toEqual(measured.map((q) => [q.startFrame, q.endFrame]));
+    const shown = (f: number) =>
+      spans.findIndex(([start, end]) => f >= start && f < end);
+    const frames = decode(burned);
+    expect(frames).toHaveLength(probed.frameCount!);
+    const lines = (i: number) => cues[i].lines.length;
+    const band = frames.map((frame, f) => {
+      const m = measure(frame, red),
+        i = shown(f);
+      if (i < 0) return m.count < 50;
+      const r = captionBandRect(bandStyle, film, lines(i));
+      return (
+        m.count > ((r.width * r.height) / SCALE / SCALE) * 0.6 &&
+        Math.abs(m.top - r.y / SCALE) <= 1
+      );
+    });
+    expect(band.flatMap((ok, f) => (ok ? [] : [f]))).toEqual([]);
+    const plain = decode(clean);
+    expect(plain).toHaveLength(probed.frameCount!);
+    expect(
+      plain.flatMap((frame, f) => (measure(frame, red).count < 50 ? [] : [f])),
+    ).toEqual([]);
+  }, 300000);
+});

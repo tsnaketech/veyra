@@ -1,7 +1,8 @@
-import { copyFileSync, existsSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
+import { z } from 'zod';
 import { dirname, join, resolve } from 'node:path';
 import { ConfigLoader, configSchemas } from '@veyra/config';
-import { ProjectStorage } from '@veyra/storage';
+import { ProjectStorage, safePath } from '@veyra/storage';
 import {
   HyperFramesEngine,
   compose,
@@ -26,6 +27,11 @@ import {
   frameCount,
   newId,
   qualityReportSchema,
+  quantizeCues,
+  toSrt,
+  toWebVtt,
+  type CaptionTrack,
+  type QuantizedCue,
   type RenderJob
 } from '@veyra/schemas';
 import type { ReviewFinding } from '@veyra/ai';
@@ -87,6 +93,12 @@ export function loadRenderSettings(configDir = defaultConfigDir()) {
   };
 }
 export type RenderSettings = ReturnType<typeof loadRenderSettings>;
+/** How captions are delivered; ignored when the revision has no captions. */
+export const captionDeliverySchema = z.enum(['burned', 'clean', 'both']).default('burned');
+export const CAPTION_EXPORT_CHECK_NAME = 'Sous-titres — calage des exports';
+// Narration is spoken, never drawn: it does not change the picture (burned captions are compared separately).
+const pictureKey = (board: { scenes: { narration?: unknown }[] }) =>
+  JSON.stringify(board, (key, value) => (key === 'narration' ? undefined : value));
 export class RenderJobRunner {
   private tail: Promise<void> = Promise.resolve();
   private pending = new Map<string, Promise<ReturnType<Repository['getRenderJob']>>>();
@@ -136,30 +148,73 @@ export class RenderJobRunner {
       )
         throw new Error('Configured maximum duration exceeded');
       const workspace = this.storage.ensureRevision(revision.projectId, revision.id);
-      const silentPath = this.storage.silentRenderPath(revision.projectId, revision.id, jobId);
-      const outputPath = this.storage.renderPath(revision.projectId, revision.id, jobId);
+      const durationMs = Math.max(
+        ...revision.storyboard.scenes.map((scene) => scene.start + scene.duration)
+      );
+      // Captions: one quantized table on the render rate feeds the burned layer and is
+      // compared with the table re-quantized on the exported video (sidecars).
+      const captions = revision.captions;
+      const mode = captions
+        ? captionDeliverySchema.parse(revision.resolvedConfig.captionDelivery)
+        : null;
+      const renderRate = { num: this.settings.engine.fps, den: 1 };
+      const composed = captions
+        ? quantizeCues(captions.cues, renderRate, frameCount(durationMs, renderRate))
+        : null;
+      const clean = {
+        burned: false,
+        silent: safePath(workspace.renders, `${jobId}.clean.video.mp4`),
+        output: safePath(workspace.renders, `${jobId}.clean.mp4`)
+      };
+      const main = {
+        burned: Boolean(captions),
+        silent: this.storage.silentRenderPath(revision.projectId, revision.id, jobId),
+        output: this.storage.renderPath(revision.projectId, revision.id, jobId)
+      };
+      // Main picture first: burned (or plain without captions), clean when mode is clean.
+      const variants = mode === 'clean' ? [clean] : mode === 'both' ? [main, clean] : [main];
+      const silentPath = variants[0].silent;
+      const outputPath = variants[0].output;
       let compositionCheck: CompositionCheck | null = null;
       let checkError: string | null = null;
       let renderSeconds = 0;
-      const reuseFrom = this.reusableVideo(revision);
-      if (reuseFrom) {
-        // Same storyboard as the parent: only the soundtrack changed, the picture is reused.
-        this.repo.updateRenderProgress(jobId, 2, 'reuse-video');
-        copyFileSync(reuseFrom.silentVideoPath!, silentPath);
-      } else {
-        this.repo.updateRenderProgress(jobId, 0, 'compose');
+      let reuseFrom: ReturnType<Repository['getRevision']> | null = null;
+      let cleanReusedFrom: string | null = null;
+      // Progress never decreases: two renders share the 0-88 % range.
+      const spans = variants.length > 1 ? [0, 60, 88] : [0, 90];
+      for (const [index, variant] of variants.entries()) {
+        const base = spans[index],
+          span = spans[index + 1] - base,
+          secondary = index > 0;
+        const reusable = this.reusablePicture(revision, variant.burned);
+        if (reusable) {
+          // Same storyboard (and captions when burned): the parent's picture is reused.
+          this.repo.updateRenderProgress(
+            jobId,
+            base + 2,
+            secondary ? 'reuse-clean' : 'reuse-video'
+          );
+          copyFileSync(reusable.path, variant.silent);
+          if (secondary) cleanReusedFrom = reusable.parent.id;
+          else reuseFrom = reusable.parent;
+          continue;
+        }
+        this.repo.updateRenderProgress(jobId, base, secondary ? 'render-clean' : 'compose');
         const files = compose(
           revision.storyboard,
           { width: revision.storyboard.width, height: revision.storyboard.height },
-          this.settings.style
+          this.settings.style,
+          ...(variant.burned ? [{ track: captions, cues: composed, rate: renderRate }] : [])
         );
         writeComposition(workspace.composition, files);
-        // Layout, contrast, runtime and motion checks in a real browser, before encoding.
-        this.repo.updateRenderProgress(jobId, 2, 'check');
-        try {
-          compositionCheck = await this.engine.check(workspace.composition);
-        } catch (error) {
-          checkError = error instanceof Error ? error.message : String(error);
+        if (!secondary) {
+          // Layout, contrast, runtime and motion checks in a real browser, before encoding.
+          this.repo.updateRenderProgress(jobId, base + 2, 'check');
+          try {
+            compositionCheck = await this.engine.check(workspace.composition);
+          } catch (error) {
+            checkError = error instanceof Error ? error.message : String(error);
+          }
         }
         const renderStarted = Date.now();
         const result = renderResultSchema.parse(
@@ -167,7 +222,7 @@ export class RenderJobRunner {
             workspace.composition,
             {
               revisionDir: workspace.revision,
-              outputPath: silentPath,
+              outputPath: variant.silent,
               quality: this.settings.engine.quality,
               fps: this.settings.engine.fps
             },
@@ -175,20 +230,30 @@ export class RenderJobRunner {
               const progress = progressSchema.parse(raw);
               this.repo.updateRenderProgress(
                 jobId,
-                Math.min(90, Math.round(progress.percent * 0.9)),
-                progress.stage
+                Math.max(
+                  base + 2,
+                  Math.min(base + span, base + Math.round((progress.percent * span) / 100))
+                ),
+                secondary ? 'render-clean' : progress.stage
               );
             }
           )
         );
-        if (resolve(result.path) !== silentPath || result.engine !== this.engine.kind)
+        if (resolve(result.path) !== variant.silent || result.engine !== this.engine.kind)
           throw new Error('Engine result does not match job');
-        stderrTail = result.stderrTail;
-        renderSeconds = (Date.now() - renderStarted) / 1000;
+        if (!secondary) {
+          stderrTail = result.stderrTail;
+          renderSeconds = (Date.now() - renderStarted) / 1000;
+        }
       }
       this.repo.updateRevision(revision.id, { silentVideoPath: silentPath });
       const silent = await this.engine.inspect(silentPath);
-      const audio = await this.soundtrack(revision, silentPath, outputPath, jobId, silent);
+      const audio = await this.soundtrack(
+        revision,
+        variants.map((v) => [v.silent, v.output] as const),
+        jobId,
+        silent
+      );
       this.repo.updateRevision(revision.id, { videoPath: outputPath });
       this.repo.transitionRevision(revision.id, 'qa');
       this.repo.updateRenderProgress(jobId, 95, 'qa');
@@ -206,9 +271,6 @@ export class RenderJobRunner {
           constantFrameRate: metadata.constantFrameRate ?? false
         }
       });
-      const durationMs = Math.max(
-        ...revision.storyboard.scenes.map((scene) => scene.start + scene.duration)
-      );
       const checks = deterministicChecks(
         metadata,
         {
@@ -251,6 +313,21 @@ export class RenderJobRunner {
             this.settings.audio
           ))
         );
+      let delivery: Record<string, string> | null = null;
+      if (captions && mode && composed) {
+        this.repo.updateRenderProgress(jobId, 96, 'export-captions');
+        delivery = { mode, ...(mode === 'clean' ? {} : { burned: main.output }) };
+        if (mode !== 'burned') delivery.clean = clean.output;
+        if (cleanReusedFrom) delivery.cleanReusedFrom = cleanReusedFrom;
+        const exported = captionExport(captions, composed, metadata);
+        if (exported.measured) {
+          delivery.srt = safePath(workspace.renders, `${jobId}.srt`);
+          delivery.vtt = safePath(workspace.renders, `${jobId}.vtt`);
+          writeFileSync(delivery.srt, toSrt(captions, exported.measured), { flag: 'wx' });
+          writeFileSync(delivery.vtt, toWebVtt(captions, exported.measured), { flag: 'wx' });
+        }
+        checks.push(exported.check);
+      }
       if (this.engine.kind === 'fake-test-only')
         for (const check of checks) {
           if (check.analysisMode === 'not-performed') continue;
@@ -299,6 +376,7 @@ export class RenderJobRunner {
         resolvedConfig: {
           ...this.repo.getRenderJob(jobId).resolvedConfig,
           ...(reuseFrom ? { videoReusedFrom: reuseFrom.id } : {}),
+          ...(delivery ? { delivery } : {}),
           ...(audio ? { audio: JSON.parse(JSON.stringify(audio)) } : {})
         } as RenderJob['resolvedConfig']
       });
@@ -319,8 +397,12 @@ export class RenderJobRunner {
     return this.repo.getRenderJob(jobId);
   }
 
-  /** Parent whose silent render can stand in for this revision's picture, if any. */
-  private reusableVideo(revision: ReturnType<Repository['getRevision']>) {
+  /**
+   * Parent picture that can stand in for this one: same storyboard and, for a burned
+   * picture, the same captions. By name, `<rnd>.video.mp4` holds the parent's captions
+   * burned in (or no captions if it had none) and `<rnd>.clean.video.mp4` its clean picture.
+   */
+  private reusablePicture(revision: ReturnType<Repository['getRevision']>, burned: boolean) {
     if (!revision.parentRevisionId) return null;
     // An automatic re-render exists precisely to produce a new picture.
     if ((revision.resolvedConfig.origin as { autoFix?: number } | undefined)?.autoFix) return null;
@@ -328,11 +410,23 @@ export class RenderJobRunner {
     if (
       !parent.silentVideoPath ||
       !parent.silentVideoPath.startsWith(this.storage.root + '/') ||
-      !existsSync(parent.silentVideoPath) ||
-      JSON.stringify(parent.storyboard) !== JSON.stringify(revision.storyboard)
+      pictureKey(parent.storyboard) !== pictureKey(revision.storyboard)
     )
       return null;
-    return parent;
+    const base = /^(.*\/rnd_[A-Za-z0-9-]+)(?:\.clean)?\.video\.mp4$/.exec(
+      parent.silentVideoPath
+    )?.[1];
+    if (!base) return null;
+    const path = !parent.captions
+      ? burned
+        ? null
+        : parent.silentVideoPath
+      : !burned
+        ? `${base}.clean.video.mp4`
+        : JSON.stringify(parent.captions) === JSON.stringify(revision.captions)
+          ? `${base}.video.mp4`
+          : null;
+    return path && existsSync(path) ? { parent, path } : null;
   }
 
   /**
@@ -341,14 +435,13 @@ export class RenderJobRunner {
    */
   private async soundtrack(
     revision: ReturnType<Repository['getRevision']>,
-    silentPath: string,
-    outputPath: string,
+    outputs: (readonly [silentPath: string, outputPath: string])[],
     jobId: string,
     silent: Awaited<ReturnType<VideoEngine['inspect']>>
   ) {
     const composition = revision.audio;
     if (!composition?.tracks.length) {
-      copyFileSync(silentPath, outputPath);
+      for (const [silentPath, outputPath] of outputs) copyFileSync(silentPath, outputPath);
       return null;
     }
     const rate = silent.frameRate ?? { num: Math.round(this.settings.engine.fps), den: 1 };
@@ -379,12 +472,93 @@ export class RenderJobRunner {
     this.repo.updateRenderProgress(jobId, 92, 'audio');
     try {
       await mixToWav(resolved.tracks, mix, settings, silent.durationMs);
-      await muxAudio(silentPath, mix, outputPath, settings);
+      for (const [silentPath, outputPath] of outputs)
+        await muxAudio(silentPath, mix, outputPath, settings);
     } finally {
       rmSync(mix, { force: true });
     }
     return { expected: composition.tracks.length, ...resolved };
   }
+}
+
+/**
+ * Re-quantizes the cues on the exported video (measured rate and frame count) and
+ * compares that table with the one the burned layer was composed from. The sidecars
+ * are written from the measured table; null when the video has no measured rate.
+ */
+export function captionExport(
+  track: CaptionTrack,
+  composed: QuantizedCue[],
+  video: {
+    frameRate?: { num: number; den: number };
+    frameCount?: number;
+    durationMs: number;
+    constantFrameRate?: boolean;
+  }
+) {
+  const check = (
+    passed: boolean,
+    severity: 'info' | 'major' | 'minor',
+    evidence: unknown,
+    mode: 'deterministic' | 'not-performed'
+  ) => ({
+    id: newId('qck'),
+    name: CAPTION_EXPORT_CHECK_NAME,
+    passed,
+    severity,
+    timestamp: 0,
+    evidence: (typeof evidence === 'string' ? evidence : JSON.stringify(evidence)).slice(0, 2000),
+    recommendation: passed
+      ? 'No action required'
+      : 'Relancer le rendu ; vérifier la cadence de la vidéo exportée',
+    analysisMode: mode
+  });
+  const rate = video.frameRate;
+  if (!rate)
+    return {
+      measured: null,
+      check: check(
+        false,
+        'minor',
+        'Non mesuré : cadence de la vidéo exportée illisible ; SRT/VTT non écrits',
+        'not-performed'
+      )
+    };
+  const frames = video.frameCount ?? frameCount(video.durationMs, rate);
+  const measured = quantizeCues(track.cues, rate, frames);
+  if (video.constantFrameRate !== true)
+    return {
+      measured,
+      check: check(
+        false,
+        'minor',
+        `Non mesuré : cadence variable ou non prouvée constante (${rate.num}/${rate.den}) ; SRT/VTT écrits sur la cadence nominale`,
+        'not-performed'
+      )
+    };
+  const byId = new Map(measured.map((q) => [q.cueId, q]));
+  const ids = [...new Set([...composed, ...measured].map((q) => q.cueId))];
+  const span = (q?: QuantizedCue) => (q ? [q.startFrame, q.endFrame] : null);
+  const composedById = new Map(composed.map((q) => [q.cueId, q]));
+  const gaps = ids
+    .map((cueId) => ({
+      cueId,
+      attendu: span(composedById.get(cueId)),
+      mesure: span(byId.get(cueId))
+    }))
+    .filter((g) => JSON.stringify(g.attendu) !== JSON.stringify(g.mesure));
+  const facts = {
+    cadence: `${rate.num}/${rate.den}`,
+    frames,
+    nombreFrames: video.frameCount === undefined ? 'déduit de la durée mesurée' : 'mesuré',
+    cues: measured.length
+  };
+  return {
+    measured,
+    check: gaps.length
+      ? check(false, 'major', { ...facts, ecarts: gaps.slice(0, 20) }, 'deterministic')
+      : check(true, 'info', facts, 'deterministic')
+  };
 }
 
 /** Placement checks of a soundtrack; level, clipping and silence checks come with audio QA. */
