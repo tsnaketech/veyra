@@ -290,6 +290,29 @@ describe("caption layer (T113)", () => {
     expect(() => captionBandRect({ sizePct: 2 }, size, 1)).toThrow();
   });
 
+  it("accepts a last cue on the rounded last frame (review D1: 2750 ms at 30 fps)", () => {
+    for (const durationMs of [2750, 1250, 1020, 5017]) {
+      const short = {
+        ...film,
+        scenes: [{ id: "scn_a", start: 0, duration: durationMs, text: "A" }],
+      };
+      const track = captionFixture([
+        { startMs: 0, endMs: durationMs, lines: ["Fin du film"] },
+      ]);
+      const layer = layerFor(track, { num: 30, den: 1 }, durationMs);
+      expect(layer.cues.at(-1)!.endFrame).toBe(
+        Math.round((durationMs * 30) / 1000),
+      );
+      expect(() => compose(short, film, theme, layer)).not.toThrow();
+      expect(() =>
+        compose(short, film, theme, {
+          ...layer,
+          cues: [{ ...layer.cues[0], endFrame: layer.cues[0].endFrame + 1 }],
+        }),
+      ).toThrow(/after the composition/);
+    }
+  });
+
   it("rejects caption tables that do not match the track or the film", () => {
     const track = captionFixture(cues);
     const rate = { num: 30, den: 1 };

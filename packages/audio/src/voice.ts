@@ -90,11 +90,12 @@ const localTtsProvider: VoiceProvider = {
   available: () => ({
     ok: false,
     reason: "Moteur non installé",
-    installHint: "pnpm voice:install piper (disponible avec T116)",
+    installHint:
+      "Aucun moteur de synthèse locale n'est encore installable : l'installation explicite arrive avec T116.",
   }),
   async synthesize() {
     throw new Error(
-      "Synthèse locale indisponible : moteur non installé (pnpm voice:install piper, disponible avec T116). Aucune voix simulée n'est utilisée à sa place.",
+      "Synthèse locale indisponible : moteur non installé (installation explicite prévue avec T116). Aucune voix simulée n'est utilisée à sa place.",
     );
   },
 };

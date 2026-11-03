@@ -195,18 +195,20 @@ Brief : [v0.4-voice-captions](plans/v0.4-voice-captions.md) (périmètre, archit
 | ID | Travail | Statut / preuve attendue |
 |---|---|---|
 | T110 | Brief, comparatif des moteurs, décision D020 | **Fait le 2026-11-03** : périmètre et ordre validés (brief § 10) ; D020 après les POC moteurs |
-| T111 | Contrats Zod (narration, sous-titres, providers), `groupCaptions`, SRT/WebVTT | À faire ; tests unitaires |
-| T112 | Migration 0005 (`captions`, `caption_cue_id`), dépôt, révisions | À faire ; test de migration |
-| T113 | Calque de sous-titres HyperFrames, styles, animations | À faire ; rendus 24/30/60 i/s, sauts |
-| T114 | Livraisons incrustée / propre / les deux ; export quantifié | À faire ; MP4 ↔ SRT/VTT ± 1 frame |
-| T115 | `VoiceProvider` import + fake ; repli `scene` | Implémenté le 2026-11-03, à relire : `packages/audio/src/voice.test.ts` (5), `apps/studio/src/lib/server/voice.test.ts` (10, moteur couleur + FFmpeg réel) ; **rendu HyperFrames réel avec voix importée non réalisé** (dépend de T114) |
+| T111 | Contrats Zod (narration, sous-titres, providers), `groupCaptions`, SRT/WebVTT | **Fait le 2026-11-03** (`6488db0`) : `captions.test.ts`, `captions-format.test.ts` ; temps exportés arrondis vers le bas (cue visible exactement sur ses frames à 24/30/60/29,97, revu sur 57 143 cues par cadence) |
+| T112 | Migration 0005 (`captions`, `caption_cue_id`), dépôt, révisions | **Fait le 2026-11-03** (`8c71cb1`) : migration additive (2 `ALTER TABLE ADD`), test 0004→0005, sous-titres immuables et hérités comme la bande son |
+| T113 | Calque de sous-titres HyperFrames, styles, animations | **Fait le 2026-11-03** (`5e49629`) : rendus réels 24/30/60 i/s, bande présente exactement sur [startFrame, endFrame), `snapshot --at` dans le désordre, word-highlight frame exact ; sortie identique sans sous-titres |
+| T114 | Livraisons incrustée / propre / les deux ; export quantifié | **Fait le 2026-11-03** (`5754448`, correctifs de revue) : SRT/VTT re-quantifiés sur la vidéo exportée mesurée, contrôle « calage des exports » ; rendus réels 24/30 i/s (bande = frames des SRT/VTT relus, absente de la vidéo propre) ; durée non entière de frames (2 750 ms à 30 i/s) rendue et vérifiée |
+| T115 | `VoiceProvider` import + fake ; repli `scene` | **Fait le 2026-11-03** (`724a846`, correctifs de revue) : `voice.test.ts` (audio 5, studio 11) ; `voice-captions.slow.test.ts` (Studio + HyperFrames réel : narration FR, voix importée — tonalité, **pas de parole** — et simulée, livraison « les deux », SRT/VTT = frames mesurées, audio AAC dans les deux MP4, QA « précision des temps » `minor`, remplacement de voix CA-6, révisions intactes CA-4) |
 | T116 | Installation explicite des moteurs, `voice:doctor`, sidecars sans réseau ; dossier POC Piper | À faire ; dossier présenté puis approbation avant téléchargement |
 | T117 | POC puis `local-tts` Piper (`fr_FR-mls-medium`, candidats) | Après approbation ; écoute, RTF, RAM, temps par mot ; CA-V1, CA-V2 |
 | T118 | `local-asr` whisper.cpp, modèle léger vs `large-v3-turbo` quantifié | Après approbation ; CA-V3 |
 | T119a | Étude de l'alignement forcé (API torchaudio ≥ 2.9, alternative maintenue sur CPU) | À faire ; aucune installation de torch avant accord |
 | T119 | Alignement `ctc` retenu par T119a | Après approbation ; CA-V7 |
-| T120 | QA sous-titres et voix | À faire |
+| T120 | QA sous-titres et voix | En partie : « calage des exports » et « précision des temps » faits ; restent lisibilité (CPS, longueur), contraste et zone sûre des cues, QA de la vidéo propre en mode « les deux », écart voix ↔ script |
 | T121 | Studio : narration, voix, édition des sous-titres, livraison | À faire ; E2E |
 | T122 | Review Agent : commentaires sur cue | À faire |
 | T123 | E2E sans moteur ; E2E moteurs réels (sauté avec raison) | À faire |
 | T124 | Revue indépendante, documentation, mémoire | À faire |
+| T125 | Suites de revue T111–T115 : proposer l'allongement d'une scène quand sa voix déborde (brief § 4.4, aujourd'hui avertissement seul) ; ne pas perdre les cues édités à la main lors d'un regroupement (à traiter avec T121) ; fenêtre d'atténuation de l'Audio Agent remplacée par `placeSceneVoice` ; `pictureKey` ignore toute clé `narration` | À faire ; revue du 2026-11-03 |
+| T126 | Point à surveiller : une fois sur 7 exécutions, v1 sans vidéo dans `voice-captions.slow.test.ts` (non reproduit, peut-être dû à des modifications concurrentes) | Le test affiche désormais l'erreur ; relancer `test:unit --project slow` en cas de récidive |

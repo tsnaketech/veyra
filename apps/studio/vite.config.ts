@@ -45,7 +45,17 @@ export default defineConfig({
           name: 'server',
           environment: 'node',
           include: ['src/**/*.{test,spec}.{js,ts}'],
-          exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
+          exclude: ['src/**/*.svelte.{test,spec}.{js,ts}', 'src/**/*.slow.test.ts']
+        }
+      },
+
+      {
+        extends: './vite.config.ts',
+        test: {
+          // Real HyperFrames renders (bwrap, Chrome headless): run by test:slow only.
+          name: 'slow',
+          environment: 'node',
+          include: ['src/**/*.slow.test.ts']
         }
       }
     ]

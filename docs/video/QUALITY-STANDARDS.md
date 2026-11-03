@@ -189,6 +189,21 @@ réutilisée).
 - **Aucune correction automatique** : ni ce contrôle ni la photosensibilité ne
   figurent dans `RETRYABLE` (`studio.ts`).
 
+## Sous-titres (v0.4)
+
+Contrôles `deterministic` du runner, sans correction automatique (absents de
+`RETRYABLE`) :
+
+| Contrôle | Mesure | Échec |
+|---|---|---|
+| Sous-titres — calage des exports | SRT/VTT re-quantifiés sur la vidéo exportée (cadence et nombre de frames mesurés) comparés à la table de composition | `major` si un cue diffère ; `not-performed` si fréquence variable ou cadence illisible (sans cadence, SRT/VTT non écrits) |
+| Sous-titres — précision des temps | part des mots en timing approximatif (`scene`, `asr`) | `minor` dès qu'un mot est approximatif (« vérifier à l'écoute ») ; réussi en `info` sinon |
+
+Restent à faire (T120) : lisibilité (CPS, longueur de ligne), contraste et zone sûre
+des cues (zone connue par construction, `captionBandRect`), QA de la vidéo propre en
+mode « les deux », écart voix ↔ script. Les sous-titres ne sont jamais considérés
+comme validés par les contrôles existants ; la validation humaine reste obligatoire.
+
 ## Revue qualitative
 
 Une image par scène (au milieu de la scène) est extraite avec ffmpeg et envoyée

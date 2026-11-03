@@ -17,7 +17,13 @@ import {
   toSrt,
   toWebVtt
 } from '@veyra/schemas';
-import { CAPTION_EXPORT_CHECK_NAME, loadRenderSettings, RenderJobRunner } from './runner';
+import {
+  CAPTION_EXPORT_CHECK_NAME,
+  CAPTION_PRECISION_CHECK_NAME,
+  captionPrecisionCheck,
+  loadRenderSettings,
+  RenderJobRunner
+} from './runner';
 let client: Database.Database,
   root: string,
   repo: ReturnType<typeof createRepository>,
@@ -402,4 +408,21 @@ it('reuses parent pictures: clean from a parent without captions, burned only wi
   expect(readFileSync(plain.revision.silentVideoPath!)).toEqual(
     readFileSync(join(root, 'prj_one/revisions/rev_again/renders/rnd_again.clean.video.mp4'))
   );
+});
+
+it('flags approximate caption times in QA, never as validated', () => {
+  const approximate = captionPrecisionCheck(track);
+  expect(approximate).toMatchObject({
+    name: CAPTION_PRECISION_CHECK_NAME,
+    passed: false,
+    severity: 'minor',
+    analysisMode: 'deterministic'
+  });
+  expect(JSON.parse(approximate.evidence)).toMatchObject({ partApproximative: 1 });
+  const manual = captionTrackSchema.parse({
+    ...track,
+    words: track.words.map((w) => ({ ...w, timing: 'manual' })),
+    provenance: { provider: 'manual' }
+  });
+  expect(captionPrecisionCheck(manual)).toMatchObject({ passed: true, severity: 'info' });
 });

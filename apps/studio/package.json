@@ -19,7 +19,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "test:slow": "pnpm test:unit --run --project client --passWithNoTests && pnpm test:e2e"
+    "test:slow": "pnpm test:unit --run --project client --project slow --passWithNoTests && pnpm test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

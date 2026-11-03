@@ -21,7 +21,9 @@ describe("voice providers", () => {
     expect(tts.available()).toEqual({
       ok: false,
       reason: "Moteur non installé",
-      installHint: expect.stringMatching(/pnpm voice:install piper.*T116/),
+      installHint: expect.stringMatching(
+        /installation explicite arrive avec T116/,
+      ),
     });
     await expect(
       tts.synthesize!({ sceneId: "scn_a", text: "Bonjour" }, "/dev/null"),

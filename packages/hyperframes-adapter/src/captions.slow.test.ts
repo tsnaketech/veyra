@@ -14,6 +14,7 @@ import {
 } from "./index";
 import {
   firstFrameAtOrAfter,
+  frameCount,
   parseSrt,
   parseWebVtt,
   quantizeCues,
@@ -334,3 +335,41 @@ describe.each([24, 30])("burned + clean exports at %i fps", (fps) => {
     ).toEqual([]);
   }, 300000);
 });
+
+it("a film whose duration is not a whole frame keeps its last cue (review D1)", async () => {
+  const durationMs = 2750,
+    fps = 30,
+    rate = { num: fps, den: 1 };
+  const board = {
+    ...film,
+    fps,
+    scenes: [{ id: "scn_a", start: 0, duration: durationMs, text: "A" }],
+  };
+  const track = captionFixture(
+    [{ startMs: 2000, endMs: durationMs, lines: ["Fin du film"] }],
+    bandStyle,
+  );
+  const layer = layerFor(track, rate, durationMs);
+  const id = "rev_d1";
+  const paths = storage.ensureRevision("prj_captions", id);
+  writeComposition(paths.composition, compose(board, board, theme, layer));
+  const { path } = await engine.render(paths.composition, {
+    revisionDir: paths.revision,
+    outputPath: storage.renderPath("prj_captions", id, "rnd_d1"),
+    quality: "draft",
+    fps,
+  });
+  const probed = await engine.inspect(path);
+  // The runner quantizes on frameCount(durationMs): the render must agree.
+  expect(probed.frameCount).toBe(frameCount(durationMs, rate));
+  expect(quantizeCues(track.cues, rate, probed.frameCount!)).toEqual(
+    layer.cues,
+  );
+  const frames = decode(path);
+  const last = layer.cues[0];
+  const lit = frames.map((frame) => measure(frame, red).count > 50);
+  expect(lit.slice(last.startFrame)).toEqual(
+    frames.slice(last.startFrame).map(() => true),
+  );
+  expect(lit[last.startFrame - 1]).toBe(false);
+}, 300000);

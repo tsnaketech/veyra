@@ -5,6 +5,7 @@ import {
   captionStyleSchema,
   captionTrackSchema,
   firstFrameAtOrAfter,
+  frameCount,
   storyboardSchema,
   type CaptionStyle,
 } from "@veyra/schemas";
@@ -286,7 +287,9 @@ function captionLayer(
       id = `cue-${i}`,
       start = seconds(q.startFrame),
       duration = seconds(q.endFrame - q.startFrame);
-    if (seconds(q.endFrame) > durationMs / 1000 + 1e-9)
+    // Same bound as the runner's quantization: frameCount rounds the duration, so the
+    // last cue may end up to half a frame after durationMs (e.g. 2750 ms at 30 fps).
+    if (q.endFrame > frameCount(durationMs, rate))
       throw new Error("Caption cue ends after the composition");
     const tokens = cue.lines.map((line) => line.split(" ").filter(Boolean));
     const words = track.words.slice(cue.wordStart, cue.wordEnd);

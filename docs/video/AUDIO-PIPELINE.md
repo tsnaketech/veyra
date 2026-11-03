@@ -125,7 +125,7 @@ au-delà du limiteur. `targetLufs` est une cible QA, sans normalisation automati
   `probeAudio` par `Studio.importAudio`, catégorie `voiceover`, aucun temps de mot),
   `fake` (tonalité FFmpeg lavfi de durée estimée à partir du texte, `simulated: true`,
   temps `scene` ; libellé « [Simulé] » dans le Studio) et `local-tts` (stub :
-  « Moteur non installé », `pnpm voice:install piper` disponible avec T116). Un
+  « Moteur non installé » ; aucune commande d'installation avant T116). Un
   fournisseur indisponible est une erreur explicite, jamais un repli vers `fake`.
 - `placeSceneVoice` : piste `voiceover` ancrée sur l'événement `scene` (bord début) de
   la scène, remplaçant la voix précédente de cette scène ; la musique est atténuée de

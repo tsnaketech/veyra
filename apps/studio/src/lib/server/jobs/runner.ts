@@ -27,6 +27,7 @@ import {
   frameCount,
   newId,
   qualityReportSchema,
+  captionPrecisionSummary,
   quantizeCues,
   toSrt,
   toWebVtt,
@@ -96,6 +97,7 @@ export type RenderSettings = ReturnType<typeof loadRenderSettings>;
 /** How captions are delivered; ignored when the revision has no captions. */
 export const captionDeliverySchema = z.enum(['burned', 'clean', 'both']).default('burned');
 export const CAPTION_EXPORT_CHECK_NAME = 'Sous-titres — calage des exports';
+export const CAPTION_PRECISION_CHECK_NAME = 'Sous-titres — précision des temps';
 // Narration is spoken, never drawn: it does not change the picture (burned captions are compared separately).
 const pictureKey = (board: { scenes: { narration?: unknown }[] }) =>
   JSON.stringify(board, (key, value) => (key === 'narration' ? undefined : value));
@@ -326,7 +328,7 @@ export class RenderJobRunner {
           writeFileSync(delivery.srt, toSrt(captions, exported.measured), { flag: 'wx' });
           writeFileSync(delivery.vtt, toWebVtt(captions, exported.measured), { flag: 'wx' });
         }
-        checks.push(exported.check);
+        checks.push(exported.check, captionPrecisionCheck(captions));
       }
       if (this.engine.kind === 'fake-test-only')
         for (const check of checks) {
@@ -486,6 +488,32 @@ export class RenderJobRunner {
  * compares that table with the one the burned layer was composed from. The sidecars
  * are written from the measured table; null when the video has no measured rate.
  */
+/**
+ * Says how word times were obtained. Approximate times (scene spread, ASR tokens) are a
+ * minor finding to check by ear: never presented as validated, never auto-fixed.
+ */
+export function captionPrecisionCheck(track: CaptionTrack) {
+  const { counts, total, approximateShare } = captionPrecisionSummary(track);
+  const approximate = approximateShare > 0;
+  return {
+    id: newId('qck'),
+    name: CAPTION_PRECISION_CHECK_NAME,
+    passed: !approximate,
+    severity: approximate ? ('minor' as const) : ('info' as const),
+    timestamp: 0,
+    evidence: JSON.stringify({
+      mots: total,
+      partApproximative: Math.round(approximateShare * 1000) / 1000,
+      repartition: counts,
+      fournisseur: track.provenance.provider
+    }),
+    recommendation: approximate
+      ? "Temps approximatifs (répartition dans la scène ou transcription) : vérifier la synchronisation à l'écoute, ou corriger les temps à la main"
+      : 'No action required',
+    analysisMode: 'deterministic' as const
+  };
+}
+
 export function captionExport(
   track: CaptionTrack,
   composed: QuantizedCue[],

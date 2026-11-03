@@ -156,7 +156,8 @@ export interface QuantizedCue {
 const TOLERANCE_MS = 0.5;
 /** First frame starting at or after `ms` (cue and word snapping rule, ±0.5 ms). */
 export const firstFrameAtOrAfter = (ms: number, rate: FrameRate) =>
-  Math.ceil(((ms - TOLERANCE_MS) * rate.num) / (1000 * rate.den) - 1e-9);
+  // "+ 0" turns the -0 of Math.ceil(-0.0…) into 0.
+  Math.ceil(((ms - TOLERANCE_MS) * rate.num) / (1000 * rate.den) - 1e-9) + 0;
 
 /**
  * Snaps cues to the frames of the measured video. This table is the single

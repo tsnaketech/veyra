@@ -62,3 +62,14 @@ critères 1–8 PASS, réserve R1 (comptage global, pas par région) suivie en T
 Vérifié directement : pnpm test 560, check, lint, test:slow 9/9, E2E 6/6.
 `.app-name` maintenu (décision utilisateur, T106).
 Prochaine étape : selon priorité utilisateur ; pas de v0.4 avant cette clôture.
+
+2026-11-03 — v0.4 Voice & Captions : brief validé ([plan](../docs/plans/v0.4-voice-captions.md)),
+T110–T115 faits sans aucun moteur TTS/ASR (contrats, migration 0005, calque HyperFrames
+exact à la frame, livraisons incrustée/propre/les deux, SRT/VTT calés sur la vidéo
+exportée, voix importée/simulée, sous-titres de repli approximatifs signalés au QA).
+Revue indépendante : D1 (durée non entière de frames) et messages corrigés ; suites
+T120, T125, T126. Vérifié directement : pnpm test 635, check, lint, test:slow
+adaptateur 16, slow Studio 1, E2E 6/6. Note v0.5 FLORA/Flow :
+[note](../docs/plans/v0.5-generative-media-note.md). Aucun moteur installé.
+Prochaine étape : dossier POC Piper (T116) à présenter avant toute installation.
+
