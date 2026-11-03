@@ -187,3 +187,26 @@ Source : [SKILLS-STRATEGY](ai/SKILLS-STRATEGY.md), sections 2, 6, 8 et 11. Audit
 | T107 | `measureTextContrast` ignore `start_time` du flux (seek relatif à 0) | Sans effet sur les rendus HyperFrames (`start_time=0`, sans B-frames) ; à traiter avant de mesurer des médias importés |
 | T108 | Photosensibilité : flashs rouges saturés et motifs réguliers non évalués | Seulement sur besoin (diffusion réglementée : outil certifié) ; ne pas revendiquer de conformité d'ici là |
 | T109 | Photosensibilité : comptage par région (réserve R1) — régions déphasées d'une image (volet, entrées échelonnées) comptées double : 1,5–2 Hz par région ou 3 coupes complémentaires/s étalées sur 2 images → `major` à tort | À faire avant tout usage bloquant du verdict ; cas de reproduction : `kajisho5-lab/t104/review2/zz-review2-fn4.test.ts.txt` ; aujourd'hui sans correction automatique, validation humaine obligatoire |
+
+## G16 — v0.4 Voice & Captions (validé le 2026-11-03)
+
+Brief : [v0.4-voice-captions](plans/v0.4-voice-captions.md) (périmètre, architecture, risques, critères CA-1 à CA-V8) ; moteurs : [comparatif](research/V04-VOICE-CAPTIONS-ENGINES.md). Aucune installation ni téléchargement avant approbation explicite.
+
+| ID | Travail | Statut / preuve attendue |
+|---|---|---|
+| T110 | Brief, comparatif des moteurs, décision D020 | **Fait le 2026-11-03** : périmètre et ordre validés (brief § 10) ; D020 après les POC moteurs |
+| T111 | Contrats Zod (narration, sous-titres, providers), `groupCaptions`, SRT/WebVTT | À faire ; tests unitaires |
+| T112 | Migration 0005 (`captions`, `caption_cue_id`), dépôt, révisions | À faire ; test de migration |
+| T113 | Calque de sous-titres HyperFrames, styles, animations | À faire ; rendus 24/30/60 i/s, sauts |
+| T114 | Livraisons incrustée / propre / les deux ; export quantifié | À faire ; MP4 ↔ SRT/VTT ± 1 frame |
+| T115 | `VoiceProvider` import + fake ; repli `scene` | À faire ; rendu réel avec voix importée |
+| T116 | Installation explicite des moteurs, `voice:doctor`, sidecars sans réseau ; dossier POC Piper | À faire ; dossier présenté puis approbation avant téléchargement |
+| T117 | POC puis `local-tts` Piper (`fr_FR-mls-medium`, candidats) | Après approbation ; écoute, RTF, RAM, temps par mot ; CA-V1, CA-V2 |
+| T118 | `local-asr` whisper.cpp, modèle léger vs `large-v3-turbo` quantifié | Après approbation ; CA-V3 |
+| T119a | Étude de l'alignement forcé (API torchaudio ≥ 2.9, alternative maintenue sur CPU) | À faire ; aucune installation de torch avant accord |
+| T119 | Alignement `ctc` retenu par T119a | Après approbation ; CA-V7 |
+| T120 | QA sous-titres et voix | À faire |
+| T121 | Studio : narration, voix, édition des sous-titres, livraison | À faire ; E2E |
+| T122 | Review Agent : commentaires sur cue | À faire |
+| T123 | E2E sans moteur ; E2E moteurs réels (sauté avec raison) | À faire |
+| T124 | Revue indépendante, documentation, mémoire | À faire |
