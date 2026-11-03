@@ -28,6 +28,7 @@ export {
   styleSchema,
   formatSchema,
   captionBandRect,
+  captionMetrics,
   captionLayerSchema,
   type CaptionLayer,
   type CaptionRect,

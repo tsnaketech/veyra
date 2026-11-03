@@ -10,3 +10,13 @@ export {
   type Silence,
   type SilenceOptions,
 } from "./analysis";
+export {
+  estimateSpeechMs,
+  importedVoiceResult,
+  placeSceneVoice,
+  voiceProvider,
+  type VoiceAvailability,
+  type VoiceProvider,
+  type VoiceProviderKind,
+  type VoiceSynthesis,
+} from "./voice";

@@ -209,7 +209,11 @@ const captionFonts: Record<CaptionStyle["font"], string> = {
   "system-sans": "system-ui,'Segoe UI',Roboto,Arial,sans-serif",
   serif: "Georgia,'Times New Roman',serif",
 };
-function captionMetrics(style: CaptionStyle, { width, height }: Dimensions) {
+/** Caption sizes in composition px; the single source for the CSS, captionBandRect and line fitting. */
+export function captionMetrics(
+  style: CaptionStyle,
+  { width, height }: Dimensions,
+) {
   const font = Math.round((style.sizePct * height) / 100);
   return {
     font,

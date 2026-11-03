@@ -199,7 +199,7 @@ Brief : [v0.4-voice-captions](plans/v0.4-voice-captions.md) (périmètre, archit
 | T112 | Migration 0005 (`captions`, `caption_cue_id`), dépôt, révisions | À faire ; test de migration |
 | T113 | Calque de sous-titres HyperFrames, styles, animations | À faire ; rendus 24/30/60 i/s, sauts |
 | T114 | Livraisons incrustée / propre / les deux ; export quantifié | À faire ; MP4 ↔ SRT/VTT ± 1 frame |
-| T115 | `VoiceProvider` import + fake ; repli `scene` | À faire ; rendu réel avec voix importée |
+| T115 | `VoiceProvider` import + fake ; repli `scene` | Implémenté le 2026-11-03, à relire : `packages/audio/src/voice.test.ts` (5), `apps/studio/src/lib/server/voice.test.ts` (10, moteur couleur + FFmpeg réel) ; **rendu HyperFrames réel avec voix importée non réalisé** (dépend de T114) |
 | T116 | Installation explicite des moteurs, `voice:doctor`, sidecars sans réseau ; dossier POC Piper | À faire ; dossier présenté puis approbation avant téléchargement |
 | T117 | POC puis `local-tts` Piper (`fr_FR-mls-medium`, candidats) | Après approbation ; écoute, RTF, RAM, temps par mot ; CA-V1, CA-V2 |
 | T118 | `local-asr` whisper.cpp, modèle léger vs `large-v3-turbo` quantifié | Après approbation ; CA-V3 |

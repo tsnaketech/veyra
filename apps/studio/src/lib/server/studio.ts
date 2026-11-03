@@ -1,4 +1,13 @@
-import { copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { ConfigLoader, configSchemas } from '@veyra/config';
 import { ProjectStorage, safePath, validateId } from '@veyra/storage';
@@ -28,8 +37,21 @@ import {
   type ProductionBrief,
   type ProductionPlan,
   type ProductionRun,
-  type RevisionPlan
+  type RevisionPlan,
+  captionRulesSchema,
+  captionStyleSchema,
+  captionTrackSchema,
+  groupCaptions,
+  sceneFallbackWords,
+  type CaptionRules,
+  type CaptionStyle,
+  type CaptionTrack,
+  type CaptionWord,
+  type Storyboard,
+  storyboardSchema,
+  voiceResultSchema
 } from '@veyra/schemas';
+import { captionBandRect, captionMetrics } from '@veyra/hyperframes-adapter';
 import {
   AssistedProvider,
   ProviderUnavailableError,
@@ -49,10 +71,17 @@ import {
   proposeAudio
 } from '@veyra/ai';
 import { visualTimeline, getComponent, registryVersion } from '@veyra/motion';
-import { AudioMediaError, probeAudio, meanVolumeDb } from '@veyra/audio';
+import {
+  AudioMediaError,
+  probeAudio,
+  meanVolumeDb,
+  importedVoiceResult,
+  placeSceneVoice,
+  voiceProvider
+} from '@veyra/audio';
 import type { createRepository } from './db/repo';
 import type { RenderJobRunner, RenderSettings } from './jobs/runner';
-import { Orchestrator, type Runners } from './production';
+import { Orchestrator, type RevisionEdit, type Runners } from './production';
 
 type Repository = ReturnType<typeof createRepository>;
 type RevisionRow = ReturnType<Repository['getRevision']>;
@@ -101,6 +130,127 @@ const SEQUENCE_FRAMES = 5;
 const soundWords = /musique|music|\bson\b|sonore|audio|voix|bruitage|effets? sonores?/i;
 // Output defects a fresh render can fix; layout or content issues need a correction instead.
 const RETRYABLE = new Set(['duration', 'resolution', 'fps', 'codec', 'non-empty', 'black-frames']);
+
+// --- Captions without any engine: words spread inside their scene from the narration.
+
+type Format = { width: number; height: number };
+/**
+ * Characters that fit on one caption line: the style limit, bounded by the text
+ * column of captionBandRect (rect width minus the horizontal padding) at an average
+ * glyph width of 0.6 em. Font and padding follow the compositor (font = sizePct % of
+ * the height, padX = font / 2).
+ */
+export function fittedCharsPerLine(style: CaptionStyle, format: Format) {
+  const { font, padX } = captionMetrics(style, format);
+  const rect = captionBandRect(style, format, 1);
+  // 0.6 em: conservative average advance of a bold sans-serif glyph.
+  const fit = Math.floor((rect.width - 2 * padX) / (0.6 * font));
+  return Math.max(1, Math.min(style.maxCharsPerLine, fit));
+}
+const groupFitted = (
+  words: CaptionWord[],
+  track: Pick<CaptionTrack, 'style' | 'rules'>,
+  format: Format
+) =>
+  groupCaptions(
+    words,
+    { maxLines: track.style.maxLines, maxCharsPerLine: fittedCharsPerLine(track.style, format) },
+    track.rules
+  );
+
+/** Caption track from the script only: provider "script", every word timing "scene" (approximate). */
+export function buildFallbackCaptions(
+  storyboard: Pick<Storyboard, 'scenes'>,
+  format: Format,
+  style: Partial<CaptionStyle> = {},
+  rules: Partial<CaptionRules> = {}
+): CaptionTrack {
+  const track = {
+    style: captionStyleSchema.parse(style),
+    rules: captionRulesSchema.parse(rules)
+  };
+  const words = sceneFallbackWords(storyboard.scenes);
+  return captionTrackSchema.parse({
+    schemaVersion: 1,
+    id: newId('cap'),
+    language: 'fr',
+    words,
+    cues: groupFitted(words, track, format),
+    ...track,
+    provenance: { provider: 'script' }
+  });
+}
+
+/**
+ * Rebuilds the fallback words of the given scenes of `board` and keeps every other
+ * scene's words; cues are regrouped (deterministic, so unchanged scenes keep the same
+ * cues). Non-"scene" timings that get replaced are reported, never dropped silently.
+ */
+function rebuildCaptionScenes(
+  reference: Pick<Storyboard, 'scenes'>,
+  board: Pick<Storyboard, 'scenes'>,
+  captions: CaptionTrack,
+  format: Format,
+  rebuild: ReadonlySet<string>
+) {
+  const owner = (w: CaptionWord) => w.sceneId ?? sceneAt(reference as Storyboard, w.startMs)?.id;
+  const warnings: string[] = [];
+  const words = board.scenes.flatMap((scene, i) => {
+    const old = captions.words.filter((w) => owner(w) === scene.id);
+    if (!rebuild.has(scene.id)) return old;
+    const kept = old.filter((w) => w.timing !== 'scene').length;
+    if (kept)
+      warnings.push(
+        `Sous-titres de la scène ${i + 1} : ${kept} mot(s) aux temps ${[...new Set(old.filter((w) => w.timing !== 'scene').map((w) => w.timing))].join(', ')} remplacés par une répartition approximative dans la scène.`
+      );
+    return sceneFallbackWords([scene]);
+  });
+  const dropped = captions.words.filter((w) => !board.scenes.some((s) => s.id === owner(w))).length;
+  if (dropped) warnings.push(`Sous-titres : ${dropped} mot(s) hors de toute scène retirés.`);
+  const track = captionTrackSchema.parse({
+    ...captions,
+    words,
+    cues: groupFitted(words, captions, format)
+  });
+  return { captions: track, warnings };
+}
+
+/**
+ * Captions of a child revision whose storyboard changed: scenes whose start, duration
+ * or narration changed (or that are new) get fresh "scene" words; the others are kept.
+ */
+export function refreshCaptions(
+  parentBoard: Pick<Storyboard, 'scenes'>,
+  childBoard: Pick<Storyboard, 'scenes'>,
+  captions: CaptionTrack | null,
+  format: Format
+): { captions: CaptionTrack | null; warnings: string[] } {
+  if (!captions) return { captions, warnings: [] };
+  const before = new Map(parentBoard.scenes.map((s) => [s.id, s]));
+  const changed = new Set(
+    childBoard.scenes
+      .filter((s) => {
+        const old = before.get(s.id);
+        return (
+          !old ||
+          old.start !== s.start ||
+          old.duration !== s.duration ||
+          old.narration?.text !== s.narration?.text
+        );
+      })
+      .map((s) => s.id)
+  );
+  const removed = parentBoard.scenes.some((s) => !childBoard.scenes.some((c) => c.id === s.id));
+  if (!changed.size && !removed) return { captions, warnings: [] };
+  return rebuildCaptionScenes(parentBoard, childBoard, captions, format, changed);
+}
+
+const editReasons: Record<RevisionEdit['edit'], string> = {
+  voice: 'Voix de scène : image réutilisée, nouveau mixage, sous-titres de la scène reconstruits.',
+  narration: 'Narration modifiée : sous-titres de la scène reconstruits.',
+  'caption-delivery': 'Livraison des sous-titres modifiée.'
+};
+export const captionDeliveries = ['burned', 'clean', 'both'] as const;
 
 export class Studio {
   private orchestrator: Orchestrator;
@@ -456,17 +606,31 @@ export class Studio {
     // Corrections and re-renders keep the soundtrack; a new prompt starts silent.
     audio: VideoRevision['audio'] = null,
     // Same rule for captions: children keep the source track; a new prompt has none.
-    captions: VideoRevision['captions'] = null
+    captions: VideoRevision['captions'] = null,
+    // Revision settings beyond origin/provider; children carry the parent's caption delivery.
+    config: Record<string, string> = {}
   ) {
     const now = Date.now();
+    const parent = parentRevisionId ? this.repo.getRevision(parentRevisionId) : null;
+    // Scenes moved, resized or re-narrated get fresh fallback words: no silent stale captions.
+    const refreshed = parent
+      ? refreshCaptions(parent.storyboard, storyboard, captions, storyboard)
+      : { captions, warnings: [] };
+    for (const warning of refreshed.warnings) this.say(projectId, 'system', warning);
+    const delivery = parent?.resolvedConfig.captionDelivery;
     return this.repo.createRevision({
       id: newId('rev'),
       projectId,
       parentRevisionId,
       storyboard,
       audio,
-      captions,
-      resolvedConfig: { origin, aiProvider: kind },
+      captions: refreshed.captions,
+      resolvedConfig: {
+        ...(typeof delivery === 'string' ? { captionDelivery: delivery } : {}),
+        ...config,
+        origin,
+        aiProvider: kind
+      },
       videoPath: null,
       error: null,
       createdAt: now,
@@ -877,17 +1041,28 @@ export class Studio {
 
   private createRevisionRun(
     source: RevisionRow,
-    payload: RevisionPlan | AudioComposition,
+    payload: RevisionPlan | AudioComposition | RevisionEdit,
     provider: Provider['kind'] | 'rules'
   ) {
-    const manual = 'tracks' in payload;
+    const edit = 'edit' in payload ? payload : null;
+    const manual = 'tracks' in payload || Boolean(edit);
     const routing = planRevisionPhases(
-      manual ? { changes: [], audioChanges: [payload] } : payload,
+      'edit' in payload
+        ? {
+            changes: [],
+            audioChanges:
+              JSON.stringify(payload.audio) === JSON.stringify(source.audio) ? [] : [payload.audio]
+          }
+        : 'tracks' in payload
+          ? { changes: [], audioChanges: [payload] }
+          : payload,
       this.productionBudget(),
       source.audio
     );
+    if (edit) routing.warnings.push(...edit.warnings);
     const plan: ProductionPlan = {
       ...routing.plan,
+      ...(edit ? { reason: editReasons[edit.edit] } : {}),
       phases: [
         { phase: 'plan', agent: 'review', dependsOn: [], maxAttempts: 1 },
         ...routing.plan.phases.map((p) => ({
@@ -921,9 +1096,13 @@ export class Studio {
 
   private revisionRunners(run: ProductionRun): Runners {
     const source = this.repo.getRevision(run.sourceRevisionId!);
-    const payload = this.phasePayload<RevisionPlan | AudioComposition>(run.id, 'plan');
-    const manual = 'tracks' in payload;
-    const plan = manual ? null : payload;
+    const payload = this.phasePayload<RevisionPlan | AudioComposition | RevisionEdit>(
+      run.id,
+      'plan'
+    );
+    const edit = 'edit' in payload ? payload : null;
+    const manual = 'tracks' in payload || Boolean(edit);
+    const plan = manual ? null : (payload as RevisionPlan);
     const batch = plan
       ? this.repo.listBatches(run.projectId).find((b) => b.planId === plan.id)
       : null;
@@ -947,7 +1126,11 @@ export class Studio {
         run: async () => ({
           kind: 'done',
           provider: 'rules',
-          payload: manual ? payload : this.patchedAudio(source.audio, plan!.audioChanges)
+          payload: edit
+            ? edit.audio
+            : manual
+              ? payload
+              : this.patchedAudio(source.audio, plan!.audioChanges)
         })
       },
       composition: {
@@ -955,17 +1138,22 @@ export class Studio {
           const child = this.repo.transaction(() => {
             const revision = this.newRevision(
               source.projectId,
-              (inputs.motion as { storyboard: VideoRevision['storyboard'] } | undefined)
-                ?.storyboard ?? source.storyboard,
+              edit?.storyboard ??
+                (inputs.motion as { storyboard: VideoRevision['storyboard'] } | undefined)
+                  ?.storyboard ??
+                source.storyboard,
               source.id,
               plan
                 ? batch
                   ? { planId: plan.id, batchId: batch.id }
                   : { planId: plan.id }
-                : { audioRevision: 'manual' },
+                : edit
+                  ? { edit: edit.edit }
+                  : { audioRevision: 'manual' },
               batch?.provider ?? String(source.resolvedConfig.aiProvider ?? 'none'),
-              (inputs.audio as AudioComposition) ?? source.audio,
-              source.captions
+              edit ? edit.audio : ((inputs.audio as AudioComposition) ?? source.audio),
+              edit ? edit.captions : source.captions,
+              edit?.config
             );
             if (batch)
               this.repo.updateBatch(batch.id, { status: 'applied', resultRevisionId: revision.id });
@@ -1829,6 +2017,188 @@ export class Studio {
     return this.background(source.projectId, async () => {
       await this.orchestrator.drive(run.id, this.revisionRunners(run));
     });
+  }
+
+  // --- Voice and captions (T115). Every edit is a child revision; the source is never changed.
+
+  private editable(revisionId: string, sceneId?: string) {
+    const source = this.repo.getRevision(revisionId);
+    if (source.status !== 'awaiting_approval')
+      throw new Error('Seule une révision en attente de validation peut être modifiée');
+    const index = sceneId ? source.storyboard.scenes.findIndex((s) => s.id === sceneId) : -1;
+    if (sceneId && index < 0) throw new Error('Scène introuvable');
+    return { source, index };
+  }
+
+  private startEdit(source: RevisionRow, edit: RevisionEdit, text: string) {
+    this.busy(source.projectId, 'generating');
+    const run = this.repo.transaction(() => {
+      this.repo.transitionRevision(source.id, 'changes_requested');
+      return this.createRevisionRun(source, edit, 'rules');
+    });
+    this.finishApproval(source.id, { decision: 'changes_requested' });
+    this.say(
+      source.projectId,
+      'assistant',
+      [text, ...edit.warnings.map((w) => `Attention : ${w}`)].join('\n')
+    );
+    return this.background(source.projectId, async () => {
+      await this.orchestrator.drive(run.id, this.revisionRunners(run));
+    });
+  }
+
+  /** Captions of `board` with the given scenes rebuilt from their narration (fallback "scene"). */
+  private sceneCaptions(source: RevisionRow, board: Storyboard, sceneIds: string[]) {
+    if (!source.captions) {
+      const track = buildFallbackCaptions(board, board);
+      return { captions: track.words.length ? track : null, warnings: [] };
+    }
+    return rebuildCaptionScenes(
+      source.storyboard,
+      board,
+      source.captions,
+      board,
+      new Set(sceneIds)
+    );
+  }
+
+  /**
+   * Narration of one scene (null removes it). The picture does not use the narration;
+   * it changes only through burned captions (T114 delivery).
+   */
+  setNarration(revisionId: string, sceneId: string, text: string | null) {
+    const { source, index } = this.editable(revisionId, sceneId);
+    const scenes = source.storyboard.scenes.map((scene) => {
+      if (scene.id !== sceneId) return scene;
+      const { narration, ...rest } = scene;
+      return text?.trim() ? { ...rest, narration: { ...narration, text: text.trim() } } : rest;
+    });
+    const storyboard = storyboardSchema.parse({ ...source.storyboard, scenes });
+    const captions = this.sceneCaptions(source, storyboard, [sceneId]);
+    const voiced = source.audio?.tracks.some(
+      (t) => t.category === 'voiceover' && t.anchor.type === 'event' && t.anchor.sceneId === sceneId
+    );
+    return this.startEdit(
+      source,
+      {
+        edit: 'narration',
+        storyboard,
+        audio: source.audio,
+        captions: captions.captions,
+        config: {},
+        warnings: [
+          ...captions.warnings,
+          ...(voiced
+            ? [`La voix de la scène ${index + 1} correspond encore à l'ancien texte.`]
+            : [])
+        ]
+      },
+      `Narration de la scène ${index + 1} ${text?.trim() ? 'mise à jour' : 'supprimée'} : nouvelle révision. Sous-titres de la scène reconstruits (temps approximatifs, répartis dans la scène).`
+    );
+  }
+
+  private placeVoice(
+    source: RevisionRow,
+    index: number,
+    voice: { assetId: string; durationMs: number; label: string },
+    text: string
+  ) {
+    const scene = source.storyboard.scenes[index];
+    const placed = placeSceneVoice(source.audio, scene, voice, endOf(source));
+    // shortcut: no aligner yet (T119), so the scene's captions are rebuilt with "scene" times.
+    const captions = this.sceneCaptions(source, source.storyboard, [scene.id]);
+    return this.startEdit(
+      source,
+      {
+        edit: 'voice',
+        storyboard: source.storyboard,
+        audio: placed.composition,
+        captions: captions.captions,
+        config: {},
+        warnings: [...placed.warnings, ...captions.warnings]
+      },
+      `${text} Sous-titres de la scène : temps approximatifs (répartis dans la scène, aucun alignement installé).`
+    );
+  }
+
+  /** Recorded voice for one scene: validated like any imported audio, original kept. */
+  async importVoice(revisionId: string, sceneId: string, file: File, data: Uint8Array) {
+    const { source, index } = this.editable(revisionId, sceneId);
+    const asset = await this.importAudio(source.projectId, file, data, 'voiceover');
+    if (asset.audio?.status !== 'valid')
+      throw new Error(`Voix refusée : ${asset.audio?.error ?? 'fichier invalide'}`);
+    const result = importedVoiceResult(
+      sceneId,
+      asset.id,
+      asset.audio.metadata as { durationMs: number }
+    );
+    return this.placeVoice(
+      source,
+      index,
+      { assetId: asset.id, durationMs: result.durationMs, label: `Voix scène ${index + 1}` },
+      `Voix importée pour la scène ${index + 1} : nouvelle révision, storyboard inchangé.`
+    );
+  }
+
+  /** Generated voice; an unavailable provider is an explicit error, never a simulated voice. */
+  async generateVoice(revisionId: string, sceneId: string, kind: 'fake' | 'local-tts') {
+    const { source, index } = this.editable(revisionId, sceneId);
+    const provider = voiceProvider(kind);
+    const status = provider.available();
+    if (!status.ok)
+      throw new Error(
+        `Voix « ${kind} » indisponible : ${status.reason ?? 'inconnue'}${status.installHint ? ` — ${status.installHint}` : ''}`
+      );
+    const text = source.storyboard.scenes[index].narration?.text;
+    if (!text) throw new Error(`La scène ${index + 1} n'a pas de narration`);
+    const dir = mkdtempSync(join(tmpdir(), 'veyra-voice-'));
+    try {
+      const out = join(dir, 'voice.wav');
+      const synthesis = await provider.synthesize!({ sceneId, text }, out, this.audioLimits());
+      const simulated = synthesis.simulated ? '[Simulé] ' : '';
+      const bytes = new Uint8Array(readFileSync(out));
+      const name = `voix-${kind}-scene-${index + 1}.wav`;
+      const asset = await this.importAudio(
+        source.projectId,
+        new File([bytes], name, { type: 'audio/wav' }),
+        bytes,
+        'voiceover'
+      );
+      if (asset.audio?.status !== 'valid')
+        throw new Error(`Voix générée refusée : ${asset.audio?.error ?? 'fichier invalide'}`);
+      voiceResultSchema.parse({ ...synthesis, assetId: asset.id });
+      return await this.placeVoice(
+        source,
+        index,
+        {
+          assetId: asset.id,
+          durationMs: synthesis.durationMs,
+          label: `${simulated}Voix scène ${index + 1}`
+        },
+        `${simulated}Voix ${synthesis.simulated ? 'simulée (tonalité de test, pas une vraie voix)' : 'générée'} pour la scène ${index + 1} : nouvelle révision, storyboard inchangé.`
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** Burned, clean or both: stored in the child revision's resolvedConfig.captionDelivery. */
+  setCaptionDelivery(revisionId: string, mode: (typeof captionDeliveries)[number]) {
+    if (!captionDeliveries.includes(mode)) throw new Error('Livraison des sous-titres inconnue');
+    const { source } = this.editable(revisionId);
+    const labels = { burned: 'incrustés', clean: 'vidéo propre + SRT/VTT', both: 'les deux' };
+    return this.startEdit(
+      source,
+      {
+        edit: 'caption-delivery',
+        storyboard: source.storyboard,
+        audio: source.audio,
+        captions: source.captions,
+        config: { captionDelivery: mode },
+        warnings: []
+      },
+      `Livraison des sous-titres : ${labels[mode]}. Nouvelle révision.`
+    );
   }
 
   /** Everything the Studio page needs, in one read. */

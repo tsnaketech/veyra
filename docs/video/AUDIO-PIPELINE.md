@@ -118,6 +118,37 @@ au-delà du limiteur. `targetLufs` est une cible QA, sans normalisation automati
   `changes_requested`). Les corrections de mouvement et les nouveaux rendus automatiques
   conservent la bande son ; un nouveau prompt repart sans son.
 
+## Voix par scène et sous-titres sans moteur (v0.4, T115)
+
+- `VoiceProvider` (`packages/audio/src/voice.ts`, exécution par processus ; sélection
+  explicite par `voiceProvider(kind)`) : `import` (pas de synthèse ; validation
+  `probeAudio` par `Studio.importAudio`, catégorie `voiceover`, aucun temps de mot),
+  `fake` (tonalité FFmpeg lavfi de durée estimée à partir du texte, `simulated: true`,
+  temps `scene` ; libellé « [Simulé] » dans le Studio) et `local-tts` (stub :
+  « Moteur non installé », `pnpm voice:install piper` disponible avec T116). Un
+  fournisseur indisponible est une erreur explicite, jamais un repli vers `fake`.
+- `placeSceneVoice` : piste `voiceover` ancrée sur l'événement `scene` (bord début) de
+  la scène, remplaçant la voix précédente de cette scène ; la musique est atténuée de
+  -10 dB sur la durée de la voix (fenêtres absolues, comme l'Audio Agent). Une voix plus
+  longue que sa scène n'est ni coupée ni compensée : avertissement (débordement sur la
+  scène suivante, ou coupure à la fin de la vidéo, que le moteur ne signale pas), phase
+  plan `needs-human`, storyboard inchangé. Allonger la scène reste une action séparée
+  (non implémentée).
+- Studio : `setNarration`, `importVoice`, `generateVoice` (`fake` | `local-tts`),
+  `setCaptionDelivery` (`resolvedConfig.captionDelivery`, hérité par les révisions
+  enfants). Chaque action crée une révision enfant ; la source passe
+  `changes_requested`. Une voix ne change pas le storyboard : image réutilisée. La
+  narration n'est pas dessinée, mais elle fait partie du storyboard : avec la règle de
+  réutilisation actuelle du runner (storyboard identique), un changement de narration
+  relance le rendu HyperFrames.
+- Sous-titres de repli : `buildFallbackCaptions` (`sceneFallbackWords` +
+  `groupCaptions`, fournisseur `script`, temps `scene` approximatifs). Les caractères par
+  ligne sont bornés par la largeur utile de `captionBandRect` (largeur moins le
+  rembourrage horizontal, 0,6 em par caractère) : 18 en 1080×1920 avec le style par
+  défaut, 42 en 1920×1080. `refreshCaptions` reconstruit, à chaque révision enfant, les
+  scènes dont le début, la durée ou la narration change et conserve les autres ; des
+  temps non `scene` remplacés produisent un avertissement.
+
 ## Audio QA
 
 `audioQualityChecks` (`apps/studio/src/lib/server/jobs/audio-qa.ts`) mesure le MP4

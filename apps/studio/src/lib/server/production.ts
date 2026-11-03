@@ -4,7 +4,9 @@ import { inputHash } from '@veyra/schemas/hash';
 import {
   agentResultSchema,
   audioCompositionSchema,
+  captionTrackSchema,
   motionCompositionSchema,
+  storyboardSchema,
   newId,
   type Phase,
   type ProductionPhase,
@@ -37,6 +39,19 @@ export interface PhaseRunner {
 }
 export type Runners = Partial<Record<Phase, PhaseRunner>>;
 
+/** Manual edit of a revision (voice, narration, caption delivery): the plan of its revision run. */
+export const revisionEditSchema = z
+  .object({
+    edit: z.enum(['voice', 'narration', 'caption-delivery']),
+    storyboard: storyboardSchema,
+    audio: audioCompositionSchema.nullable(),
+    captions: captionTrackSchema.nullable(),
+    config: z.record(z.string(), z.string()),
+    warnings: z.array(z.string())
+  })
+  .strict();
+export type RevisionEdit = z.infer<typeof revisionEditSchema>;
+
 const envelope = agentResultSchema(z.json());
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 // Payload contract of each phase; other phases carry free JSON.
@@ -48,7 +63,7 @@ const payloadSchemas: Record<ProductionRun['kind'], Partial<Record<Phase, z.ZodT
     audio: audioCompositionSchema
   },
   revision: {
-    plan: z.union([reviewPlanSchema, audioCompositionSchema]),
+    plan: z.union([reviewPlanSchema, audioCompositionSchema, revisionEditSchema]),
     motion: motionCompositionSchema,
     audio: audioCompositionSchema
   }
