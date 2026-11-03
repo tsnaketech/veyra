@@ -74,7 +74,7 @@ Claude Code (binaire de l'utilisateur, conditions [Anthropic](https://code.claud
 n'est jamais lancé par Veyra pour une requête modèle ; seules `claude --version` et
 `claude auth status` sont exécutées pour afficher la disponibilité.
 
-Le système requiert ffmpeg/ffprobe (5.1.9 présents), bwrap, prlimit et Chrome
+Le système requiert ffmpeg/ffprobe avec libx264 et PNG (9.0.2 présents, [install_ffmpeg](install_ffmpeg.md)), bwrap, prlimit et Chrome
 Headless Shell (`hyperframes browser ensure`, dans `~/.cache/hyperframes`).
 Le pipeline réel et ses limites sont dans [VIDEO-PIPELINE](video/VIDEO-PIPELINE.md),
 le modèle de sandbox dans [SECURITY](SECURITY.md).

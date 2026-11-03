@@ -30,6 +30,8 @@ Les invariants restent inchangés :
 
 ## 2. Blocage FFmpeg constaté (à traiter en premier)
 
+> **Résolu le 2026-11-02 (T100)** : FFmpeg 9.0.2 recompilé avec libx264, zlib, freetype, libass et vidstab, puis installé dans `/usr/local`. Résultats : `test:slow` 2/2, `pnpm test` réussi, E2E 6/6 et `ffmpeg-skill doctor` 42/42 ; détails dans [install_ffmpeg](../install_ffmpeg.md). La suite de cette section décrit l'état constaté avant la correction.
+
 D'après [install_ffmpeg.md](../install_ffmpeg.md), document non versionné, FFmpeg 9.0.2 a été compilé avec `./configure` par défaut puis installé dans `/usr/local/bin`. Ce répertoire précède `/usr/bin` dans le `PATH`. Veyra appelle `ffmpeg` et `ffprobe` par le `PATH`, dans `packages/audio`, `packages/video` et le bac à sable HyperFrames.
 
 Cette compilation n'a ni libx264, ni encodeur PNG (zlib absent), ni `drawtext`, `subtitles`/`ass`, `libvmaf`.

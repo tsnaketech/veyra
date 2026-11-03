@@ -109,13 +109,17 @@ test('audiovisual pipeline on a real HyperFrames render: SFX on visual events, d
 
   // (3) Audio import.
   const panel = page.getByTestId('audio-panel');
-  for (const [file, category] of [
-    [pop, 'sfx'],
-    [music, 'music']
-  ] as const) {
+  for (const [index, [file, category]] of (
+    [
+      [pop, 'sfx'],
+      [music, 'music']
+    ] as const
+  ).entries()) {
     await page.getByLabel(/Fichier audio \(maximum/).setInputFiles(file, quick);
     await page.getByLabel('Catégorie du fichier').selectOption(category, quick);
     await page.getByRole('button', { name: 'Importer l’audio' }).click(quick);
+    // use:enhance resets the form on success: wait, or the next file is cleared before submit.
+    await expect(panel.getByText(/· Valide/)).toHaveCount(index + 1, quick);
   }
   await expect(panel.getByText(/· Valide/)).toHaveCount(2, quick);
   await expect(panel).toContainText('48000 Hz', quick);

@@ -177,7 +177,7 @@ Source : [SKILLS-STRATEGY](ai/SKILLS-STRATEGY.md), sections 2, 6, 8 et 11. Audit
 
 | ID | Travail | Statut / preuve attendue |
 |---|---|---|
-| T100 | FFmpeg de la machine : recompiler 9.0.2 avec libx264, zlib, freetype et libass, ou revenir à la version Debian ; actualiser RUNBOOK | **Bloquant**, décision de l'utilisateur. Constaté : `test:slow` 2 échecs, `@veyra/audio` 3/19 échecs, `@veyra/video` en échec avec 9.0.2 ; tout réussit avec `/usr/bin` en tête du `PATH`. Preuve attendue : mêmes commandes et `ffmpeg-skill doctor` réussis |
+| T100 | FFmpeg de la machine : recompiler 9.0.2 avec libx264, zlib, freetype, libass, x265, mp3lame, opus et vidstab ; actualiser RUNBOOK | **Fait le 2026-11-02** ([install_ffmpeg](install_ffmpeg.md)) : `test:slow` 2/2, `pnpm test` réussi, `check`/`lint` OK, E2E 6/6 (course corrigée dans `v03-audiovisual.e2e.ts`), `ffmpeg-skill doctor` 42/42 |
 | T101 | Normalisation de sonie dans l'Audio Engine (`loudnorm` en deux passes, cible dans `config/audio.yaml`) et contrôle « Diffusion » consultatif | À faire ; contrôle « Niveau sonore » réussi sur un rendu réel |
 | T102 | POC qc-skill (commit `a53c30d`) dans un venv isolé sous bwrap : photosensibilité BT.1702, contraste WCAG par zone, plage de luminance sur les vidéos du banc A/B | En attente de l'autorisation d'exécuter du code externe ; comparaison avec les mesures Veyra |
 | T103 | POC Three.js (copie locale épinglée, `hf-seek`, rendu WebGL sous bwrap) | Seulement sur besoin produit approuvé ; aucune dépendance avant |
