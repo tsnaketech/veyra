@@ -172,6 +172,9 @@ test('Motion Engine: catalogue, SaaS composition, targeted component correction,
   const qa = page.getByTestId('qa-report');
   await expect(qa).toContainText('Mise en page (marges, débordements)');
   await expect(qa).toContainText('Performance de rendu');
+  // T104 rendered-picture checks are listed after a fresh render.
+  await expect(qa).toContainText('Photosensibilité (flashs, mesure technique)');
+  await expect(qa).toContainText("Contraste mesuré sur l'image rendue");
 
   // Frame 525 = 17.5 s, inside the CallToAction scene (17–20 s).
   await page.getByTestId('scrubber').fill('525');
