@@ -35,6 +35,16 @@ sous 2,6 % de la hauteur (28 px à 1080p, seuil `text_below_floor` d'HyperFrames
 Chaque scène sauf la dernière sort en fondu (0,4 s max) ; HyperFrames gère la
 visibilité des clips.
 
+État initial des entrées (T095) : les `tl.fromTo(...)` des composants utilisent
+`immediateRender: true`. L'état « from » est donc appliqué dès la construction de la
+timeline, et un élément à entrée décalée (`at > 0` ou `stagger`) reste caché jusqu'au
+début de son tween, quel que soit l'ordre des positions demandées (rendu séquentiel,
+saut, retour à 0). Règle à conserver : un composant n'anime jamais deux fois la même
+propriété d'un même élément en entrée. Sinon, le second `fromTo` écraserait l'état
+final du premier ; la sortie, sur `.stage`, garde `immediateRender: false`.
+Vérification : `entry-state.slow.test.ts` (images du MP4 et `hyperframes snapshot --at`
+dans le désordre).
+
 ## Storyboard
 
 Une scène porte soit un texte (rendu historique, inchangé), soit

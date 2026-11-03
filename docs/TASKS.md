@@ -165,8 +165,8 @@ Source : [OPENMONTAGE-SKILLS-EVALUATION](research/OPENMONTAGE-SKILLS-EVALUATION.
 
 | ID | Travail | Statut / preuve attendue |
 |---|---|---|
-| T095 | `animated-title` (`reveal: words`) : supprimer le « flash » du titre complet avant la révélation | À faire ; cause reproduite (`immediateRender:false` sur les entrées décalées, SKILLS-STRATEGY § 6.1) ; test de rendu image par image sur les premières frames |
-| T096 | `feature-cards` : supprimer la double entrée des cartes ; `call-to-action` : titre avant bouton et mention | À faire ; frames de contrôle |
+| T095 | `animated-title` (`reveal: words`) : supprimer le « flash » du titre complet avant la révélation | **Fait le 2026-11-03** : `immediateRender: true` sur les entrées (`compose.ts`) ; `entry-state.slow.test.ts` (frames 0–12 du MP4, `snapshot --at 3.5,0.1,2,0`) ; frame 0 : 13 493 → 0 pixels de texte ; mesures dans [SKILLS-STRATEGY § 6.1](ai/SKILLS-STRATEGY.md#61-gsap-compatible-avec-hyperframes-rendu-réel) |
+| T096 | `feature-cards` : supprimer la double entrée des cartes ; `call-to-action` : titre avant bouton et mention | **Fait par T095** (même cause) : cartes 1 767 → 0 pixels à la frame 0, bouton 8 293 → 0 ; planches vérifiées (titre, puis bouton, puis mention) |
 | T097 | Mots orphelins et `align: left` déséquilibré dans les composants | À faire ; aperçus réels |
 | T098 | Enrichir `prompt-to-video` et `instructions.storyboard` : règles de récit et règle anti-provisoires (pas de « alterner align ») | À faire après T095–T097 ; nouvel A/B ≥ 3 essais, ablation et relecture humaine |
 | T099 | Règles sonores de l'Audio Agent (une musique, niveau et avance des effets, transitions) | À faire ; validation à l'écoute humaine |
@@ -179,5 +179,6 @@ Source : [SKILLS-STRATEGY](ai/SKILLS-STRATEGY.md), sections 2, 6, 8 et 11. Audit
 |---|---|---|
 | T100 | FFmpeg de la machine : recompiler 9.0.2 avec libx264, zlib, freetype, libass, x265, mp3lame, opus et vidstab ; actualiser RUNBOOK | **Fait le 2026-11-02** ([install_ffmpeg](install_ffmpeg.md)) : `test:slow` 2/2, `pnpm test` réussi, `check`/`lint` OK, E2E 6/6 (course corrigée dans `v03-audiovisual.e2e.ts`), `ffmpeg-skill doctor` 42/42 |
 | T101 | Normalisation de sonie dans l'Audio Engine (`loudnorm` en deux passes, cible dans `config/audio.yaml`) et contrôle « Diffusion » consultatif | À faire ; contrôle « Niveau sonore » réussi sur un rendu réel |
-| T102 | POC qc-skill (commit `a53c30d`) dans un venv isolé sous bwrap : photosensibilité BT.1702, contraste WCAG par zone, plage de luminance sur les vidéos du banc A/B | En attente de l'autorisation d'exécuter du code externe ; comparaison avec les mesures Veyra |
+| T102 | POC qc-skill (commit `a53c30d`) sous bwrap : photosensibilité BT.1702, contraste WCAG par zone, plage de luminance sur les vidéos du banc A/B | **Fait le 2026-11-03** : [QC-SKILL-POC](research/QC-SKILL-POC.md) ; sans `pip install`, `--unshare-all`, 15 requêtes |
 | T103 | POC Three.js (copie locale épinglée, `hf-seek`, rendu WebGL sous bwrap) | Seulement sur besoin produit approuvé ; aucune dépendance avant |
+| T104 | Video QA : contrôle photosensibilité (BT.1702) et contraste/hauteur de texte mesurés sur le rendu, réécrits en TypeScript dans `packages/video` ; zones fournies par Veyra | À planifier ; proposition dans [QC-SKILL-POC § 6](research/QC-SKILL-POC.md#6-proposition-dintégration-au-video-qa-expert) ; oracle : médias synthétiques du POC |

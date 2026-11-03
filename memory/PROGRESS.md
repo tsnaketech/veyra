@@ -45,3 +45,9 @@ libx264/PNG et installé dans /usr/local (T100 fait, [install_ffmpeg](../docs/in
 tests, E2E 6/6 et ffmpeg-skill doctor 42/42 réussis. POC qc-skill (T102) bloqué :
 exécution de code externe refusée par l'environnement. Prochaine étape : T095
 (cause reproduite).
+
+2026-11-03 — T095 corrigé (`immediateRender: true` sur les entrées, `entry-state.slow.test.ts`) ;
+corrige aussi T096 (même cause). POC qc-skill fait sous bwrap sans installation
+([QC-SKILL-POC](../docs/research/QC-SKILL-POC.md)) : photosensibilité nouvelle, contraste sur
+l'image utile avec zones par texte, luminance légale = faux positifs. Suite proposée : T104.
+Vérifié : pnpm test, check, lint, test:slow 3/3, E2E 6/6 ; 18 MP4 de l'E2E en Lavf63.1.102 (FFmpeg 9.0.2).

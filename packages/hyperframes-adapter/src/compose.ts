@@ -72,10 +72,13 @@ export function compose(
         `<div class="clip scene" data-start="${start}" data-duration="${duration}" data-track-index="${index}" id="${domId}"><div class="stage align-${built.align}" style="--accent:${brand.palette[built.accent]}">${built.html}</div></div>`,
       );
       // Fixed statements around validated data: components never contribute code.
+      // immediateRender applies each start state at build time: staggered or delayed
+      // entries stay hidden until they start, on any seek order (T095). Safe because
+      // no two entry tweens animate the same property of one element.
       for (const t of built.tweens) {
         const { target, from, to, at, duration: length, ...options } = t;
         steps.push(
-          `tl.fromTo(${scriptJson(target)}, ${scriptJson(from)}, ${scriptJson({ ...to, ...options, duration: length, immediateRender: false })}, ${start + at});`,
+          `tl.fromTo(${scriptJson(target)}, ${scriptJson(from)}, ${scriptJson({ ...to, ...options, duration: length, immediateRender: true })}, ${start + at});`,
         );
       }
       for (const c of built.counters)

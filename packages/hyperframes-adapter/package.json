@@ -9,7 +9,7 @@
     "test": "vitest run --exclude \"**/*.slow.test.ts\"",
     "check": "tsc -p tsconfig.json",
     "lint": "prettier --check .",
-    "test:slow": "vitest run src/render.slow.test.ts src/motion.slow.test.ts",
+    "test:slow": "vitest run src/render.slow.test.ts src/motion.slow.test.ts src/entry-state.slow.test.ts",
     "motion:previews": "tsx src/previews-cli.ts"
   },
   "dependencies": {

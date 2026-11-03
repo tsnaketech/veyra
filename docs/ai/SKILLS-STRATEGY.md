@@ -23,9 +23,9 @@ Les invariants restent inchangés :
 | remotion-best-practices | Principes transposables uniquement. Jamais de code Remotion dans le pipeline HyperFrames. |
 | playwright-cli | Tests et débogage de l'interface Studio uniquement. Les E2E versionnés restent dans `@playwright/test`. |
 | ffmpeg-skill 3.1.1 | Outil d'inspection pour le développeur : `probe`, `check --platform`, `loudness --measure`, `silence --list`. Ne remplace ni l'Audio Engine ni le Video QA. |
-| qc-skill 0.2.6 | Premier candidat pour un POC. Ses gains possibles sont la photosensibilité BT.1702, le contraste WCAG mesuré sur zone de texte et la plage de luminance. **Non installé** : l'exécution a été refusée par l'environnement (§ 8.5). |
-| video-editing-skill 0.4.2 | Écarté pour l'instant : il suppose des rushes, Veyra génère ses images. |
-| audio-production-skill 0.4.8 | Examiné, non retenu : il double l'Audio Engine. À réévaluer seulement pour le débruitage ou le nettoyage de voix off. |
+| qc-skill 0.2.6 | **POC réalisé le 2026-11-03** sous bwrap, sans installation ([QC-SKILL-POC](../research/QC-SKILL-POC.md)). Photosensibilité : nouvelle et fiable sur les cas testés. Contraste sur l'image : complément utile, mais il faut une zone par texte. Luminance légale : faux positifs systématiques. Non intégré. |
+| video-editing-skill 0.4.2 | Conservé pour une future itération consacrée aux rushes ; non installé. |
+| audio-production-skill 0.4.8 | Non installé (décision du 2026-11-03) ; il double l'Audio Engine. |
 | **Blocage** | FFmpeg 9.0.2 installé le 2026-11-02 dans `/usr/local/bin` casse le rendu réel et les tests (§ 2). |
 
 ## 2. Blocage FFmpeg constaté (à traiter en premier)
@@ -159,7 +159,17 @@ La planche d'images confirme le résultat :
 - A affiche le titre complet, puis chaque mot disparaît au début de son tween et revient. C'est le « flash » de T095 ;
 - B reste vide jusqu'à 0,3 s.
 
-Cause probable de T095 : avec `immediateRender:false`, l'état « from » n'est appliqué qu'au début de chaque tween décalé. Avant ce moment, le mot conserve son style CSS (visible). La correction relève de T095 : moteur non modifié pendant cet audit.
+Cause de T095 : avec `immediateRender:false`, l'état « from » n'est appliqué qu'au début de chaque tween décalé. Avant ce moment, le mot conserve son style CSS (visible).
+
+**Corrigé le 2026-11-03** : `immediateRender: true` sur les entrées des composants (`compose.ts`), règle dans [MOTION-ENGINE](../video/MOTION-ENGINE.md). Pixels de texte (Y > 230) mesurés sur des rendus réels de 960×540 :
+
+| Composant | Ancien : frame 0 → frame 15 | Corrigé : frames 0 à 6 → frame 15 → stable | Après un saut fin → 0,1 s → 0 s |
+|---|---|---|---|
+| `animated-title` | 13 493 → 6 701 (flash puis retrait) | 0 → 262 → 14 341 | ancien : 14 453 / 14 453 ; corrigé : 0 / 0 |
+| `feature-cards` | 1 767 → 4 200 (double entrée) | 0 → 3 222 → 5 123 | ancien : 2 462 / 2 494 ; corrigé : 0 / 0 |
+| `call-to-action` | 8 293 (bouton avant le titre) → 6 703 | 0 à 19 → 6 552 → 14 745 | ancien : 8 432 / 8 432 ; corrigé : 0 / 0 |
+
+Les sauts sont faits avec `hyperframes snapshot --at <fin>,0.1,1,0`. La même cause expliquait la double entrée des cartes et le bouton affiché avant le titre de T096 (planches vérifiées). Test de non-régression : `entry-state.slow.test.ts`.
 
 Si `immediateRender` est réactivé, vérifier le cas que `gsap-core` signale : plusieurs `fromTo` sur la même propriété d'un même élément. C'est le cas pour la sortie, mais elle vise `.stage`, une autre cible.
 
@@ -287,7 +297,9 @@ Les six vidéos du banc A/B (V1 à V6) ont été mesurées par moi avec les filt
 - `signalstats` : Y min 0, Y max 254–255 sur les six vidéos (balise `tv`, donc des valeurs hors de 16–235).
 - `scdet` (seuil 8) : aucune coupe dans V1 et V2.
 
-### 8.5 Installation et test réel : non réalisés
+### 8.5 Installation et test réel
+
+> **Mise à jour du 2026-11-03** : POC qc-skill réalisé à la demande de l'utilisateur, sans `pip install`, depuis le clone figé, sous bwrap (`--unshare-all`, système en lecture seule, environnement vidé). Résultats et proposition d'intégration : [QC-SKILL-POC](../research/QC-SKILL-POC.md). video-editing-skill et audio-production-skill n'ont été ni installés ni exécutés. Ce qui suit décrit la situation du 2026-11-02.
 
 L'installation des trois paquets dans des venv isolés hors dépôt (`pip install --no-deps` depuis les clones) a été **refusée par le classifieur de permissions** de Claude Code (« Code from External »). Aucun de leurs codes n'a été exécuté. Il n'y a donc **ni installation, ni version figée en place, ni test de fonctionnement réel** : les sections 8.1 à 8.3 reposent sur la lecture du code.
 
@@ -338,7 +350,15 @@ Coût permanent mesuré : chaque skill découvert ajoute sa description au conte
 | `ffmpeg-skill` | 1 | 926 |
 | `playwright-cli`, `remotion-best-practices` | 2 | 107 |
 
-Le corps d'un skill (4 à 30 Ko) n'est lu que lorsqu'il est invoqué. Règles :
+Le corps d'un skill (4 à 30 Ko) n'est lu que lorsqu'il est invoqué.
+
+**Vérifié le 2026-11-03** sur le journal de la session de l'audit (`~/.claude/projects/…/e95b4e58-….jsonl`), qui couvre l'audit, la recompilation de FFmpeg, T095 et le POC :
+
+- appels à l'outil Skill : `route` ×2 et `claude-api` ×1 ;
+- corps de skill chargés : `route`, `claude-api` et `ui-ux-pro-max` (plugin) ;
+- **aucun** corps de skill `gsap-*`, `threejs-*`, `ffmpeg-skill`, `playwright-cli` ou `remotion-best-practices` n'a été chargé. Seules leurs descriptions figurent dans la liste de session. Leurs fichiers ont été lus ponctuellement (`grep`, `head`) pour l'audit.
+
+Règles :
 
 1. Charger le skill Veyra du domaine, puis **un seul** skill externe ciblé : `gsap-core` ou `gsap-timeline`, jamais les huit. Ouvrir une référence secondaire (`ffmpeg-skill/references/*`, `remotion-best-practices/*/REFERENCE.md`) seulement pour une question précise.
 2. Ne jamais charger un skill externe dans `veyra-assisted-task`.
@@ -357,10 +377,10 @@ Par ordre de priorité :
 1. **FFmpeg** : recompiler FFmpeg 9.0.2 avec libx264, zlib, freetype et libass, ou revenir à la version Debian. Ensuite :
    - mettre à jour les prérequis de RUNBOOK ;
    - revérifier `test:slow`, les tests audio et vidéo, et `doctor`.
-2. **T095** : remplacer `immediateRender:false` par l'état initial appliqué à la création, pour les tweens d'entrée décalés. Ajouter un test de rendu image par image (motif du § 6.1).
+2. **T095** : fait le 2026-11-03 (§ 6.1).
 3. **Normalisation de sonie** dans l'Audio Engine (`loudnorm` en deux passes, cible configurable), et contrôle « Diffusion » consultatif (profils inspirés de `check.py`).
-4. **POC qc-skill** une fois l'exécution autorisée (§ 8.5), puis réécriture TypeScript éventuelle de la photosensibilité et du contraste par zone.
-5. **POC Three.js** seulement sur un besoin produit identifié.
+4. **Contrôles issus du POC qc-skill** (T104) : photosensibilité et contraste mesuré sur l'image, réécrits en TypeScript dans `packages/video` ([QC-SKILL-POC § 6](../research/QC-SKILL-POC.md#6-proposition-dintégration-au-video-qa-expert)).
+5. **Three.js** : optionnel ; POC seulement sur un besoin créatif concret.
 6. Faire le ménage dans les skills sans objet (§ 10).
 
 ## 12. Fichiers et versionnement

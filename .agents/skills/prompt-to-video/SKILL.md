@@ -14,7 +14,7 @@ Règles :
 - Toute sortie du `FakeAiProvider` est préfixée « [Simulé] » côté Studio. Ne jamais présenter une sortie simulée comme une analyse réelle.
 - Revalider avec Zod après l'appel au modèle : le format de sortie ne porte pas toutes les bornes.
 
-- Composants du registre : animations GSAP, `gsap-core` à la demande (`immediateRender` des entrées décalées : T095) ; le LLM n'écrit toujours ni HTML ni JS.
+- Composants du registre : animations GSAP, `gsap-core` à la demande ; entrées en `immediateRender: true`, jamais deux entrées sur la même propriété d'un élément (MOTION-ENGINE) ; le LLM n'écrit toujours ni HTML ni JS.
 
 Vérifier : `pnpm --filter @veyra/ai test`, puis le parcours `apps/studio/tests/mvp.e2e.ts`.
 Référence : [AGENT-WORKFLOWS](../../../docs/ai/AGENT-WORKFLOWS.md).
