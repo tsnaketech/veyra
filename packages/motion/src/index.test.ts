@@ -7,6 +7,7 @@ import {
   formatCounter,
   getComponent,
   motionComponents,
+  motionCss,
   normalizeComponent,
   previewStoryboard,
   resolveComponent,
@@ -23,6 +24,15 @@ const ctx = {
 };
 
 describe("motion component registry", () => {
+  it("keeps FeatureCards numbers white and above the text floor (T104)", () => {
+    const rule = motionCss(1920, 1080).match(/\.card-index\{[^}]*\}/)![0];
+    // Accent text failed WCAG AA on the gradient; the accent lives on the ::before dash only.
+    expect(rule).toContain("color:#fff");
+    expect(rule).not.toContain("var(--accent)");
+    expect(Number(rule.match(/font-size:(\d+)px/)![1])).toBeGreaterThanOrEqual(
+      28,
+    );
+  });
   it("declares the five components with stable ids, schemas, timing and capabilities", () => {
     expect(componentIds).toEqual([
       "animated-title",

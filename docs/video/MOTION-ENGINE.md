@@ -32,6 +32,10 @@ en français (`Intl.NumberFormat("fr-FR")`).
 
 Mise en page : zone sûre `inset: 7% 8%`, tailles dérivées de la hauteur, aucun texte
 sous 2,6 % de la hauteur (28 px à 1080p, seuil `text_below_floor` d'HyperFrames).
+Le texte reste blanc sur fond sombre : la couleur d'accent ne porte que des traits,
+pastilles ou contours, car le violet et le bleu restent sous 4,5:1 sur le dégradé
+(T104). Exemple : numéros de FeatureCards en blanc à 2,8 % (30 px à 1080p), précédés
+d'un trait d'accent (`::before`).
 Chaque scène sauf la dernière sort en fondu (0,4 s max) ; HyperFrames gère la
 visibilité des clips.
 

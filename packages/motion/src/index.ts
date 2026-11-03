@@ -173,7 +173,8 @@ export function motionCss(width: number, height: number) {
 .scene .cards{display:flex;gap:${px(2.5)};width:100%;justify-content:center}
 .scene .cards.grid{display:grid;grid-template-columns:1fr 1fr}
 .scene .card{flex:1;max-width:${Math.round(width * 0.27)}px;background:rgba(11,13,23,.55);border:1px solid rgba(255,255,255,.18);border-radius:${px(2)};padding:${px(3)};text-align:left}
-.scene .card-index{font-size:${px(2.6)};font-weight:700;color:var(--accent)}
+.scene .card-index{display:flex;align-items:center;gap:${px(1)};font-size:${px(2.8)};font-weight:700;line-height:1;letter-spacing:.06em;font-variant-numeric:tabular-nums;color:#fff}
+.scene .card-index::before{content:"";width:${px(3)};height:${px(0.6)};border-radius:999px;background:var(--accent);box-shadow:inset 0 0 0 1px rgba(255,255,255,.55)}
 .scene .card h3{font-size:${px(3.6)};margin-top:${px(1)};line-height:1.15}
 .scene .card p{font-size:${px(2.6)};opacity:.9;margin-top:${px(1)};line-height:1.3}
 .scene .metrics{display:flex;gap:${px(6)};justify-content:center}
