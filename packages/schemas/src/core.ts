@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { idSchema } from "./ids";
 import { audioCompositionSchema, audioMixPatchSchema } from "./audio";
+import { captionTrackSchema, voiceProviderSchema } from "./captions";
 export * from "./ids";
 const timestamp = z.number().int().nonnegative();
 const base = { createdAt: timestamp, updatedAt: timestamp };
@@ -141,6 +142,22 @@ export const sceneComponentSchema = z
     style: z.record(z.string(), z.json()).default({}),
   })
   .strict();
+// Spoken text of a scene; optional so storyboards without voice stay unchanged.
+export const sceneNarrationSchema = z
+  .object({
+    text: z.string().trim().min(1).max(1000),
+    voice: z
+      .object({
+        provider: voiceProviderSchema,
+        voiceId: z.string().min(1).max(200).nullable().default(null),
+        speakerId: z.number().int().nonnegative().nullable().default(null),
+        lengthScale: z.number().min(0.5).max(2).default(1),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type SceneNarration = z.infer<typeof sceneNarrationSchema>;
 export const sceneSchema = z.object({
   id: idSchema("scn"),
   start: z.number().nonnegative(),
@@ -148,6 +165,7 @@ export const sceneSchema = z.object({
   text: z.string(),
   animation: z.record(z.string(), z.json()).default({}),
   component: sceneComponentSchema.optional(),
+  narration: sceneNarrationSchema.optional(),
 });
 export const storyboardSchema = z
   .object({
@@ -241,6 +259,8 @@ export const videoRevisionSchema = z.object({
     .default(null),
   // Soundtrack of this revision (immutable with it); null = silent video.
   audio: audioCompositionSchema.nullable().default(null),
+  // Captions of this revision (immutable with it); null = no captions.
+  captions: captionTrackSchema.nullable().default(null),
   // HyperFrames output without sound, reused when only the audio changes.
   silentVideoPath: z.string().nullable().default(null),
   error: z.string().nullable(),

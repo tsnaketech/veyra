@@ -19,6 +19,8 @@ export const idPrefixes = [
   "atr",
   "run",
   "phs",
+  "cap",
+  "cue",
 ] as const;
 export type IdPrefix = (typeof idPrefixes)[number];
 export function newId<P extends IdPrefix>(prefix: P): `${P}_${string}` {
