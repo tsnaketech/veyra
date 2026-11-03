@@ -35,7 +35,11 @@ export function frameAt(
 export function frameTimestampMs(index: number, rate: FrameRate, startMs = 0) {
   return Math.ceil(startMs + index * frameDurationMs(rate) - EPSILON);
 }
-/** Seek target in seconds: the middle of the frame, so decoders land on it. */
+/**
+ * Middle of the frame, in seconds. `HTMLMediaElement.currentTime` set to it shows
+ * frame `index`. FFmpeg input `-ss` does not: it keeps the first frame whose pts is
+ * at or after the target, i.e. `index + 1`; pass `index - 1` there (text-contrast.ts).
+ */
 export function frameSeekSeconds(index: number, rate: FrameRate, startMs = 0) {
   return (startMs + (index + 0.5) * frameDurationMs(rate)) / 1000;
 }

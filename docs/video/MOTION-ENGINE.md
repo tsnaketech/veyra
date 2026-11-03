@@ -36,6 +36,14 @@ Le texte reste blanc sur fond sombre : la couleur d'accent ne porte que des trai
 pastilles ou contours, car le violet et le bleu restent sous 4,5:1 sur le dégradé
 (T104). Exemple : numéros de FeatureCards en blanc à 2,8 % (30 px à 1080p), précédés
 d'un trait d'accent (`::before`).
+Seule exception : le nom d'application de ProductMockup (`.app-name`, `<b>`,
+graisse calculée 900 dans Chromium), à 2,6 % de la hauteur (28 px en paysage et
+en carré, 50 px en portrait), sur le fond uni `#12152a` de la navigation (masquée
+avec `device: phone`). C'est un grand texte WCAG (gras ≥ 18,66 px), seuil 3:1.
+Contraste théorique : 3,16:1 (violet), 3,48:1 (bleu), 7,42:1 (cyan) ; mesuré sur
+rendu réel brouillon (T104, 2026-11-03) : 3,02–3,12 (violet), 3,29–3,42 (bleu),
+6,97–7,27 (cyan). Marge très faible en violet : ne pas réduire sa taille, sa
+graisse ni assombrir l'accent ; le passer en blanc si le seuil devient 4,5:1.
 Chaque scène sauf la dernière sort en fondu (0,4 s max) ; HyperFrames gère la
 visibilité des clips.
 

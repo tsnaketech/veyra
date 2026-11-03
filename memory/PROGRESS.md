@@ -51,3 +51,14 @@ corrige aussi T096 (même cause). POC qc-skill fait sous bwrap sans installation
 ([QC-SKILL-POC](../docs/research/QC-SKILL-POC.md)) : photosensibilité nouvelle, contraste sur
 l'image utile avec zones par texte, luminance légale = faux positifs. Suite proposée : T104.
 Vérifié : pnpm test, check, lint, test:slow 3/3, E2E 6/6 ; 18 MP4 de l'E2E en Lavf63.1.102 (FFmpeg 9.0.2).
+
+2026-11-03 — T104 (QA visuelle) : numéros FeatureCards en blanc, contrôles
+« Photosensibilité (flashs, mesure technique) » et « Contraste mesuré sur l'image
+rendue » dans le rapport QA, sans correction automatique ; détail, commits et
+suites (T105–T108) dans [TASKS](../docs/TASKS.md), méthode et limites dans
+[QUALITY-STANDARDS](../docs/video/QUALITY-STANDARDS.md). Revue indépendante
+(contexte neuf, après blocage d'un premier reviewer) : D1, N1, N2 corrigés ;
+critères 1–8 PASS, réserve R1 (comptage global, pas par région) suivie en T109.
+Vérifié directement : pnpm test 560, check, lint, test:slow 9/9, E2E 6/6.
+`.app-name` maintenu (décision utilisateur, T106).
+Prochaine étape : selon priorité utilisateur ; pas de v0.4 avant cette clôture.

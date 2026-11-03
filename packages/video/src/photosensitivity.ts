@@ -105,7 +105,7 @@ class FlashDetector {
   // 0 = no transition yet, 1 = last transition up (tracking max), -1 = down (tracking min)
   private readonly dir: Int8Array;
   private readonly pooling: number;
-  private readonly ring: { up: number; down: number }[] = [];
+  private readonly ring: { frame: number; up: number; down: number }[] = [];
   private frame = 0;
   private maxArea = 0;
   private readonly series = [
@@ -114,6 +114,10 @@ class FlashDetector {
   ].map((threshold) => ({
     threshold,
     last: 0,
+    // Frame of the last event, and per direction the frame up to which transitions are consumed.
+    lastFrame: -1,
+    sinceUp: -1,
+    sinceDown: -1,
     events: [] as FlashEvent[],
   }));
 
@@ -178,16 +182,33 @@ class FlashDetector {
           }
         }
       }
-    this.ring.push({ up, down });
+    this.ring.push({ frame: this.frame, up, down });
     if (this.ring.length > this.pooling) this.ring.shift();
-    const sum = this.ring.reduce(
-      (acc, r) => ({ up: acc.up + r.up, down: acc.down + r.down }),
-      { up: 0, down: 0 },
+    // Pooled transitions of one direction after `since`, and the part from frame `old`.
+    const pooled = (key: "up" | "down", since: number, old: number) => {
+      let all = 0,
+        early = 0;
+      for (const r of this.ring)
+        if (r.frame > since) {
+          all += r[key];
+          if (r.frame === old) early += r[key];
+        }
+      return { area: Math.min(1, all / this.pixels), early: early / all || 0 };
+    };
+    this.maxArea = Math.max(
+      this.maxArea,
+      pooled("up", -1, -1).area,
+      pooled("down", -1, -1).area,
     );
-    const areaUp = Math.min(1, sum.up / this.pixels),
-      areaDown = Math.min(1, sum.down / this.pixels);
-    this.maxArea = Math.max(this.maxArea, areaUp, areaDown);
     for (const s of this.series) {
+      // A transition feeds at most one event (else one white frame or one cut is
+      // recounted on each frame of the window). An event made mostly of transitions
+      // from the previous event's frame is the opposite change of another region at
+      // the same instant (cut between complementary shots): not a new flash half.
+      const up = pooled("up", s.sinceUp, s.lastFrame),
+        down = pooled("down", s.sinceDown, s.lastFrame);
+      const areaUp = up.early >= 0.5 ? 0 : up.area,
+        areaDown = down.early >= 0.5 ? 0 : down.area;
       // Only alternating events count: a flash is a pair of opposite transitions.
       const direction =
         s.last !== 1 && areaUp >= s.threshold
@@ -197,6 +218,9 @@ class FlashDetector {
             : 0;
       if (!direction) continue;
       s.last = direction;
+      s.lastFrame = this.frame;
+      if (direction === 1) s.sinceUp = this.frame;
+      else s.sinceDown = this.frame;
       s.events.push({
         frameIndex: this.frame,
         timeMs: this.timeMs(this.frame),

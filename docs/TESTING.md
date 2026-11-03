@@ -10,7 +10,7 @@
 | `pnpm --filter @veyra/hyperframes-adapter test:slow` | Rendu HyperFrames réel 6 s sous bwrap, ffprobe | ~6 s, Chrome requis |
 | `pnpm --filter studio test:e2e` | Playwright : build, serveur, parcours complet avec rendu réel, sélection de frame, lot, QA comparatif, IA simulée | ~45 s, Chrome requis |
 | Test manuel `claude-subscribe` | Voir ci-dessous ; utilise l'abonnement de l'utilisateur | Manuel, hors CI |
-| `pnpm --filter @veyra/hyperframes-adapter test:slow` (inclut `motion.slow.test.ts` et `entry-state.slow.test.ts`) | Rendu réel des 5 composants (20 s) : `check` sans erreur, animations mesurées ; entrées cachées avant leur début (frames 0–12, sauts `snapshot --at`, retour à 0) | ~40 s, Chrome requis |
+| `pnpm --filter @veyra/hyperframes-adapter test:slow` (inclut `motion.slow.test.ts`, `entry-state.slow.test.ts` et `qa-checks.slow.test.ts`) | Rendu réel des 5 composants (20 s) : `check` sans erreur, animations mesurées ; entrées cachées avant leur début (frames 0–12, sauts `snapshot --at`, retour à 0) ; T104 : photosensibilité et contraste mesuré sur rendus réels (flash 5 Hz, texte peu contrasté, FeatureCards avant/après, démo avant/après T095). Au 2026-11-03 : 9 réussis | ~2 min, Chrome requis |
 | `pnpm qa:bench --evaluator fake` | Compare le simulateur au jeu de référence `qa/reference/v1` | Rapide ; **mesure les règles du simulateur, pas une expertise** |
 | `pnpm qa:bench --results <fichier>` | Compare des résultats d'expert (`veyra-qa-results/v1`) aux références ; `--json <sortie>`, `--fail-on-critical` | Rapide ; résultats produits ailleurs (mode assisté ou API) |
 

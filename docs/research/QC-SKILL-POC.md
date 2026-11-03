@@ -76,14 +76,14 @@ Veyra n'a aucun contrôle équivalent. **C'est une mesure réellement nouvelle.*
 | V1, grande zone des cartes, 3,3 s | 10,44:1, PASS | **2,25 à 2,42:1 (3 constats)** |
 | V3, grande zone, 5,556 s | 8,15:1, PASS | 2,81:1 |
 | V4, grande zone, 3,92 s | 7,18:1, PASS | 1,37 à 2,36:1 |
-| **V1, zones serrées sur les numéros « 01 / 02 / 03 »**, 3,3 s | **2,05 à 2,22:1** ; hauteur 21 px à 1080p | 2,25 à 2,42:1 |
+| **V1, zones serrées sur les numéros « 01 / 02 / 03 »**, 3,3 s | **2,05 à 2,22:1** ; hauteur d'encre 21 px à 1080p | 2,25 à 2,42:1 |
 | Mêmes zones, **5,75 s** (texte stable) | **2,05 à 2,24:1** | non mesuré |
 | V1, zone serrée sur une description de carte, 3,3 s | 9,8:1 ; hauteur 28 px | — |
 
 Ce qu'il faut retenir :
 
 - **Concordance** : sur des zones serrées, la mesure sur l'image rendue (2,05 à 2,24:1) recoupe celle du DOM (2,25 à 2,42:1). L'écart vient de la compression et de la mesure sur pixels.
-- **Mesure nouvelle** : l'image rendue montre que le défaut des numéros de cartes est **permanent** (encore présent à 5,75 s), et non une transition. Le `check` HyperFrames ne l'a vu qu'à un instant d'échantillonnage. Veyra le classe en avertissement d'information (`passed: true`, seuil 3:1). La hauteur mesurée (21 px) est aussi sous le plancher de 28 px de MOTION-ENGINE.
+- **Mesure nouvelle** : l'image rendue montre que le défaut des numéros de cartes est **permanent** (encore présent à 5,75 s), et non une transition. Le `check` HyperFrames ne l'a vu qu'à un instant d'échantillonnage. Veyra le classe en avertissement d'information (`passed: true`, seuil 3:1). **Correction du 2026-11-03** : les 21 px sont une *hauteur d'encre* (≈ hauteur des chiffres, ~0,7 × la taille de police), pas une taille de police. La police des numéros était de 28 px, exactement le plancher de MOTION-ENGINE et non en dessous ; la comparaison initiale à ce plancher était fausse. Seul le contraste était en défaut (corrigé par T104).
 - **Faux négatifs selon la zone** : sur une grande zone contenant plusieurs textes, le seuillage d'Otsu ne retient que le texte dominant. Il renvoie 7 à 10:1 et **masque** le défaut. Ce contrôle n'est fiable qu'avec une zone par élément de texte. qc-skill ne trouve pas le texte lui-même : c'est à Veyra de fournir les boîtes.
 
 ### 4.3 Luminance dans la plage légale (16 à 235)
@@ -129,7 +129,7 @@ Aucune de ces propositions n'est implémentée. L'architecture du QA ne change p
    - Oracle de test : les trois médias synthétiques ci-dessus, avec les valeurs de qc-skill comme référence croisée.
 2. **Contraste et hauteur de texte mesurés sur le rendu**, en complément du `check` HyperFrames, sans le remplacer.
    - Veyra fournit les zones, un élément de texte à la fois. Les boîtes peuvent venir de la mise en page rendue par HyperFrames (`hyperframes inspect`, dont le format JSON **reste à vérifier**), à l'instant où chaque scène est stable (début + entrée + 0,2 s).
-   - Mesure : seuillage d'Otsu dans la zone, luminance relative sRGB, contraste WCAG 2.x (4,5:1 pour le texte normal, 3:1 pour le grand texte), hauteur d'encre ramenée à 1080 p (plancher de 28 px).
+   - Mesure : seuillage d'Otsu dans la zone, luminance relative sRGB, contraste WCAG 2.x (4,5:1 pour le texte normal, 3:1 pour le grand texte), hauteur d'encre ramenée à 1080 p (à comparer à ~0,7 × le plancher de police de 28 px, et non à 28 px).
    - Sévérité `minor` : un avertissement visible dans le rapport, jamais une validation automatique.
 3. **Luminance légale** : non retenue pour le web. Si une livraison broadcast apparaît, contrôle d'information fondé sur la **part** de pixels hors plage avec une tolérance, et non sur un extremum par image.
 4. **qc-skill** reste un outil de contre-expertise manuelle, épinglé au commit `a53c30d`, lancé comme décrit à la section 2. Ce n'est pas une dépendance de Veyra.
@@ -141,3 +141,9 @@ Aucune de ces propositions n'est implémentée. L'architecture du QA ne change p
 - Photosensibilité testée sur des signaux synthétiques simples. La conformité réelle à BT.1702 de l'implémentation n'est pas auditée, et les flashs rouges ne sont pas évalués.
 - Les vidéos V1 à V6 précèdent la correction de T095 : leurs entrées montrent encore le flash. Aucune n'a été recontrôlée après la correction.
 - Le code de qc-skill a été lu, pas audité de façon exhaustive. Sa suite de tests (31 fichiers) n'a pas été lancée.
+
+## 8. Suite donnée (T104, 2026-11-03)
+
+- Numéros de FeatureCards corrigés (texte blanc, trait d'accent) : HyperFrames 3 → 0 échec de contraste en violet et en bleu.
+- Contrôles intégrés au Video QA, réécrits indépendamment en TypeScript : « Photosensibilité (flashs, mesure technique) » et « Contraste mesuré sur l'image rendue » (zones = boîtes DOM des échecs HyperFrames uniquement). Méthodes, seuils et limites : [QUALITY-STANDARDS](../video/QUALITY-STANDARDS.md).
+- Luminance légale : non implémentée (faux positifs confirmés ci-dessus).

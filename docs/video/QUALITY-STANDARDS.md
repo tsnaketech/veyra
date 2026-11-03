@@ -73,7 +73,15 @@ runner après chaque nouveau rendu ; une erreur de décodage donne un check
 - **Événement global** : part de l'écran ayant transité dans le même sens sur
   0,1 s (3 images à 30 i/s, pour les fondus non uniformes) ≥ 25 % ; seuls les
   événements de sens alterné sont retenus. Une seconde série au seuil de 10 %
-  sert aux petites zones.
+  sert aux petites zones. Une transition ne nourrit qu'un seul événement : après
+  un événement montant, seules les montées des images suivantes comptent (de même
+  pour les descentes) ; sinon une image blanche isolée ou une coupe était recomptée
+  à chaque image de la fenêtre (défaut D1 de la revue T104). Un événement formé
+  surtout (≥ 50 %) de transitions de l'image de l'événement précédent est écarté :
+  c'est le changement opposé d'une autre région au même instant (coupe entre plans
+  complémentaires, régions en opposition de phase), compté au rythme de chaque
+  région et non comme une moitié de flash supplémentaire. Un balayage échelonné
+  garde son rythme réel (défaut N1 de la contre-revue).
 - **Flash** = paire de transitions opposées : flashs/s = transitions dans une
   fenêtre glissante d'1 s (écart < 1 000 ms) / 2.
 - **Gravité** : > 3 flashs/s sur ≥ 25 % → `major` ; > 2 et ≤ 3 flashs/s sur
@@ -86,12 +94,38 @@ runner après chaque nouveau rendu ; une erreur de décodage donne un check
   pire fenêtre.
 - **Aucune correction automatique** : le nom n'est pas dans `RETRYABLE`.
 
-Limites et faux positifs possibles : stroboscope voulu par l'auteur, scintillement
-de compression ou de bruit sur de grandes zones sombres, petites zones très
-contrastées proches de 10 % ; motifs à rayures (réguliers) et flashs rouges
-saturés **non évalués** ; luminance d'affichage, gamma et surface de l'écran
-supposés (pas d'angle de vue) ; résolution réduite qui peut gommer des détails
-fins ; vidéos à fréquence variable non mesurées.
+### Limites (à lire avant d'interpréter le résultat)
+
+- **Aucune certification** : ni BT.1702, ni Ofcom, ni WCAG 2.3.1, ni outil
+  agréé (Harding FPA, PEAT). Un résultat « réussi » signifie « aucun flash
+  détecté par cette mesure », pas « vidéo sûre ». La validation humaine reste
+  obligatoire ; une diffusion soumise à réglementation demande un outil certifié.
+- **Flashs rouges saturés non évalués** : seule la luminance (Y) est mesurée.
+  Une alternance rouge saturé / autre couleur à luminance proche n'est pas vue
+  (faux négatif). Le JSON de preuve le rappelle.
+- **Motifs** (rayures, grilles, spirales réguliers) non évalués.
+- **Hypothèses physiques** : écran de 200 cd/m², gamma 2,2, surface relative
+  de l'image (pas d'angle de vue ni de distance) ; résolution réduite à ≈ 160×90
+  qui peut gommer de petits détails très contrastés.
+- **Comptage approché** : les événements sont globaux (toute l'image), pas par
+  région. Des régions déphasées d'une image (coupe complémentaire en volet,
+  entrées échelonnées) comptent double : 5 Hz devient 10 (gravité inchangée),
+  mais 1,5 à 2 Hz par région, ou 3 coupes complémentaires étalées sur 2 images
+  par seconde, peuvent donner `major` à tort (réserve R1 de la revue T104,
+  [T109](../TASKS.md)). Vérifier à l'œil un `major` sur un montage rapide. La
+  série 10 % peut compter plusieurs fois un balayage en bandes (au plus `minor`) ;
+  des coupes complémentaires franches à 5/s donnent `minor`.
+- **Non mesuré** : fréquence variable (`not-performed`) ; échec de décodage.
+- **Faux positifs possibles** : stroboscope voulu par l'auteur, scintillement de
+  compression ou de bruit sur de grandes zones sombres, petites zones très
+  contrastées proches de 10 %. D'où `minor` « à vérifier par un humain » et
+  l'absence de correction automatique.
+- **Vérifié** : flash plein écran 5 Hz → `major` (24, 30 et 60 i/s), 4 Hz →
+  `major`, 3 Hz → `minor` ; 2 Hz et 5 Hz sur 9 % → `info` ; coupes entre plans
+  complémentaires, image blanche isolée et moitiés en opposition à 2 Hz → `info`
+  (24, 30, 60 i/s) ; moitiés en opposition à 5 Hz et balayages 5 Hz en bandes de
+  10 % décalées (1 à 4 images par bande, 30 et 60 i/s) → `major` ; vidéos Veyra V1–V6 et démo (avant/après T095) → `info`
+  (`qa-checks.slow.test.ts`, `studio.test.ts`).
 
 ## Contraste mesuré sur l'image rendue
 

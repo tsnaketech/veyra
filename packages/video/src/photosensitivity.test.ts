@@ -142,6 +142,90 @@ describe("detectFlashes", () => {
     expect(r.severity).toBe("info");
   });
 
+  // Halves swap (one half goes up while the other goes down) whenever `swapped` changes.
+  const halves = (count: number, swapped: (i: number) => boolean) =>
+    Array.from({ length: count }, (_, i) => {
+      const frame = new Uint8Array(N).fill(swapped(i) ? 0 : 255);
+      frame.fill(swapped(i) ? 255 : 0, 0, N / 2);
+      return frame;
+    });
+
+  it("pooling never reuses a transition: complementary cuts and single frames", () => {
+    // Review T104 (D1): a cut between complementary shots used to yield up, down, up.
+    expect(
+      detectFlashes(
+        halves(30, (i) => i >= 10),
+        opts(),
+      ).events,
+    ).toHaveLength(1);
+    for (const fps of [24, 30, 60]) {
+      const twoCuts = detectFlashes(
+        halves(fps * 2, (i) => i >= fps / 3 && i < fps / 3 + fps / 2),
+        { ...opts(), fps },
+      );
+      expect(twoCuts.events).toHaveLength(2);
+      expect(twoCuts.severity).toBe("info");
+      // One white frame is one flash (up then down), at any frame rate.
+      const single = detectFlashes(
+        frames(fps, (i) => i === 10),
+        { ...opts(), fps },
+      );
+      expect(single.events.map((e) => e.direction)).toEqual(["up", "down"]);
+      expect(single.maxFlashesPerSecond).toBe(1);
+    }
+    // Opposite-phase halves swapping 4 times per second: 2 flashes/s, not more.
+    const swaps = detectFlashes(halves(90, hz(2)), opts());
+    expect(swaps.maxFlashesPerSecond).toBe(2);
+    expect(swaps.severity).toBe("info");
+  });
+
+  it("a sweeping flash (3 bands of 10 %, staggered) keeps its full rate", () => {
+    // Re-review T104 (N1): consuming both directions halved this rate.
+    const cases = [
+      { fps: 30, hz: 5, shift: 1, width: 2, rate: 5 },
+      { fps: 30, hz: 6, shift: 1, width: 2, rate: 6 },
+      { fps: 60, hz: 4, shift: 2, width: 4, rate: 4 },
+      { fps: 60, hz: 5, shift: 2, width: 3, rate: 5 },
+      // Re-review 2 (N2): one-frame bands.
+      { fps: 30, hz: 5, shift: 1, width: 1, rate: 5 },
+      { fps: 30, hz: 4, shift: 1, width: 1, rate: 4 },
+      { fps: 60, hz: 5, shift: 2, width: 2, rate: 5 },
+    ];
+    for (const { fps, hz: f, shift, width, rate } of cases) {
+      const period = fps / f;
+      const sweep = Array.from({ length: fps * 2 }, (_, i) => {
+        const frame = new Uint8Array(N);
+        for (let band = 0; band < 3; band++) {
+          const t = (((i - band * shift) % period) + period) % period;
+          if (i >= band * shift && t < width)
+            frame.fill(255, band * 100, (band + 1) * 100);
+        }
+        return frame;
+      });
+      const r = detectFlashes(sweep, { ...opts(), fps });
+      expect(r.maxFlashesPerSecond).toBe(rate);
+      expect(r.severity).toBe("major");
+    }
+  });
+
+  it("opposite-phase halves count each region's rate, not the sum", () => {
+    // Each half flashes at 5 Hz: major; at 2 Hz: passes.
+    expect(detectFlashes(halves(60, hz(5)), opts())).toMatchObject({
+      maxFlashesPerSecond: 5,
+      severity: "major",
+    });
+    expect(detectFlashes(halves(90, hz(2)), opts()).severity).toBe("info");
+  });
+
+  it("5 Hz full-screen stays major at 24 and 60 fps", () => {
+    for (const fps of [24, 60]) {
+      const at = (i: number) => Math.floor((2 * 5 * i) / fps) % 2 === 1;
+      const r = detectFlashes(frames(fps * 2, at), { ...opts(), fps });
+      expect(r.severity).toBe("major");
+      expect(r.maxFlashesPerSecond).toBe(5);
+    }
+  });
+
   it("a non-uniform (staggered) fade is pooled into one transition", () => {
     // Five 20 % bands switch on at frames 10..14: no single frame reaches 25 %.
     const staggered = Array.from({ length: 30 }, (_, i) => {
