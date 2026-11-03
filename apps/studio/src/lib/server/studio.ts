@@ -268,7 +268,8 @@ export class Studio {
                 renderRetry: run.id
               },
               String(target.resolvedConfig.aiProvider ?? 'none'),
-              target.audio
+              target.audio,
+              target.captions
             );
             this.repo.updateRun(run.id, { revisionId: target.id });
           }
@@ -453,7 +454,9 @@ export class Studio {
     origin: Record<string, string | number>,
     kind: string = this.ai?.kind ?? 'none',
     // Corrections and re-renders keep the soundtrack; a new prompt starts silent.
-    audio: VideoRevision['audio'] = null
+    audio: VideoRevision['audio'] = null,
+    // Same rule for captions: children keep the source track; a new prompt has none.
+    captions: VideoRevision['captions'] = null
   ) {
     const now = Date.now();
     return this.repo.createRevision({
@@ -462,6 +465,7 @@ export class Studio {
       parentRevisionId,
       storyboard,
       audio,
+      captions,
       resolvedConfig: { origin, aiProvider: kind },
       videoPath: null,
       error: null,
@@ -515,7 +519,8 @@ export class Studio {
         revision.id,
         { ...originOf(source), autoFix: autoFix + 1 },
         String(source.resolvedConfig.aiProvider ?? 'none'),
-        source.audio
+        source.audio,
+        source.captions
       );
       return this.render(projectId, retry, autoFix + 1, budget - 1);
     }
@@ -550,6 +555,7 @@ export class Studio {
     timestampMs?: number | null;
     rangeEndMs?: number | null;
     audioTrackId?: string | null;
+    captionCueId?: string | null;
     text: string;
     author: string;
   }) {
@@ -588,6 +594,8 @@ export class Studio {
       throw new Error('Fin de plage hors de la vidéo ou antérieure au début');
     if (input.audioTrackId && !revision.audio?.tracks.some((t) => t.id === input.audioTrackId))
       throw new Error('Piste audio introuvable dans cette révision');
+    if (input.captionCueId && !revision.captions?.cues.some((c) => c.id === input.captionCueId))
+      throw new Error('Sous-titre introuvable dans cette révision');
     const now = Date.now();
     const row = this.repo.createFeedback({
       id: newId('fdb'),
@@ -596,6 +604,7 @@ export class Studio {
       timestampMs,
       rangeEndMs: input.rangeEndMs ?? null,
       audioTrackId: input.audioTrackId ?? null,
+      captionCueId: input.captionCueId ?? null,
       frameIndex,
       fpsNum: media?.fpsNum ?? null,
       fpsDen: media?.fpsDen ?? null,
@@ -955,7 +964,8 @@ export class Studio {
                   : { planId: plan.id }
                 : { audioRevision: 'manual' },
               batch?.provider ?? String(source.resolvedConfig.aiProvider ?? 'none'),
-              (inputs.audio as AudioComposition) ?? source.audio
+              (inputs.audio as AudioComposition) ?? source.audio,
+              source.captions
             );
             if (batch)
               this.repo.updateBatch(batch.id, { status: 'applied', resultRevisionId: revision.id });

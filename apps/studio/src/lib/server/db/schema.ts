@@ -13,6 +13,7 @@ import type {
   AiTask,
   Asset,
   AudioComposition,
+  CaptionTrack,
   ProductionPhase,
   ProductionRun,
   CorrectionBatch,
@@ -67,6 +68,7 @@ export const videoRevisions = sqliteTable(
     videoPath: text('video_path'),
     media: text('media', { mode: 'json' }).$type<MediaInfo>(),
     audio: text('audio', { mode: 'json' }).$type<AudioComposition>(),
+    captions: text('captions', { mode: 'json' }).$type<CaptionTrack>(),
     silentVideoPath: text('silent_video_path'),
     error: text('error'),
     ...timestamps()
@@ -186,6 +188,7 @@ export const feedback = sqliteTable(
     sceneId: text('scene_id'),
     rangeEndMs: integer('range_end_ms'),
     audioTrackId: text('audio_track_id'),
+    captionCueId: text('caption_cue_id'),
     text: text('text').notNull(),
     status: text('status', { enum: feedbackStatuses }).notNull().default('draft'),
     author: text('author').notNull(),

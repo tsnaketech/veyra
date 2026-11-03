@@ -2,6 +2,13 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import {
+  captionRulesSchema,
+  captionStyleSchema,
+  captionTrackSchema,
+  groupCaptions,
+  sceneFallbackWords
+} from '@veyra/schemas';
 import { createRepository } from './repo';
 import * as schema from './schema';
 let client: Database.Database;
@@ -197,4 +204,23 @@ it('enforces batch transitions and unique submission keys', () => {
   repo.updateBatch('cbt_one', { status: 'submitted' });
   repo.updateBatch('cbt_one', { status: 'failed', error: 'boom' });
   expect(repo.updateBatch('cbt_one', { status: 'queued' }).status).toBe('queued');
+});
+it('persists captions with the revision and cue targets on feedback, never patching captions', () => {
+  const words = sceneFallbackWords([{ ...board.scenes[0], narration: { text: 'Bonjour à tous' } }]);
+  const captions = captionTrackSchema.parse({
+    schemaVersion: 1,
+    id: 'cap_one',
+    words,
+    cues: groupCaptions(words, captionStyleSchema.parse({}), captionRulesSchema.parse({})),
+    provenance: { provider: 'script' }
+  });
+  expect(repo.getRevision('rev_one').captions).toBeNull();
+  repo.createRevision({ ...revision, id: 'rev_cap', captions });
+  expect(repo.getRevision('rev_cap').captions).toEqual(captions);
+  expect(repo.listRevisions('prj_one').find((r) => r.id === 'rev_cap')?.captions).toEqual(captions);
+  expect(() => repo.updateRevision('rev_cap', { captions: null } as never)).toThrow('Unsupported');
+  expect(repo.getRevision('rev_cap').captions).toEqual(captions);
+  const cueId = captions.cues[0].id;
+  repo.createFeedback({ ...feedback, revisionId: 'rev_cap', captionCueId: cueId });
+  expect(repo.getFeedback('fdb_one')?.captionCueId).toBe(cueId);
 });

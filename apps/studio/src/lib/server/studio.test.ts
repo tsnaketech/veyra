@@ -9,6 +9,14 @@ import { FakeEngine, type VideoEngine } from '@veyra/hyperframes-adapter';
 import { runProcess } from '@veyra/video';
 import { ProjectStorage } from '@veyra/storage';
 import { AssistedProvider, FakeAiProvider, type AiProvider } from '@veyra/ai';
+import {
+  captionRulesSchema,
+  captionStyleSchema,
+  captionTrackSchema,
+  groupCaptions,
+  sceneFallbackWords,
+  type Storyboard
+} from '@veyra/schemas';
 import { createRepository } from './db/repo';
 import { colorEngine as sharedColorEngine } from './test-engines';
 import * as schema from './db/schema';
@@ -476,4 +484,70 @@ it('refuses frame annotations on a variable frame rate render', async () => {
   await expect(
     app.addAnnotation({ revisionId: revision.id, frameIndex: 10, text: 'x', author: 'u' })
   ).rejects.toThrow(/fréquence variable/);
+});
+
+function captionTrack(board: Storyboard) {
+  const words = sceneFallbackWords(
+    board.scenes.map((s) => ({ ...s, narration: { text: 'Une phrase lue dans la scène.' } }))
+  );
+  return captionTrackSchema.parse({
+    schemaVersion: 1,
+    id: 'cap_test',
+    words,
+    cues: groupCaptions(words, captionStyleSchema.parse({}), captionRulesSchema.parse({})),
+    provenance: { provider: 'script' }
+  });
+}
+it('carries captions to correction children, checks cue comments, starts a new prompt without', async () => {
+  const app = studio(new FakeAiProvider());
+  const project = app.createProject('Sous-titres');
+  await app.sendPrompt(project.id, prompt);
+  const [v1] = repo.listRevisions(project.id);
+  expect(v1.captions).toBeNull();
+  // No Studio API writes captions yet (T121): seed the rendered revision directly.
+  const captions = captionTrack(v1.storyboard);
+  client
+    .prepare('update video_revisions set captions = ? where id = ?')
+    .run(JSON.stringify(captions), v1.id);
+  const raw = () =>
+    client
+      .prepare('select storyboard, audio, captions from video_revisions where id = ?')
+      .get(v1.id);
+  const before = raw();
+
+  await expect(
+    app.addAnnotation({
+      revisionId: v1.id,
+      frameIndex: 360,
+      captionCueId: 'cue_unknown',
+      text: slowDown,
+      author: 'u'
+    })
+  ).rejects.toThrow(/Sous-titre introuvable/);
+  const cueId = captions.cues[0].id;
+  const comment = await app.addAnnotation({
+    revisionId: v1.id,
+    frameIndex: 360,
+    captionCueId: cueId,
+    text: slowDown,
+    author: 'u'
+  });
+  expect(repo.getFeedback(comment.id)?.captionCueId).toBe(cueId);
+
+  const batch = app.submitBatch({
+    revisionId: v1.id,
+    feedbackIds: [comment.id],
+    submissionKey: key()
+  });
+  await until(() => repo.getBatch(batch.id).status === 'planned');
+  await app.applyPlan(repo.getBatch(batch.id).planId!);
+  const v2 = repo.listRevisions(project.id).at(-1)!;
+  expect(v2.parentRevisionId).toBe(v1.id);
+  expect(v2.captions).toEqual(captions);
+  expect(raw()).toEqual(before);
+
+  await app.sendPrompt(project.id, prompt);
+  const fresh = repo.listRevisions(project.id).at(-1)!;
+  expect(fresh.id).not.toBe(v2.id);
+  expect(fresh.captions).toBeNull();
 });

@@ -293,6 +293,8 @@ export const feedbackSchema = z.object({
   // Optional end of a time range (>= timestampMs, checked by the repository) and audio target.
   rangeEndMs: timestamp.nullable().default(null),
   audioTrackId: idSchema("atr").nullable().default(null),
+  // Caption cue targeted by the comment; must exist in the revision's captions (checked by the Studio).
+  captionCueId: idSchema("cue").nullable().default(null),
   text: z.string().min(1),
   status: feedbackStatusSchema.default("draft"),
   author: z.string().min(1),
