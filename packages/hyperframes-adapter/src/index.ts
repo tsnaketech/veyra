@@ -27,6 +27,10 @@ export {
   animationSchema,
   styleSchema,
   formatSchema,
+  captionBandRect,
+  captionLayerSchema,
+  type CaptionLayer,
+  type CaptionRect,
 } from "./compose";
 export { motionDemoStoryboard } from "./demo";
 const require = createRequire(import.meta.url);

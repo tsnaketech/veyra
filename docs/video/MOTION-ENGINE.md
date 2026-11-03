@@ -57,6 +57,50 @@ final du premier ; la sortie, sur `.stage`, garde `immediateRender: false`.
 Vérification : `entry-state.slow.test.ts` (images du MP4 et `hyperframes snapshot --at`
 dans le désordre).
 
+## Sous-titres (calque)
+
+`compose(storyboard, format, style, captions?)` accepte en 4e argument
+`{ track, cues, rate }` : la `CaptionTrack`, la table `quantizeCues` et la cadence
+rationnelle de la vidéo (T113). Sans cet argument, la composition est identique octet
+pour octet (empreinte vérifiée dans `compose.test.ts`).
+
+- **Une seule source de temps** : la table quantifiée, aussi utilisée par SRT/WebVTT.
+  `data-start = startFrame × den / num` et `data-duration = (endFrame − startFrame) ×
+  den / num`, en secondes, calculés depuis les frames et jamais depuis les ms
+  arrondies. Un cue est visible sur [startFrame, endFrame), une frame à la fois.
+- **Calque** : un clip `.clip.cue` par cue, sur la piste `scenes.length` (au-dessus de
+  toutes les scènes, `z-index` 10) ; une ligne de `cue.lines` par `.cue-line`, un
+  `<span class="w wN">` par mot ; texte échappé. Aucune CSS libre : police (liste
+  fermée → familles CSS), taille (% de la hauteur, ≥ 2,6), couleurs, fond
+  (`none`/`band`/`box` + opacité), contour (ombre de la couleur de fond) et couleur de
+  surlignage viennent de `captionStyleSchema`. Les lignes ne passent pas à la ligne
+  (`nowrap`) : la hauteur reste celle de la géométrie.
+- **Géométrie par construction** : `captionBandRect(style, format, lignes)` renvoie
+  `{x, y, width, height}` en px de composition, et la CSS utilise les mêmes nombres.
+  `band` : bande pleine largeur ; `box` : colonne en retrait de 5 % de la largeur de
+  chaque côté ; `none` : même colonne, sans fond (pas de zone de contraste fiable).
+  Hauteur = lignes × interligne + marges internes ; `y` suit la position et
+  `safeMarginPct`. Le QA (T120) mesure le contraste dans cette zone.
+- **Animations** (données, compositeur fixe) : `none` ; `fade` et `pop` animent
+  `.cue-text` (opacité, échelle) avec `immediateRender: true`, pas le fond, qui est
+  donc présent dès `startFrame` ; `word-highlight` et `karaoke` changent la couleur de
+  chaque mot à sa frame (même règle d'accrochage que les cues :
+  `firstFrameAtOrAfter`). Le changement se termine un quart de frame avant la frame
+  visée, qui montre donc le nouvel état. Un mot qui commence avec le cue est allumé
+  par la classe `on`, sans tween. `karaoke` garde les mots allumés ;
+  `word-highlight` éteint le mot précédent par un tween `immediateRender: false`.
+- **Règle T095** : au plus une entrée par propriété et par élément ; toute extinction
+  utilise `immediateRender: false`. L'état visible est correct quel que soit l'ordre
+  des positions demandées.
+
+Vérification : `captions.slow.test.ts` (rendus réels à 24, 30 et 60 i/s, bande
+présente exactement sur [startFrame, endFrame) sur chaque frame du MP4 et sur
+`hyperframes snapshot --at` dans le désordre, mots allumés à leur frame, `check` sans
+erreur). Limites : un mot ou une ligne plus large que la colonne déborde (signalé par
+la mise en page de `check`) ; les polices `system-sans` et `serif` dépendent des
+polices installées dans le Chrome de rendu ; la cadence passée doit être celle du
+rendu (`-f`), qui n'accepte que des entiers.
+
 ## Storyboard
 
 Une scène porte soit un texte (rendu historique, inchangé), soit

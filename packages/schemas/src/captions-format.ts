@@ -154,7 +154,8 @@ export interface QuantizedCue {
 }
 // Tolerance of integer-ms rounding: quantizing the exported ms again gives the same frames.
 const TOLERANCE_MS = 0.5;
-const firstFrameAtOrAfter = (ms: number, rate: FrameRate) =>
+/** First frame starting at or after `ms` (cue and word snapping rule, ±0.5 ms). */
+export const firstFrameAtOrAfter = (ms: number, rate: FrameRate) =>
   Math.ceil(((ms - TOLERANCE_MS) * rate.num) / (1000 * rate.den) - 1e-9);
 
 /**
