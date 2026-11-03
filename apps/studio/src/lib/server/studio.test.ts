@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FakeEngine, type VideoEngine } from '@veyra/hyperframes-adapter';
+import { runProcess } from '@veyra/video';
 import { ProjectStorage } from '@veyra/storage';
 import { AssistedProvider, FakeAiProvider, type AiProvider } from '@veyra/ai';
 import { createRepository } from './db/repo';
@@ -348,6 +349,109 @@ it('retries a failed deterministic check at most twice, then waits for a human',
   const messages = repo.listMessages(repo.conversationFor(project.id)!.id).map((m) => m.text);
   expect(messages.filter((text) => text.includes('Correction automatique'))).toHaveLength(2);
   expect(messages.at(-1)).toMatch(/contrôle\(s\) en échec/);
+});
+
+// Real H.264 render that flashes at 5 Hz around a fixed low-contrast box (#9a9a9a bars on #808080).
+function flashingEngine(): VideoEngine {
+  const base = colorEngine();
+  return {
+    ...base,
+    async render(_dir, opts) {
+      const { width, height, scenes } = repo.getRevision(
+        /revisions\/(rev_[^/]+)\//.exec(opts.outputPath)![1]
+      ).storyboard;
+      const seconds = Math.max(...scenes.map((s) => s.start + s.duration)) / 1000;
+      const bars = [0, 1, 2]
+        .map((i) => `drawbox=x=${140 + i * 120}:y=140:w=40:h=120:color=0x9a9a9a:t=fill`)
+        .join(',');
+      await runProcess(
+        'ffmpeg',
+        [
+          '-nostdin',
+          '-v',
+          'error',
+          '-f',
+          'lavfi',
+          '-i',
+          `color=c=white:s=${width}x${height}:r=30:d=${seconds},drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='lt(mod(n\\,6)\\,3)',drawbox=x=100:y=100:w=400:h=200:color=0x808080:t=fill,${bars}`,
+          '-c:v',
+          'libx264',
+          '-preset',
+          'ultrafast',
+          '-pix_fmt',
+          'yuv420p',
+          opts.outputPath
+        ],
+        { timeoutMs: 60000 }
+      );
+      return { path: opts.outputPath, engine: 'hyperframes', stderrTail: '' };
+    },
+    check: async () => ({
+      ok: false,
+      engine: 'hyperframes',
+      sections: {
+        contrast: {
+          ok: false,
+          errorCount: 1,
+          warningCount: 0,
+          checked: 10,
+          passed: 9,
+          findings: [
+            {
+              code: 'contrast_aa_failure',
+              severity: 'error',
+              message: 'Contrast is 1.4:1; WCAG AA requires 4.5:1.',
+              text: 'Bars',
+              fg: 'rgb(154,154,154)',
+              ratio: 1.4,
+              requiredRatio: 4.5,
+              large: false,
+              bbox: { x: 100, y: 100, width: 400, height: 200 },
+              time: 1
+            }
+          ]
+        }
+      }
+    })
+  };
+}
+it('reports flash and rendered-contrast measurements without any automatic correction', async () => {
+  const app = studio(new FakeAiProvider(), flashingEngine());
+  const project = app.createProject('Flashes');
+  await app.sendPrompt(project.id, prompt);
+  const revisions = repo.listRevisions(project.id);
+  // Both checks fail, yet no new render is attempted: only a human can decide.
+  expect(revisions.map((r) => r.status)).toEqual(['awaiting_approval']);
+  const messages = repo.listMessages(repo.conversationFor(project.id)!.id).map((m) => m.text);
+  expect(messages.some((text) => text.includes('Correction automatique'))).toBe(false);
+  const checks = repo.reportsFor([revisions[0].id]).at(-1)!.checks;
+  const flashes = checks.find((c) => c.name === 'Photosensibilité (flashs, mesure technique)');
+  const contrast = checks.find((c) => c.name === "Contraste mesuré sur l'image rendue");
+  expect(flashes).toMatchObject({
+    passed: false,
+    severity: 'major',
+    analysisMode: 'deterministic'
+  });
+  expect(JSON.parse(flashes!.evidence).maxFlashsParSeconde).toBe(5);
+  expect(contrast).toMatchObject({
+    passed: false,
+    severity: 'minor',
+    analysisMode: 'deterministic'
+  });
+  const zone = JSON.parse(contrast!.evidence).zones[0];
+  expect(zone).toMatchObject({ frame: 30, ratioHyperFrames: 1.4, requis: 4.5, statut: 'mesuré' });
+  expect(Math.abs(zone.ratioMesure - 1.4)).toBeLessThan(0.1);
+  // Deterministic output checks still pass: the failures above are not retryable.
+  expect(
+    checks
+      .filter((c) => !c.passed && c.analysisMode === 'deterministic')
+      .map((c) => c.name)
+      .sort()
+  ).toEqual([
+    "Contraste mesuré sur l'image rendue",
+    'Lisibilité (contraste WCAG AA)',
+    'Photosensibilité (flashs, mesure technique)'
+  ]);
 });
 
 it('refuses work without AI and rejects comments outside the video', async () => {

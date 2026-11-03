@@ -11,7 +11,16 @@ import {
   type CompositionCheck,
   type VideoEngine
 } from '@veyra/hyperframes-adapter';
-import { deterministicChecks, ProcessError } from '@veyra/video';
+import {
+  analyzeFlashes,
+  deterministicChecks,
+  measureTextContrast,
+  photosensitivityCheck,
+  PHOTOSENSITIVITY_CHECK_NAME,
+  ProcessError,
+  textContrastCheck,
+  TEXT_CONTRAST_CHECK_NAME
+} from '@veyra/video';
 import {
   analysisModesFor,
   frameCount,
@@ -228,7 +237,8 @@ export class RenderJobRunner {
             renderSeconds,
             durationMs / 1000,
             this.settings.engine.wallTimeoutMs
-          )
+          ),
+          ...(await renderedPictureChecks(silentPath, compositionCheck, revision.storyboard))
         );
       if (audio)
         checks.push(
@@ -480,6 +490,46 @@ export function compositionChecks(check: CompositionCheck | null, error: string 
       analysisMode: 'deterministic' as const
     };
   });
+}
+/**
+ * Measurements on the rendered picture: flashes, and contrast inside the boxes that
+ * HyperFrames reports. Never auto-corrected; a failure to measure is `not-performed`.
+ */
+export async function renderedPictureChecks(
+  video: string,
+  check: CompositionCheck | null,
+  size: { width: number; height: number }
+) {
+  const notMeasured = (name: string, error: unknown) => ({
+    id: newId('qck'),
+    name,
+    passed: false,
+    severity: 'minor' as const,
+    timestamp: 0,
+    evidence: `Non mesuré : ${error instanceof Error ? error.message : String(error)}`.slice(
+      0,
+      2000
+    ),
+    recommendation: "Vérifier à l'œil ; relancer le rendu",
+    analysisMode: 'not-performed' as const
+  });
+  const flashes = await analyzeFlashes(video).then(photosensitivityCheck, (error) =>
+    notMeasured(PHOTOSENSITIVITY_CHECK_NAME, error)
+  );
+  const section = check?.sections.contrast;
+  const zones = (section?.findings ?? []).filter((f) => f.code === 'contrast_aa_failure');
+  const contrast = await (
+    section && zones.length
+      ? measureTextContrast(video, zones, {
+          compositionWidth: size.width,
+          compositionHeight: size.height
+        })
+      : Promise.resolve([])
+  ).then(
+    (measurements) => textContrastCheck(measurements, section),
+    (error) => notMeasured(TEXT_CONTRAST_CHECK_NAME, error)
+  );
+  return [flashes, contrast];
 }
 export function renderPerformanceCheck(
   renderSeconds: number,

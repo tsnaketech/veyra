@@ -62,6 +62,22 @@ const checkFinding = z
     message: z.string(),
     selector: z.string().optional(),
     time: z.number().optional(),
+    // contrast_aa_failure details (DOM box in composition CSS px at `time`, colours, ratios).
+    times: z.array(z.number()).optional(),
+    text: z.string().optional(),
+    fg: z.string().optional(),
+    bg: z.string().optional(),
+    ratio: z.number().optional(),
+    requiredRatio: z.number().optional(),
+    large: z.boolean().optional(),
+    bbox: z
+      .object({
+        x: z.number(),
+        y: z.number(),
+        width: z.number(),
+        height: z.number(),
+      })
+      .optional(),
   })
   .loose();
 const checkSection = z
@@ -70,6 +86,9 @@ const checkSection = z
     errorCount: z.number().default(0),
     warningCount: z.number().default(0),
     findings: z.array(checkFinding).default([]),
+    /** contrast: text elements checked / passing (passing ones expose no box). */
+    checked: z.number().optional(),
+    passed: z.number().optional(),
   })
   .loose();
 /** `hyperframes check --json`: lint, runtime, layout (overflow), contrast, motion, craft. */
@@ -79,6 +98,8 @@ export const compositionCheckSchema = z.object({
   sections: z.record(z.string(), checkSection),
 });
 export type CompositionCheck = z.infer<typeof compositionCheckSchema>;
+export type CompositionCheckFinding = z.infer<typeof checkFinding>;
+export type CompositionCheckSection = z.infer<typeof checkSection>;
 const checkSections = [
   "lint",
   "runtime",

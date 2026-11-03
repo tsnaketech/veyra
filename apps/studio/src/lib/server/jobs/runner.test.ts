@@ -112,7 +112,14 @@ it('serializes jobs, deduplicates enqueue, and persists progress and simulated Q
   expect(readFileSync(results[0].outputPath!, 'utf8')).toContain('FAKE TEST ONLY');
   const reports = db.select().from(schema.qualityReports).all();
   expect(reports).toHaveLength(2);
-  expect(reports[0].report.analysisModes).toEqual(['simulated']);
+  // The fake output is not a video: picture measurements (flashes, contrast) are not performed.
+  expect(reports[0].report.analysisModes).toEqual(['not-performed', 'simulated']);
+  expect(
+    reports[0].report.checks
+      .filter((c) => c.analysisMode === 'not-performed')
+      .map((c) => c.name)
+      .sort()
+  ).toEqual(["Contraste mesuré sur l'image rendue", 'Photosensibilité (flashs, mesure technique)']);
   expect(repo.getRevision('rev_one').status).toBe('awaiting_approval');
   await expect(runner.enqueue('rnd_one')).rejects.toThrow('queued');
 });
