@@ -86,6 +86,7 @@ Les prérequis de [RUNBOOK](../RUNBOOK.md) (FFmpeg 5.1.9) ne sont plus exacts su
 | 13 `threejs-*` (fundamentals, animation, geometry, materials, lighting, textures, loaders, shaders, postprocessing, interaction, performance, asset-pipeline, react-three-fiber) | `.agents/skills/threejs-*` | `cloudai-x/threejs-skills` | Hachages de contenu ; aucun commit ; vise three.js r181–r186 | `npx skills add` | Non déclarée dans les fichiers installés : **à vérifier sur le dépôt** |
 | `remotion-best-practices` | `.agents/skills/` (et copie utilisateur) | `remotion-dev/skills` | `version: 4.0.539` (en-tête) | `npx skills add` | Non déclarée dans les fichiers installés |
 | `playwright-cli` | `.agents/skills/` (et copie utilisateur) | Skill fourni par `playwright-cli` 0.1.21 (playwright-core 1.64.0-alpha), installé globalement par pnpm | 0.1.21 | Copie depuis le paquet global | Apache-2.0 pour Playwright ; non vérifiée pour le skill |
+| `vercel-composition-patterns`, `vercel-react-best-practices`, `web-design-guidelines` (ajoutés le 2026-11-03) | `.agents/skills/` | `vercel-labs/agent-skills` | Hachages de contenu dans `skills-lock.json` ; aucun commit ; `version: 1.0.0` (en-tête) | `npx skills add` | MIT déclaré pour les deux `vercel-*` ; non déclarée pour `web-design-guidelines` |
 | `ffmpeg-skill` | `.agents/skills/ffmpeg-skill` | `kajisho5/ffmpeg-skill` | **3.1.1** : les 76 fichiers sont identiques au tag `v3.1.1` (comparaison octet par octet après clonage) | `npx ffmpeg-skill` (pas d'entrée dans `skills-lock.json`, absent du verrou utilisateur) | MIT (`package.json`) ; le fichier `LICENSE` n'est pas copié par l'installateur |
 
 Pour figer une version, noter le commit de chaque dépôt au moment de l'installation :
@@ -385,6 +386,6 @@ Par ordre de priorité :
 
 ## 12. Fichiers et versionnement
 
-- Les dossiers des skills externes sont ignorés par Git (`.gitignore`) : `gsap-*`, `threejs-*`, `playwright-cli`, `remotion-best-practices`, `ffmpeg-skill`, comme les copies HyperFrames. Seuls les skills Veyra sont versionnés.
+- Les dossiers des skills externes sont ignorés par Git (`.gitignore`) : `gsap-*`, `threejs-*`, `playwright-cli`, `remotion-best-practices`, `ffmpeg-skill`, `vercel-*`, `web-design-guidelines`, comme les copies HyperFrames. Les deux `vercel-*` visent React et Next.js : sans objet pour le Studio Svelte, sauf règles générales. `web-design-guidelines` peut servir à relire l'interface du Studio. Seuls les skills Veyra sont versionnés.
 - Les dépôts kajisho5 sont dans `/home/user/project/kajisho5-lab/`, hors dépôt, conservés pour le POC.
 - Aucun skill externe n'a été réécrit. Ni le moteur vidéo ni les migrations n'ont été modifiés.

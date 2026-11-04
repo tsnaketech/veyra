@@ -24,7 +24,11 @@ coverage/
 /.agents/skills/playwright-cli/
 /.agents/skills/remotion-best-practices/
 /.agents/skills/ffmpeg-skill/
+/.agents/skills/vercel-*/
+/.agents/skills/web-design-guidelines/
 # Written by `npx skills`: records hashes but no ref or commit, so it cannot restore exact versions.
 /skills-lock.json
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+# Session handoff notes (claude-mem:handoff), local only.
+/HANDOFF.md
