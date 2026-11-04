@@ -212,3 +212,20 @@ Brief : [v0.4-voice-captions](plans/v0.4-voice-captions.md) (périmètre, archit
 | T124 | Revue indépendante, documentation, mémoire | À faire |
 | T125 | Suites de revue T111–T115 : proposer l'allongement d'une scène quand sa voix déborde (brief § 4.4, aujourd'hui avertissement seul) ; ne pas perdre les cues édités à la main lors d'un regroupement (à traiter avec T121) ; fenêtre d'atténuation de l'Audio Agent remplacée par `placeSceneVoice` ; `pictureKey` ignore toute clé `narration` | À faire ; revue du 2026-11-03 |
 | T126 | Point à surveiller : une fois sur 7 exécutions, v1 sans vidéo dans `voice-captions.slow.test.ts` (non reproduit, peut-être dû à des modifications concurrentes) | Le test affiche désormais l'erreur ; relancer `test:unit --project slow` en cas de récidive |
+
+## G17 — Agents et outils (studio de montage piloté par l'IA)
+
+Architecture : [AGENT-ARCHITECTURE](ai/AGENT-ARCHITECTURE.md), outils : [TOOL-REGISTRY](ai/TOOL-REGISTRY.md), note : [AI-native](plans/ai-native-editing-studio-note.md). Mission Agent Architect du 2026-11-03 : 4 audits (capacités, sécurité, tests, format des sous-agents) ; 8 sous-agents de développement dans `.agents/agents` (lien `.claude/agents`), contrôlés par `packages/config/src/agents.test.ts`.
+
+| ID | Travail | Statut / preuve attendue |
+|---|---|---|
+| T132 | P0 : exécuteur de processus unique (env minimal obligatoire, `-protocol_whitelist file` dans `probe`, prlimit pour `packages/video`) ; corriger SECURITY sur la propagation des clés | À faire ; test : aucune variable secrète dans l'env d'un ffprobe |
+| T127 | Registre d'outils : descripteurs Zod → JSON Schema, classes de permission, disponibilité ; interfaces `TranscriptionProvider` et `AlignmentProvider` ; outils Voice, Transcription, Alignment, Captions, Inspect, Motion | À faire après T132 ; via descripteur = appel direct, outil indisponible sans erreur |
+| T133 | P1 : budget unique des appels facturables (`reviewFrames`, `requestEvaluation`, hors run), décrément avant l'appel | À faire |
+| T134 | P1 : QA Expert isolé (entrée sans `plannedChanges` ni contexte du planificateur) | À faire ; test espion de l'entrée |
+| T135 | `colorEngine` déclaré `test-color` (ne plus se présenter comme HyperFrames) | À faire |
+| T128 | `EditOperation` (union typée) et graphe d'invalidation des artefacts | À faire |
+| T129 | Director : `ToolPlan` en données (un appel), validé, budgété, exécuté par l'orchestrateur | À faire ; décision sur D007 |
+| T130 | Cache de rendu par scène (décision complétant D019) | À faire |
+| T131 | POC DSL de composition originale (primitives et tweens en données) | À faire |
+| T136 | Studio exposé sur le LAN sans authentification : `127.0.0.1` ou authentification + CSRF | Décision utilisateur |

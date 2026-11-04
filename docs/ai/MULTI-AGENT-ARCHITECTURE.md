@@ -2,7 +2,7 @@
 
 La phase A a livré les contrats et événements visuels ; la phase B le moteur
 audio. La phase C intègre les runs persistés dans le service Studio.
-**agents ≠ sous-agents Claude Code (.claude/agents)**.
+**agents ≠ sous-agents Claude Code (`.agents/agents`, lien `.claude/agents`)**. Architecture cible : [AGENT-ARCHITECTURE](AGENT-ARCHITECTURE.md).
 
 ## Rôles et frontières
 

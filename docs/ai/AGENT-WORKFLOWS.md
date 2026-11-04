@@ -54,3 +54,52 @@ acceptées, puis transformées de façon déterministe (`toStoryboard`,
 Claude Code via `.claude/skills`).
 
 Contrats v0.3 et rôles métier : [Architecture multi-agents](MULTI-AGENT-ARCHITECTURE.md).
+
+## Plans dynamiques (proposition)
+
+Statut : proposition (T129), non implémentée. Architecture :
+[AGENT-ARCHITECTURE](AGENT-ARCHITECTURE.md), outils : [TOOL-REGISTRY](TOOL-REGISTRY.md).
+Le Director produit un plan **en données** (un appel structuré), validé par Zod,
+budgété et exécuté par l'orchestrateur D019 ; aucune séquence n'est obligatoire.
+
+Exemple — « vidéo promotionnelle de 30 s, voix off française, animations originales,
+transitions cinématographiques, sous-titres synchronisés » :
+
+```json
+{
+  "creative": { "intention": "promo dynamique", "style": "cinématographique sombre", "rythme": "montée 0–10 s, preuve 10–22 s, appel 22–30 s" },
+  "scenes": [
+    { "id": "scn_1", "technique": "dsl", "durationMs": 6000, "narration": "Votre équipe perd 3 heures par semaine." },
+    { "id": "scn_2", "technique": "component", "component": "feature-cards", "durationMs": 9000 },
+    { "id": "scn_3", "technique": "media", "asset": "ast_rush1", "trim": [2000, 9000] },
+    { "id": "scn_4", "technique": "component", "component": "call-to-action", "durationMs": 8000 }
+  ],
+  "tools": [
+    { "tool": "composition.dsl", "scene": "scn_1" },
+    { "tool": "ffmpeg.trim", "scene": "scn_3", "asset": "ast_rush1" },
+    { "tool": "voice.local-tts", "scenes": ["scn_1", "scn_2", "scn_4"], "fallback": "ask-user" },
+    { "tool": "captions.build", "timing": "best-available" },
+    { "tool": "render.hyperframes", "delivery": "both" },
+    { "tool": "qa.measure.picture" }, { "tool": "qa.measure.captions" }, { "tool": "qa.evaluate", "isolated": true }
+  ],
+  "budget": { "maxAiCalls": 3, "maxRenders": 3, "billable": "none" }
+}
+```
+
+Si `voice.local-tts` est indisponible, l'outil répond « Moteur non installé » ; le
+plan prévoit `ask-user` (proposer l'import d'une voix), jamais un repli silencieux
+vers `voice.fake`. `composition.dsl` et `ffmpeg.trim` sont à créer (T131, outils
+FFmpeg) : en attendant, le Director doit choisir une technique disponible.
+
+Exemple de correction localisée — commentaire à 00:12 « la transition est trop
+brusque, et la voix de la scène 3 est trop forte » :
+
+1. Review → deux `EditOperation` : `{ kind: "transition", scene: "scn_3", durationMs: 600 }`
+   et `{ kind: "audio-gain", track: "atr_voix3", gainDb: -4 }`.
+2. Graphe d'invalidation (T128) : la transition invalide l'image des scènes 2–3 ;
+   le gain n'invalide que le mix. Scènes 1 et 4, sous-titres, autres pistes : réutilisés.
+3. Exécution : rendu des seules scènes touchées (cache par scène, T130 ; aujourd'hui
+   l'image entière est re-rendue mais les autres artefacts sont réutilisés), remix,
+   SRT/VTT re-quantifiés sur la vidéo exportée.
+4. QA mesuré limité aux plages touchées + contrôles globaux bornés ; QA Expert isolé ;
+   nouvelle révision, parent intact ; validation humaine.

@@ -73,3 +73,10 @@ adaptateur 16, slow Studio 1, E2E 6/6. Note v0.5 FLORA/Flow :
 [note](../docs/plans/v0.5-generative-media-note.md). Aucun moteur installé.
 Prochaine étape : dossier POC Piper (T116) à présenter avant toute installation.
 
+
+2026-11-03/04 — T116 commité (`be69fb8`, aucun téléchargement). Mission Agent Architect :
+[AGENT-ARCHITECTURE](../docs/ai/AGENT-ARCHITECTURE.md), [TOOL-REGISTRY](../docs/ai/TOOL-REGISTRY.md),
+exemples dans AGENT-WORKFLOWS ; 8 sous-agents de développement dans `.agents/agents`
+(lien `.claude/agents`) ; G17 (T127–T136) dans TASKS. Écarts de sécurité P0 :
+Studio exposé sur le LAN (choix utilisateur), `runProcess` transmet tout l'environnement
+(T132). Prochaine étape recommandée : T132 puis T127 ; POC Piper en attente d'autorisation.

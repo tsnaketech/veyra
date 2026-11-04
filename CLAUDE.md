@@ -10,6 +10,11 @@ Les consignes communes sont dans `AGENTS.md` ; ne pas les recopier ici.
   (prompt-to-video, video-rendering, video-review, video-quality-assurance,
   veyra-assisted-task). Composants animés : docs/video/MOTION-ENGINE.md.
   Les charger avant de modifier le domaine correspondant.
+- Sous-agents de développement : `.claude/agents` est un lien vers `.agents/agents/`
+  (motion, pipeline vidéo, audio et voix, contrats, tests, sécurité, revue
+  indépendante, recherche). Ce ne sont pas des agents métier Veyra :
+  [AGENT-ARCHITECTURE](docs/ai/AGENT-ARCHITECTURE.md). Contrôle des définitions :
+  `packages/config/src/agents.test.ts`.
 - Skills externes (GSAP pour la 2D, Three.js pour la 3D seulement, playwright-cli,
   ffmpeg-skill, remotion-best-practices) : à la demande, un seul à la fois, après
   le skill Veyra du domaine ; jamais dans le pipeline. Matrice et règles :
