@@ -218,6 +218,25 @@ Contrôle des définitions : `packages/config/src/agents.test.ts`.
 Ordre recommandé : T132 → T127 (prochain incrément, voir § 10) → T134/T133 → T128 →
 T129 → T130/T131 ; v0.4 continue en parallèle (T116–T124).
 
+## 8 bis. Stratégie de tests (10 démonstrations exigées)
+
+Audit des tests du 2026-11-03 (lecture du code des tests, non exécutés pour l'audit).
+« Simulé » : `FakeAiProvider`, `FakeQualityEvaluator`, `colorEngine` (vrai MP4 ffmpeg,
+pas HyperFrames) ; aucun test automatique n'appelle une IA réelle.
+
+| # | Démonstration | État | Preuve existante | Test à ajouter |
+|---|---|---|---|---|
+| 1 | Choix d'outil selon le brief | Partiel, règles + simulé | `ai/agents.test.ts`, `ai/motion.test.ts` | Studio : brief avec son demandé + WAV → phase `audio` ; avec T129, brief contrasté → `ToolPlan` différent ; IA réelle : test manuel `claude-subscribe` rejoué et consigné |
+| 2 | Délégation à la bonne compétence | Partiel | `agents.test.ts` (`affectedAgents`), `production.test.ts` | Studio : correction motion seule → phases `plan, motion, composition, render, qa, human-approval` |
+| 3 | Exécution d'un outil réel | Couvert, réel | `*.slow.test.ts` adaptateur, `voice-captions.slow.test.ts`, E2E | — |
+| 4 | Refus d'une action non autorisée | Largement couvert | budgets, verrous, `safePath`, routes, injection | POST forgé sur le verrou de fournisseur ; patch `{html}` refusé ; `<script>` du modèle → `compose` |
+| 5 | Outil indisponible | Partiel | `local-tts`, bwrap absent, Chrome absent (mocks) | ffmpeg réellement absent (ENOENT) ; `available()` des descripteurs T127 |
+| 6 | Modification ciblée d'une scène | Couvert, planificateur simulé | `applyProposal`, `setNarration`, `importVoice` | Avec T128 : une `EditOperation` par type |
+| 7 | Conservation des autres scènes | Partiel (`colorEngine`) | storyboard égal, sous-titres, `reusablePicture` | E2E Motion : PSNR d'une frame de scène 1 entre v1 et v2 sur rendu HyperFrames réel |
+| 8 | Artefact vidéo réel | Couvert, réel | `render.slow`, E2E (ffprobe) | — |
+| 9 | Analyse indépendante | Partiel ; indépendance **non testée** | mesures réelles ; étiquetage `simulated` | Espion de `EvaluationInput` : aucun contexte du planificateur (T134) |
+| 10 | Révision sans écraser la précédente | Couvert, réel | `repo.test.ts`, SHA-256 des parents (slow, E2E) | — |
+
 ## 9. Risques et questions ouvertes
 
 - D007 (plan en données, pas de boucle d'outils) : à garder pour les outils qui
