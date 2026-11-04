@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { voiceResultSchema, type AudioComposition } from "@veyra/schemas";
 import { probeAudio } from "./validation";
 import { resolveAudioComposition } from "./timeline";
@@ -18,13 +18,19 @@ describe("voice providers", () => {
     expect(voiceProvider("import").synthesize).toBeUndefined();
     expect(voiceProvider("fake").available().ok).toBe(true);
     const tts = voiceProvider("local-tts");
-    expect(tts.available()).toEqual({
-      ok: false,
-      reason: "Moteur non installé",
-      installHint: expect.stringMatching(
-        /installation explicite arrive avec T116/,
-      ),
-    });
+    // Empty engines root: deterministic whatever is installed on this machine.
+    const engines = await mkdtemp(join(tmpdir(), "veyra-no-engines-"));
+    vi.stubEnv("VEYRA_ENGINES_ROOT", engines);
+    try {
+      expect(tts.available()).toEqual({
+        ok: false,
+        reason: "Moteur non installé",
+        installHint: "pnpm voice:install piper (autorisation requise)",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(engines, { recursive: true });
+    }
     await expect(
       tts.synthesize!({ sceneId: "scn_a", text: "Bonjour" }, "/dev/null"),
     ).rejects.toThrow(/moteur non installé.*Aucune voix simulée/);

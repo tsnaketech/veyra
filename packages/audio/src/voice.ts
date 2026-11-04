@@ -8,6 +8,12 @@ import {
   type Scene,
   type VoiceResult,
 } from "@veyra/schemas";
+import {
+  engineRoot,
+  engineStatus,
+  findEngine,
+  loadVoiceConfig,
+} from "./engines";
 import { fixed } from "./mixing";
 import { runAudioProcess } from "./validation";
 import type { AudioLimits, AudioMetadata } from "./schemas";
@@ -86,16 +92,38 @@ const fakeProvider: VoiceProvider = {
 };
 const localTtsProvider: VoiceProvider = {
   kind: "local-tts",
-  // shortcut: stub until T116/T117 install and wrap Piper; then probe the installed engine.
-  available: () => ({
-    ok: false,
-    reason: "Moteur non installé",
-    installHint:
-      "Aucun moteur de synthèse locale n'est encore installable : l'installation explicite arrive avec T116.",
-  }),
+  available() {
+    let state: string;
+    try {
+      const config = loadVoiceConfig();
+      state = engineStatus(
+        findEngine(config, "piper"),
+        engineRoot(config, "piper"),
+      ).state;
+    } catch (error) {
+      return {
+        ok: false,
+        reason: `Configuration des moteurs invalide : ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    const installHint = "pnpm voice:install piper (autorisation requise)";
+    if (state === "non installé")
+      return { ok: false, reason: "Moteur non installé", installHint };
+    // shortcut: even a verified install stays unavailable until T117 wraps Piper (POC then adoption).
+    return {
+      ok: false,
+      reason:
+        state === "installé, empreintes vérifiées"
+          ? "Moteur installé ; synthèse locale prévue avec T117"
+          : `Moteur ${state}`,
+      ...(state === "installé, empreintes vérifiées"
+        ? {}
+        : { installHint: `${installHint} ; diagnostic : pnpm voice:doctor` }),
+    };
+  },
   async synthesize() {
     throw new Error(
-      "Synthèse locale indisponible : moteur non installé (installation explicite prévue avec T116). Aucune voix simulée n'est utilisée à sa place.",
+      "Synthèse locale indisponible : moteur non installé ou non intégré (voir pnpm voice:doctor ; intégration de Piper prévue avec T117). Aucune voix simulée n'est utilisée à sa place.",
     );
   },
 };

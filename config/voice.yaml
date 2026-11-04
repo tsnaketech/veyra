@@ -1,0 +1,65 @@
+# Optional local voice engines (T116). Nothing here is downloaded automatically:
+# `pnpm voice:install <id>` prints the plan and requires an explicit confirmation.
+# Values read on 2026-11-03 from PyPI / Hugging Face metadata; null = not pinned yet.
+schemaVersion: 1
+# Outside the repository; overridden by VEYRA_ENGINES_ROOT. Each engine: <root>/<id>.
+enginesRoot: ~/.local/share/veyra/engines
+engines:
+  - id: piper
+    kind: tts
+    # Candidate under test (brief v0.4 § 10), not an adopted choice.
+    status: candidate
+    version: 1.8.0
+    artefacts:
+      - name: piper_tts-1.8.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_28_x86_64.whl
+        # Exact files.pythonhosted.org URL not recorded: to resolve at approval.
+        url: null
+        sizeBytes: 34131442
+        sha256: 25b4d3f31ff70c8fa7151908e00aaa5650cbdf16bca8fcf21299f3941b89a7d3
+        pypi: { project: piper-tts, version: 1.8.0 }
+        licence: GPL-3.0-or-later
+        attribution: null
+        redistribution: "GPL : fournir les sources si Veyra redistribue Piper ; appel en processus séparé, sans liaison."
+        note: URL PyPI à résoudre à l'approbation.
+      - name: onnxruntime-1.31.1-cp311-cp311-manylinux_2_28_x86_64.whl
+        # Exact files.pythonhosted.org URL not recorded: to resolve at approval.
+        url: null
+        sizeBytes: 23753652
+        sha256: 5752bd508126ae7c49894d3b9d2e83f0c3d487319246d04c444b393308d7ad7f
+        pypi: { project: onnxruntime, version: 1.31.1 }
+        licence: MIT
+        attribution: null
+        redistribution: Autorisée avec la notice MIT.
+        note: URL PyPI à résoudre à l'approbation ; dépendances transitives à épingler.
+      - name: onnx-1.23.2.whl
+        url: null
+        sizeBytes: null
+        sha256: null
+        pypi: { project: onnx, version: 1.23.2 }
+        licence: Apache-2.0
+        attribution: null
+        redistribution: Autorisée avec la notice Apache-2.0.
+        note: Nom exact de la roue, URL, taille et empreinte à relever.
+      - name: fr_FR-mls-medium.onnx
+        url: https://huggingface.co/rhasspy/piper-voices/resolve/e7229f7d33a10e145e109b886d661984201ac3c4/fr/fr_FR/mls/medium/fr_FR-mls-medium.onnx
+        sizeBytes: 76733750
+        sha256: 0ed223f78466917f2bae05ee90096ce69ab1fdeb251f55590d0e7422d234e162
+        licence: "Jeu de données OpenSLR 94 (MLS, LibriVox) CC-BY 4.0 ; licence des poids selon MODEL_CARD"
+        attribution: "Voix entraînée sur Multilingual LibriSpeech (OpenSLR 94, LibriVox), CC-BY 4.0 : créditer MLS / LibriVox."
+        redistribution: Autorisée avec attribution ; à confirmer sur le MODEL_CARD téléchargé.
+      - name: fr_FR-mls-medium.onnx.json
+        url: https://huggingface.co/rhasspy/piper-voices/resolve/e7229f7d33a10e145e109b886d661984201ac3c4/fr/fr_FR/mls/medium/fr_FR-mls-medium.onnx.json
+        sizeBytes: 7036
+        sha256: null
+        licence: Comme fr_FR-mls-medium.onnx
+        attribution: null
+        redistribution: Comme fr_FR-mls-medium.onnx
+        note: Empreinte inconnue, calculée au téléchargement et inscrite au fichier de verrou (confiance au premier usage).
+      - name: MODEL_CARD
+        url: https://huggingface.co/rhasspy/piper-voices/resolve/e7229f7d33a10e145e109b886d661984201ac3c4/fr/fr_FR/mls/medium/MODEL_CARD
+        sizeBytes: 222
+        sha256: null
+        licence: Comme fr_FR-mls-medium.onnx
+        attribution: null
+        redistribution: Comme fr_FR-mls-medium.onnx
+        note: Empreinte inconnue, calculée au téléchargement et inscrite au fichier de verrou (confiance au premier usage).

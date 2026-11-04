@@ -17,6 +17,7 @@ import {
 import { safePath } from "@veyra/storage";
 import { Sandbox, type sandboxOptionsSchema } from "./sandbox";
 export {
+  runEngine,
   Sandbox,
   SandboxUnavailableError,
   sandboxOptionsSchema,

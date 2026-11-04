@@ -41,6 +41,17 @@ La racine hôte reste lisible : cette isolation protège principalement le rése
 et les écritures, pas la confidentialité des fichiers locaux. Ne pas accepter de
 HTML tiers arbitraire ; pour ce besoin futur, réduire aussi les montages lisibles.
 
+Moteurs locaux optionnels (T116) : installés seulement par `pnpm voice:install`
+après affichage du plan (URL, taille, SHA-256, licence, attribution) et confirmation
+explicite, hors dépôt. Chaque artefact est vérifié (taille et SHA-256 épinglés dans
+`config/voice.yaml`) avant renommage atomique ; un artefact sans empreinte épinglée
+est refusé, sauf acceptation nominative (confiance au premier usage, empreinte inscrite
+au verrou). À l'exécution, `runEngine` (adaptateur, réutilise `Sandbox`) lance le
+moteur par argv, sans réseau (`--unshare-net`), racine du moteur en lecture seule,
+seul le dossier de sortie inscriptible, limites CPU, durée et taille ; jamais de repli
+sans sandbox. Pas de limite mémoire dans cette version. Les licences et attributions
+(GPL-3.0 pour Piper, CC-BY 4.0 pour la voix MLS) sont affichées par `voice:doctor`.
+
 ## Serveur Studio
 
 - `/media/[revisionId]` sert uniquement le `videoPath` enregistré, après

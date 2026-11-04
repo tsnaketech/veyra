@@ -114,6 +114,37 @@ pnpm motion:previews --demo projects/_demo/demo.mp4   # + démo 20 s à 5 compos
 
 Rendu HyperFrames réel sous bwrap (Chrome headless requis), ~25 s pour les aperçus.
 
+## Moteurs locaux optionnels (voix, sous-titres)
+
+Aucun moteur n'est requis : sans moteur, la voix importée, la voix simulée et les
+sous-titres `scene` fonctionnent. Les moteurs candidats (Piper pour la synthèse)
+sont décrits dans `config/voice.yaml` : artefacts, tailles, SHA-256, licences,
+attributions. Rien n'est téléchargé automatiquement.
+
+```sh
+pnpm voice:doctor                    # état de chaque moteur, hors réseau ; code 0
+pnpm voice:install piper             # affiche le plan puis demande « oui »
+pnpm voice:install piper --yes       # confirmation non interactive
+pnpm voice:install piper --accept-unpinned MODEL_CARD   # accepte un artefact sans empreinte épinglée
+```
+
+- Destination : `~/.local/share/veyra/engines/<moteur>` (hors dépôt, refusé dans le
+  dépôt), ou `VEYRA_ENGINES_ROOT/<moteur>`.
+- Sans confirmation (réponse autre que « oui », entrée fermée), rien n'est écrit.
+  Un artefact sans URL épinglée bloque l'installation (code 2) ; un artefact sans
+  empreinte est refusé sauf `--accept-unpinned <nom>` : l'empreinte calculée est
+  inscrite dans `veyra-engine.lock.json` (confiance au premier usage).
+- Chaque fichier est téléchargé dans un fichier temporaire de la racine, vérifié
+  (taille, SHA-256), puis renommé ; en cas d'écart il est supprimé.
+- Roues Python : `requirements.txt` (avec `--hash`) est généré ; l'environnement est
+  créé hors ligne depuis les fichiers vérifiés, étape non exécutée par
+  `voice:install` (commandes `uv venv` / `uv pip install --no-index --require-hashes`
+  affichées dans le plan).
+- Après installation, les moteurs s'exécutent hors ligne, sous bwrap sans réseau
+  (`runEngine`, voir [SECURITY](SECURITY.md)).
+- État au 2026-11-03 : Piper **non autorisé ni installé** ; son installation est
+  bloquée tant que les URL des roues et l'empreinte d'`onnx` ne sont pas relevées.
+
 ## Démarrage
 
 ```sh

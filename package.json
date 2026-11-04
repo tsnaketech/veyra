@@ -10,6 +10,8 @@
     "lint": "pnpm -r lint",
     "dev": "pnpm --filter studio dev",
     "qa:bench": "pnpm --filter @veyra/ai qa:bench",
-    "motion:previews": "pnpm --filter @veyra/hyperframes-adapter motion:previews"
+    "motion:previews": "pnpm --filter @veyra/hyperframes-adapter motion:previews",
+    "voice:doctor": "pnpm --filter @veyra/audio voice:doctor",
+    "voice:install": "pnpm --filter @veyra/audio voice:install"
   }
 }

@@ -134,6 +134,7 @@ const configs = [
   ["models", "models.json"],
   ["quality", "quality.yaml"],
   ["style", "style-guide.md"],
+  ["voice", "voice.yaml"],
 ] as const;
 it.each(configs)("loads repository config %s", (key, filename) => {
   const loaded = new ConfigLoader(configSchemas[key] as z.ZodType, {

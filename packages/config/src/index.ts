@@ -317,6 +317,49 @@ export const configSchemas = {
     // Language of the expert QA texts (justifications, observations).
     reportLanguage: z.enum(["fr", "en"]).default("fr"),
   }),
+  // Optional local engines (T116): pinned artefacts, installed only by `pnpm voice:install`.
+  voice: z.object({
+    ...version,
+    // Base directory; each engine lives in <enginesRoot>/<id>. VEYRA_ENGINES_ROOT overrides it.
+    enginesRoot: z.string().min(1).default("~/.local/share/veyra/engines"),
+    engines: z
+      .array(
+        z.object({
+          id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+          kind: z.enum(["tts", "asr", "alignment"]),
+          status: z.enum(["candidate", "adopted"]),
+          version: z.string().min(1),
+          artefacts: z
+            .array(
+              z.object({
+                // Stored as <engine root>/<name>; no path separators, no leading dot.
+                name: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9._-]*$/),
+                // null = not pinned yet: installation refused until it is filled in.
+                url: z.url({ protocol: /^https$/ }).nullable(),
+                sizeBytes: z.number().int().positive().nullable(),
+                // null = unknown: refused unless accepted explicitly (trust on first use).
+                sha256: z
+                  .string()
+                  .regex(/^[0-9a-f]{64}$/)
+                  .nullable(),
+                // Python wheel: PyPI identity, installed offline from the verified file.
+                pypi: z
+                  .object({
+                    project: z.string().min(1),
+                    version: z.string().min(1),
+                  })
+                  .optional(),
+                licence: z.string().min(1),
+                attribution: z.string().nullable().default(null),
+                redistribution: z.string().min(1),
+                note: z.string().optional(),
+              }),
+            )
+            .min(1),
+        }),
+      )
+      .default([]),
+  }),
   style: z.object({
     ...version,
     palette: z.record(z.string(), z.string()),

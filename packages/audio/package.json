@@ -8,17 +8,21 @@
   "scripts": {
     "test": "vitest run",
     "check": "tsc -p tsconfig.json",
-    "lint": "prettier --check ."
+    "lint": "prettier --check .",
+    "voice:doctor": "tsx src/engines-cli.ts doctor",
+    "voice:install": "tsx src/engines-cli.ts install"
   },
   "dependencies": {
     "@veyra/schemas": "workspace:*",
     "zod": "^4.0.0",
-    "@veyra/video": "workspace:*"
+    "@veyra/video": "workspace:*",
+    "@veyra/config": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8",
-    "prettier": "^3.8.3"
+    "prettier": "^3.8.3",
+    "tsx": "4.23.15"
   }
 }

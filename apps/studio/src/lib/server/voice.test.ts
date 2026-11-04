@@ -306,7 +306,7 @@ it('local-tts is reported as not installed and never replaced by a simulated voi
   const { project, scene, v2 } = await narrated(app);
   const assets = repo.listAssets(project.id).length;
   await expect(app.generateVoice(v2.id, scene.id, 'local-tts')).rejects.toThrow(
-    /Moteur non installé — Aucun moteur de synthèse locale/
+    /Moteur non installé — pnpm voice:install piper \(autorisation requise\)/
   );
   expect(latest(project.id).id).toBe(v2.id);
   expect(repo.getRevision(v2.id).status).toBe('awaiting_approval');

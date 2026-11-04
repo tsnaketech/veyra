@@ -25,6 +25,8 @@ export const sandboxOptionsSchema = z.object({
     .default(100 * 1024 * 1024),
   bwrapPath: z.string().default("/usr/bin/bwrap"),
   prlimitPath: z.string().default("/usr/bin/prlimit"),
+  // Re-bound read-only after the private /tmp, so a root under /tmp stays visible.
+  readOnlyBinds: z.array(z.string()).default([]),
 });
 function writableSize(root: string): number {
   let total = 0;
@@ -81,6 +83,10 @@ export class Sandbox {
           "--bind",
           root,
           root,
+          ...this.options.readOnlyBinds.flatMap((dir) => {
+            const real = realpathSync(dir);
+            return ["--ro-bind", real, real];
+          }),
           "--unshare-net",
           "--unshare-pid",
           "--die-with-parent",
@@ -141,4 +147,33 @@ export class Sandbox {
       throw error;
     }
   }
+}
+
+/**
+ * Runs a local engine (T116): argv only, no network, engine root read-only, only
+ * outputDir writable, CPU/time/output limits. Never falls back to running unsandboxed.
+ */
+export function runEngine(
+  command: string,
+  args: string[],
+  dirs: { engineRoot: string; outputDir: string },
+  limits: Pick<
+    z.input<typeof sandboxOptionsSchema>,
+    "wallTimeoutMs" | "cpuSeconds" | "maxOutputBytes" | "bwrapPath"
+  > = {},
+  onLine?: (line: string) => void,
+) {
+  const engine = realpathSync(dirs.engineRoot),
+    output = realpathSync(dirs.outputDir);
+  const inside = (a: string, b: string) => {
+    const rel = relative(b, a);
+    return !rel.startsWith("..") && !isAbsolute(rel);
+  };
+  if (inside(output, engine) || inside(engine, output))
+    throw new Error("Engine root and output directory must be disjoint");
+  return new Sandbox({
+    ...limits,
+    allowUnsandboxed: false,
+    readOnlyBinds: [engine],
+  }).run(command, args, output, output, onLine);
 }
