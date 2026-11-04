@@ -306,3 +306,28 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   base ne doivent pas piloter le même run. Les fenêtres de ducking absolues et les
   ancrages inrésolus sont signalés `needs-human` avant rendu, pas corrigés.
   Détail : [MULTI-AGENT-ARCHITECTURE](ai/MULTI-AGENT-ARCHITECTURE.md).
+
+## D021 — Director outillé par pas structurés bornés (complète D007 et D019)
+
+- Date : 2026-11-04
+- Statut : **proposée** (architecture validée sur le principe par l'utilisateur ;
+  implémentation en T128–T129)
+- Contexte : Veyra doit devenir un studio de montage où l'IA choisit et utilise les
+  outils disponibles, sans enchaînement de phases imposé. D007 exclut toute boucle
+  agentique côté serveur ; D019 exclut tout cache entre runs et définit un orchestrateur
+  persisté mono-processus.
+- Options envisagées : Claude Agent SDK (outils système, surface trop large) ; boucle
+  d'usage d'outils natif multi-tours ; **pas successifs à sortie structurée** dont chaque
+  action est validée, autorisée et exécutée par Veyra.
+- Décision et justification : pas successifs à sortie structurée ([DIRECTOR-TOOL-LOOP](ai/DIRECTOR-TOOL-LOOP.md)).
+  D007 est **conservée** sur l'essentiel : chaque décision reste une donnée validée par
+  Zod ; le modèle ne reçoit aucun outil système ; seules les capacités du registre
+  ([TOOL-REGISTRY](ai/TOOL-REGISTRY.md)) sont appelables, par Veyra. D019 est **étendue** :
+  la boucle tourne dans une phase d'un run, chaque transition d'appel est persistée,
+  la reprise suit les mêmes règles ; un cache de rendu par scène fera l'objet d'une
+  décision séparée (T130).
+- Conséquences : bornes de pas, d'appels, de temps, de rendus et de coût ; aucune action
+  payante, réseau ou de code généré sans confirmation explicite **de cette action** ;
+  QA Expert hors de la boucle ; validation humaine finale ; code généré (niveau 2 de
+  [CREATIVE-COMPOSITION](ai/CREATIVE-COMPOSITION.md)) refusé jusqu'à une décision dédiée
+  après durcissement de la sandbox.
