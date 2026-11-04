@@ -1,6 +1,7 @@
 # Registre des capacités (outils des agents métier)
 
-Statut : **proposition du 2026-11-03**, non implémentée (tâche T127). Architecture :
+Statut : **proposition du 2026-11-03** ; registre et premiers outils **implémentés le 2026-11-04** (T127,
+§ 3 bis). Architecture :
 [AGENT-ARCHITECTURE](AGENT-ARCHITECTURE.md). Un outil n'existe que s'il a un
 exécuteur Veyra ; un skill Claude Code n'est jamais un outil runtime.
 
@@ -22,7 +23,7 @@ exécuteur Veyra ; un skill Claude Code n'est jamais un outil runtime.
 ## 2. Contrat d'un outil
 
 ```ts
-// packages/schemas/src/tools.ts (proposé, T127)
+// Proposé ; contrat réel : packages/schemas/src/tools.ts (T127, § 3 bis)
 interface ToolDescriptor<I, O> {
   id: string;                    // "captions.export", stable ; version incrémentée si incompatible
   version: number;
@@ -84,6 +85,40 @@ Statut : **réel** (exécuteur et test réel), **simulé** (sortie de démonstra
 | `generative.flora.*` | à créer (v0.5) | note v0.5 | network-external + billable | autorisation |
 | `generative.google-flow` | import manuel seulement | note v0.5 (pas d'API Flow documentée) | writes-revision-artefacts | — |
 | `three.scene` | absent (T103 POC) | — | generated-code-execution | décision |
+
+## 3 bis. Implémentation (T127, 2026-11-04)
+
+Contrat : `packages/schemas/src/tools.ts` (`permissionClassSchema`, `toolMetaSchema`,
+`toolErrorSchema`, `toolArtefactSchema`, `toolResultSchema`). Registre :
+`apps/studio/src/lib/server/tools/registry.ts` (`defineTool`, `createToolRegistry` →
+`list()`, `invoke(id, entrée, { grants })`, `history` en mémoire) ; outils :
+`apps/studio/src/lib/server/tools/tools.ts` ; registre Studio : `studioToolRegistry(ctx)`
+(`tools/index.ts`), non branché sur une route (boucle T129).
+
+Ordre d'`invoke` : outil inconnu → `unknown-tool` ; entrée non JSON ou refusée par Zod →
+`invalid-input` (aucun processus) ; permission absente des `grants` →
+`permission-denied` ; `available()` → `unavailable` (+ `installHint`) ; exécution bornée
+par `limits.timeoutMs` → `timeout` / `failed` (première ligne du message, sans pile,
+valeurs secrètes masquées) ; sortie refusée par Zod ou plus grande que
+`limits.outputBytes` → `invalid-output`. Artefacts : dossier neuf
+`<prj>/tool-calls/<tcl_…>/` (jamais un dossier de révision), chemin relatif à la racine
+de stockage et sha256. L'enveloppe `agentResultSchema` (agent, phase) est ajoutée par la
+boucle (T129), pas par le registre.
+
+| Outil | Statut | Fonction réutilisée | Permissions | Preuve |
+|---|---|---|---|---|
+| `media.inspect` | réel | `probe` (`@veyra/video`) | read-only, local-compute | `tools.test.ts` (b, e) |
+| `media.frame` | réel | `extractFrameByIndex` | local-compute, writes-revision-artefacts | `tools.test.ts` (b, c, e) |
+| `scene.patch` | réel (aucune révision créée) | `applyProposal` | read-only | `tools.test.ts` (g) |
+| `audio.track.update` | réel | `Studio.reviseAudio` (révision enfant) | writes-revision-artefacts | `tools.test.ts` (d, g, e) |
+| `captions.build` | réel (temps `scene`, approximatifs) | `buildFallbackCaptions`, `captionPrecisionSummary` | read-only | `tools.test.ts` |
+| `captions.export` | réel (cadence et frames mesurées de `revision.media`) | `quantizeCues`, `toSrt`, `toWebVtt` | read-only | `tools.test.ts` |
+| `composition.check` | réel | `VideoEngine.check` (HyperFrames, bwrap) | local-compute | `tools.slow.test.ts` (h) |
+| `voice.local-tts` | bouchon | `voiceProvider('local-tts').available()` | local-compute | `registry.test.ts` (f) |
+| `transcription.local-asr` | bouchon | — | local-compute | `registry.test.ts` (f) |
+| `alignment.ctc` | bouchon | — | local-compute | `registry.test.ts` (f) |
+
+Les autres lignes du § 3 restent au statut indiqué : non enregistrées dans le registre.
 
 ## 4. Classes de permission
 
