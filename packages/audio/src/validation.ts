@@ -161,6 +161,12 @@ export async function probeAudio(
     return metadata;
   } catch (error) {
     if (error instanceof AudioMediaError) throw error;
+    // The executor's demuxer allow-list (T136b) refuses unlisted containers before probing.
+    if (
+      error instanceof ProcessError &&
+      /Format not on whitelist/i.test(error.stderrTail)
+    )
+      throw new AudioMediaError("unsupported-format", error.stderrTail);
     throw new AudioMediaError(
       "decode-failed",
       error instanceof ProcessError ? error.stderrTail : "",

@@ -7,6 +7,7 @@ import {
   qualityCheckSchema,
   type QualityCheck,
 } from "@veyra/schemas";
+import { VIDEO_FORMATS } from "./process";
 import { probeVideoStream, streamFrames } from "./stream";
 
 /**
@@ -379,6 +380,8 @@ export async function measureTextContrast(
           "error",
           "-protocol_whitelist",
           "file",
+          "-format_whitelist",
+          VIDEO_FORMATS,
           "-ss",
           String(seek),
           "-i",

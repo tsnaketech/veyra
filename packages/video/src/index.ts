@@ -7,13 +7,23 @@ import {
   qualityCheckSchema,
   type QualityCheck,
 } from "@veyra/schemas";
-import { fileInput, mediaPath, runProcess } from "./process";
+import {
+  fileInput,
+  IMAGE_FORMATS,
+  mediaPath,
+  runProcess,
+  VIDEO_FORMATS,
+} from "./process";
 export {
   runProcess,
   childEnv,
   mediaPath,
   fileInput,
   MEDIA_LIMITS,
+  MEDIA_FORMATS,
+  VIDEO_FORMATS,
+  IMAGE_FORMATS,
+  setChildPathPrefixForTests,
   CHILD_ENV_KEYS,
   ProcessError,
   type ProcessOptions,
@@ -60,6 +70,8 @@ export async function probe(file: string): Promise<VideoProbe> {
     "error",
     "-protocol_whitelist",
     "file",
+    "-format_whitelist",
+    VIDEO_FORMATS,
     "-show_streams",
     "-show_format",
     "-of",
@@ -308,8 +320,8 @@ export async function compareFrames(a: string, b: string): Promise<number> {
   const { stderr } = await runProcess("ffmpeg", [
     "-nostdin",
     "-hide_banner",
-    ...fileInput(a),
-    ...fileInput(b),
+    ...fileInput(a, IMAGE_FORMATS),
+    ...fileInput(b, IMAGE_FORMATS),
     "-lavfi",
     "psnr",
     "-f",

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { statSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { lstatSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
 export class ProcessError extends Error {
   constructor(
     message: string,
@@ -42,7 +42,7 @@ export const MEDIA_LIMITS: ProcessLimits = {
   fileSizeBytes: 2 * 1024 ** 3,
   addressSpaceBytes: 8 * 1024 ** 3,
 };
-/** The only variables a child may receive besides PATH and LANG. */
+/** The only variables a child may receive besides PATH and LANG (PATH is fixed). */
 export const CHILD_ENV_KEYS = [
   "PATH",
   "HOME",
@@ -54,6 +54,29 @@ export const CHILD_ENV_KEYS = [
   "DO_NOT_TRACK",
   "CLAUDE_CONFIG_DIR",
 ] as const;
+/**
+ * Demuxers a file input may select (`-format_whitelist`, T136b): playlists (hls),
+ * concat lists and other demuxers that open further files are refused before decoding.
+ * Media defaults to the audio import formats of config/audio.yaml (wav, mp3, flac,
+ * ogg, the mov family, aiff); renders and previews narrow to the mov family.
+ */
+export const MEDIA_FORMATS = "mov,mp4,m4a,3gp,3g2,mj2,wav,mp3,flac,ogg,aiff";
+export const VIDEO_FORMATS = "mov,mp4,m4a,3gp,3g2,mj2";
+export const IMAGE_FORMATS = "png_pipe";
+const MEDIA_TOOLS = ["ffmpeg", "ffprobe"];
+/** Fixed child PATH: node's own directory and system dirs, never the parent's PATH. */
+const CHILD_PATH = [
+  ...new Set([dirname(process.execPath), "/usr/local/bin", "/usr/bin", "/bin"]),
+].join(":");
+let testPathPrefix: string | undefined;
+/**
+ * Test-only: prepends `dir` to the fixed child PATH (recording shims). Throws outside
+ * Vitest, so production code can never widen the child PATH.
+ */
+export function setChildPathPrefixForTests(dir: string | undefined) {
+  if (!process.env.VITEST) throw new Error("Test-only hook outside Vitest");
+  testPathPrefix = dir;
+}
 const SECRET_KEY =
   /^(?:ANTHROPIC_|CLAUDE_CODE_|AWS_|GITHUB_|OPENAI_)|(?:TOKEN|KEY|SECRET|PASSWORD|CREDENTIALS?)$/i;
 const SHELLS = /^(?:a|ba|da|k|mk|tc|z|c|fi|yo)?sh$|^(?:env|busybox|xargs)$/;
@@ -65,7 +88,7 @@ export function childEnv(
   extra: Record<string, string | undefined> = {},
 ): Record<string, string> {
   const env: Record<string, string> = {
-    PATH: process.env.PATH || "/usr/bin:/bin",
+    PATH: testPathPrefix ? `${testPathPrefix}:${CHILD_PATH}` : CHILD_PATH,
     LANG: "C",
   };
   for (const [key, value] of Object.entries(extra)) {
@@ -91,9 +114,14 @@ export function runProcess(
         `Refused command ${JSON.stringify(command)}: argv only, no shell`,
       );
     const env = childEnv(options.env);
-    const limits =
-      options.limits ??
-      (["ffmpeg", "ffprobe"].includes(command) ? MEDIA_LIMITS : false);
+    const media = MEDIA_TOOLS.includes(basename(command));
+    // Media tool run directly or through an explicit prlimit wrapper (audio limits).
+    const tool =
+      media ||
+      (basename(command) === "prlimit" &&
+        MEDIA_TOOLS.includes(basename(args[args.indexOf("--") + 1] ?? "")));
+    if (tool) args = withFormatWhitelist(args);
+    const limits = options.limits ?? (media ? MEDIA_LIMITS : false);
     const argv = limits
       ? [
           `--cpu=${limits.cpuSeconds}`,
@@ -196,21 +224,37 @@ export function runProcess(
   });
 }
 /**
+ * Every `-protocol_whitelist file` (the marker of a file input) without its own
+ * `-format_whitelist` gets MEDIA_FORMATS, so no caller can forget the demuxer list.
+ */
+function withFormatWhitelist(args: string[]): string[] {
+  return args.flatMap((arg, i) =>
+    arg === "file" &&
+    args[i - 1] === "-protocol_whitelist" &&
+    args[i + 1] !== "-format_whitelist"
+      ? [arg, "-format_whitelist", MEDIA_FORMATS]
+      : [arg],
+  );
+}
+/**
  * Media input path for ffmpeg/ffprobe: refuses options, protocol URLs (concat:, http:,
- * data:…) and anything but an existing regular file; returns the absolute path.
+ * data:…), symlinks (lstat, like probeAudio) and anything but an existing regular
+ * file; returns the absolute path.
  */
 export function mediaPath(file: string): string {
   if (file.startsWith("-") || /^[a-z][\w+.-]*:/i.test(file))
     throw new Error(`Refused media input ${JSON.stringify(file.slice(0, 80))}`);
   const path = resolve(file);
-  if (!statSync(path, { throwIfNoEntry: false })?.isFile())
+  if (!lstatSync(path, { throwIfNoEntry: false })?.isFile())
     throw new Error(`Media input is not a regular file: ${path}`);
   return path;
 }
-/** `-protocol_whitelist file -i <path>`: no network or nested protocol per input. */
-export const fileInput = (file: string) => [
+/** `-protocol_whitelist file -format_whitelist <formats> -i <path>` for one input. */
+export const fileInput = (file: string, formats = VIDEO_FORMATS) => [
   "-protocol_whitelist",
   "file",
+  "-format_whitelist",
+  formats,
   "-i",
   mediaPath(file),
 ];

@@ -33,6 +33,18 @@ it("wraps array arguments with network isolation and resource limits", async () 
   expect(command).toBe("/usr/bin/prlimit");
   expect(args).toContain("--unshare-net");
   expect(args).toContain("--unshare-pid");
+  for (const flag of [
+    "--unshare-ipc",
+    "--unshare-uts",
+    "--unshare-cgroup-try",
+    "--new-session",
+    "--die-with-parent",
+  ])
+    expect(args).toContain(flag);
+  // /run is masked right after the read-only root, before any writable bind.
+  expect(
+    args.slice(args.indexOf("--ro-bind"), args.indexOf("--ro-bind") + 5),
+  ).toEqual(["--ro-bind", "/", "/", "--tmpfs", "/run"]);
   expect(args).toContain("--cpu=90");
   expect(args.slice(-3)).toEqual(["/bin/example", "render", "a;echo evil"]);
   expect(args.filter((arg) => arg === "--bind")).toHaveLength(1);

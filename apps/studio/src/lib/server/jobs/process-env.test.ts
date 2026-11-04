@@ -10,22 +10,32 @@ import {
   writeFileSync
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import {
   analyzeFlashes,
   compareFrames,
   extractFrameByIndex,
   extractFramesByIndex,
   probe,
-  runProcess
+  runProcess,
+  setChildPathPrefixForTests
 } from '@veyra/video';
-import { probeAudio } from '@veyra/audio';
+import {
+  analyzeAudio,
+  detectOnsets,
+  mixToWav,
+  muxAudio,
+  probeAudio,
+  voiceProvider
+} from '@veyra/audio';
 import { colorEngine } from '../test-engines';
 
 vi.setConfig({ testTimeout: 60000, hookTimeout: 60000 });
 
 /**
- * T132: real ffmpeg/ffprobe behind a recording shim placed first on PATH. The shim
+ * T132: real ffmpeg/ffprobe behind a recording shim placed first on the child PATH. The
+ * child PATH is fixed (T136b), so the shim directory goes through the Vitest-only hook
+ * setChildPathPrefixForTests, never through the parent PATH. The shim
  * writes the environment, argv and rlimits it actually received, then execs the real
  * binary, so every public media path below runs for real and is observed from the child.
  */
@@ -40,7 +50,6 @@ const realBinary = (name: string) =>
     .map((dir) => join(dir, name))
     .find((path) => existsSync(path))!;
 let root: string, shims: string, records: string, clip: string, wav: string;
-const originalPath = process.env.PATH;
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'veyra-env-'));
   clip = join(root, 'clip.mp4');
@@ -88,14 +97,29 @@ exec ${JSON.stringify(realBinary(name))} "$@"
     chmodSync(shim, 0o755);
   }
   Object.assign(process.env, secrets);
-  process.env.PATH = `${shims}${delimiter}${originalPath}`;
+  setChildPathPrefixForTests(shims);
 });
 afterAll(() => {
-  process.env.PATH = originalPath;
+  setChildPathPrefixForTests(undefined);
   for (const key of Object.keys(secrets)) delete process.env[key];
   rmSync(root, { recursive: true, force: true });
 });
 
+const track = {
+  trackId: 'atr_env',
+  category: 'music',
+  get assetPath() {
+    return wav;
+  },
+  startMs: 0,
+  sourceInMs: 0,
+  playMs: 500,
+  gainDb: 0,
+  fadeInMs: 0,
+  fadeOutMs: 0,
+  loop: false,
+  duck: []
+} as never;
 // Variables a POSIX sh adds by itself before `env` runs.
 const shellOwn = ['PWD', 'OLDPWD', 'SHLVL', '_'];
 it.each([
@@ -114,6 +138,25 @@ it.each([
   ],
   ['analyzeFlashes (streamFrames)', async () => void (await analyzeFlashes(clip))],
   ['probeAudio (runAudioProcess)', async () => void (await probeAudio(wav))],
+  ['analyzeAudio', async () => void (await analyzeAudio(wav))],
+  ['detectOnsets', async () => void (await detectOnsets(wav))],
+  [
+    'mixToWav',
+    async () =>
+      mixToWav([track], join(root, `mix-${Math.random().toString(36).slice(2)}.wav`), {}, 600)
+  ],
+  [
+    'muxAudio',
+    async () => muxAudio(clip, wav, join(root, `mux-${Math.random().toString(36).slice(2)}.mp4`))
+  ],
+  [
+    'fake voice synthesis (lavfi tone)',
+    async () =>
+      void (await voiceProvider('fake').synthesize!(
+        { sceneId: 'scn_env', text: 'Bonjour' },
+        join(root, `voice-${Math.random().toString(36).slice(2)}.wav`)
+      ))
+  ],
   [
     'colorEngine render',
     async () => {
@@ -142,13 +185,26 @@ it.each([
       .map((line) => line.split('=')[0]);
     for (const key of keys) expect(['PATH', 'LANG', 'LC_ALL', ...shellOwn]).toContain(key);
     const base = join(records, file.slice(0, -4));
-    // Every media input is preceded by the protocol whitelist (lavfi graphs excepted).
+    // Every media input is preceded by the protocol and demuxer whitelists (lavfi graphs
+    // excepted); a raw input gets the executor's default demuxer list (T136b).
     const args = readFileSync(`${base}.args`, 'utf8').split('\n');
     args.forEach((arg, i) => {
-      if (arg === '-i' && args[i - 1] !== 'lavfi')
-        expect(args.slice(i - 2, i)).toEqual(['-protocol_whitelist', 'file']);
+      if (arg === '-i' && args[i - 1] !== 'lavfi') {
+        expect(args.slice(i - 4, i - 1)).toEqual([
+          '-protocol_whitelist',
+          'file',
+          '-format_whitelist'
+        ]);
+        expect(args[i - 1]).not.toMatch(/hls|concat|lavfi/);
+      }
     });
-    if (file.startsWith('ffprobe')) expect(args).toContain('-protocol_whitelist');
+    if (file.startsWith('ffprobe'))
+      expect(args).toEqual(expect.arrayContaining(['-protocol_whitelist', '-format_whitelist']));
+    // The child PATH is the fixed one (plus the test shims), never the parent's.
+    const fixed = [
+      ...new Set([dirname(process.execPath), '/usr/local/bin', '/usr/bin', '/bin'])
+    ].join(':');
+    expect(/^PATH=(.*)$/m.exec(text)![1]).toBe(`${shims}:${fixed}`);
     // prlimit really applied (executor defaults or the audio limits).
     expect(readFileSync(`${base}.limits`, 'utf8')).toMatch(/Max cpu time\s+\d+\s+\d+\s+seconds/);
   }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { mediaPath, ProcessError, runProcess } from "./process";
+import { mediaPath, ProcessError, runProcess, VIDEO_FORMATS } from "./process";
 
 const streamSchema = z.object({
   width: z.number().int().positive(),
@@ -22,6 +22,8 @@ export async function probeVideoStream(
       "error",
       "-protocol_whitelist",
       "file",
+      "-format_whitelist",
+      VIDEO_FORMATS,
       "-select_streams",
       "v:0",
       "-show_entries",

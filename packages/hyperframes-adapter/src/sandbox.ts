@@ -72,6 +72,9 @@ export class Sandbox {
           "--ro-bind",
           "/",
           "/",
+          // Hides host sockets (/run/user/$UID: D-Bus session, gnupg, pulse; system D-Bus).
+          "--tmpfs",
+          "/run",
           "--dev",
           "/dev",
           "--proc",
@@ -89,6 +92,11 @@ export class Sandbox {
           }),
           "--unshare-net",
           "--unshare-pid",
+          "--unshare-ipc",
+          "--unshare-uts",
+          "--unshare-cgroup-try",
+          // setsid: no TIOCSTI into the parent's terminal; teardown relies on --die-with-parent.
+          "--new-session",
           "--die-with-parent",
           "--chdir",
           working,

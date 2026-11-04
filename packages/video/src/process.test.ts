@@ -163,7 +163,7 @@ it("probe() refuses protocol URLs, option-like paths and non-files before spawni
   expect(connections).toBe(0);
 });
 
-it("an HLS playlist cannot pull a network or nested-protocol segment through probe()", async () => {
+it("an HLS playlist is refused by probe(); with hls forced, the protocol list still blocks network and nested protocols", async () => {
   const segment = join(root, "seg.ts");
   await runProcess("ffmpeg", [
     "-nostdin",
@@ -188,11 +188,27 @@ it("an HLS playlist cannot pull a network or nested-protocol segment through pro
     return path;
   };
   const b64 = readFileSync(segment).toString("base64");
+  // T136b: the demuxer list refuses the playlist itself, before any segment is opened.
+  await expect(probe(playlist(segment))).rejects.toMatchObject({
+    stderrTail: expect.stringMatching(/Format not on whitelist/),
+  });
+  // Defence in depth: hls explicitly allowed, the protocol list is what still holds.
+  const forced = (path: string) =>
+    runProcess("ffprobe", [
+      "-v",
+      "error",
+      "-protocol_whitelist",
+      "file",
+      "-format_whitelist",
+      "hls,mpegts",
+      "-show_streams",
+      path,
+    ]);
   // Control: the playlist mechanism itself works with a plain local segment.
-  await expect(probe(playlist(segment))).resolves.toMatchObject({ width: 64 });
+  await expect(forced(playlist(segment))).resolves.toBeDefined();
   // Our flag, not ffmpeg's HLS default ('file,crypto,data'), is what refuses http.
   await expect(
-    probe(playlist(`http://127.0.0.1:${port}/x.ts`)),
+    forced(playlist(`http://127.0.0.1:${port}/x.ts`)),
   ).rejects.toMatchObject({
     stderrTail: expect.stringContaining(
       "Protocol 'http' not on whitelist 'file'!",
@@ -202,7 +218,7 @@ it("an HLS playlist cannot pull a network or nested-protocol segment through pro
     `concat:${segment}|${segment}`,
     `data:video/mp2t;base64,${b64}#.ts`,
   ])
-    await expect(probe(playlist(uri))).rejects.toMatchObject({
+    await expect(forced(playlist(uri))).rejects.toMatchObject({
       stderrTail: expect.stringMatching(
         /not on whitelist|Error when loading first segment|allowed_segment_extensions/,
       ),

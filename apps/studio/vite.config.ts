@@ -3,6 +3,68 @@ import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import adapter from '@sveltejs/adapter-auto';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { loadEnv, type Plugin, type PreviewServer, type ViteDevServer } from 'vite';
+import type { IncomingMessage } from 'node:http';
+import {
+  ACCESS_COOKIE,
+  accessSettings,
+  bearerOf,
+  decideAccess,
+  LOGIN_PATH,
+  loginPage,
+  readCookie
+} from './src/lib/server/access.ts';
+
+/**
+ * T136b: Vite serves sources (/src, /@fs), static files and the HMR socket before
+ * SvelteKit's hook ever runs, so the same access policy guards every middleware and
+ * upgrade here; the hook keeps guarding SvelteKit itself (and serves the login form).
+ */
+function accessGuard(): Plugin {
+  let settings = accessSettings(process.env);
+  const check = (req: IncomingMessage) =>
+    decideAccess(settings, {
+      method: req.method ?? 'GET',
+      address: req.socket.remoteAddress ?? '',
+      host: req.headers.host ?? null,
+      origin: req.headers.origin ?? null,
+      secFetchSite: (req.headers['sec-fetch-site'] as string | undefined) ?? null,
+      bearer: bearerOf(req.headers.authorization),
+      cookie: readCookie(req.headers.cookie, ACCESS_COOKIE)
+    });
+  const install = (server: ViteDevServer | PreviewServer) => {
+    server.middlewares.use((req, res, next) => {
+      const decision = check(req);
+      if (decision.allow) return next();
+      // Only the login path reaches SvelteKit without a token (its hook checks the POST).
+      if (decision.status === 401 && (req.url ?? '').split('?')[0] === LOGIN_PATH) return next();
+      res.statusCode = decision.status;
+      res.setHeader('cache-control', 'no-store');
+      if (decision.status === 401) {
+        res.setHeader('content-type', 'text/html; charset=utf-8');
+        res.end(loginPage());
+      } else {
+        res.setHeader('content-type', 'text/plain; charset=utf-8');
+        res.end(decision.reason);
+      }
+    });
+    server.httpServer?.prependListener('upgrade', (req: IncomingMessage, socket) => {
+      if (!check(req).allow) socket.destroy();
+    });
+  };
+  return {
+    name: 'veyra-access',
+    configResolved(config) {
+      // Same variables SvelteKit's private env sees (Vite's mode files, then the process).
+      settings = accessSettings({
+        ...loadEnv(config.mode, config.envDir || process.cwd(), ''),
+        ...process.env
+      });
+    },
+    configureServer: install,
+    configurePreviewServer: install
+  };
+}
 
 export default defineConfig({
   // Loaded from node_modules at runtime; bundling it pulls optional OpenTelemetry imports.
@@ -11,6 +73,7 @@ export default defineConfig({
   server: { host: '127.0.0.1' },
   preview: { host: '127.0.0.1' },
   plugins: [
+    accessGuard(),
     tailwindcss(),
     sveltekit({
       compilerOptions: {

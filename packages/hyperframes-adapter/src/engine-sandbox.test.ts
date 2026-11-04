@@ -1,6 +1,15 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, connect, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -101,3 +110,143 @@ it("refuses overlapping engine and output directories", () => {
     runEngine("/bin/true", [], { engineRoot, outputDir: engineRoot }),
   ).toThrow("disjoint");
 });
+
+// T136b: a Unix socket the test owns under the host's XDG runtime dir (D-Bus, gnupg and
+// pulse live there). Real bwrap, real connect(): the sandbox must see neither the path
+// nor the socket.
+const runtimeDir =
+  process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 0}`;
+const runtimeWritable = (() => {
+  try {
+    accessSync(runtimeDir, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+it.skipIf(!usable || !runtimeWritable)(
+  "a sandboxed child can neither connect to nor see a host socket under /run/user (skipped without bwrap or a writable XDG runtime dir)",
+  async () => {
+    const dir = mkdtempSync(join(runtimeDir, "veyra-sock-"));
+    const socketPath = join(dir, "host.sock");
+    let hits = 0;
+    const host = createServer((socket) => {
+      hits++;
+      socket.destroy();
+    });
+    await new Promise<void>((done) => host.listen(socketPath, done));
+    try {
+      // Control: reachable from the host.
+      await new Promise<void>((done, fail) =>
+        connect(socketPath).once("connect", done).once("error", fail),
+      );
+      await new Promise((done) => setTimeout(done, 50));
+      const before = hits;
+      writeFileSync(
+        join(engineRoot, "socket-probe.mjs"),
+        `import { connect } from "node:net";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
+const [socketPath, runtimeDir] = process.argv.slice(2);
+const attempt = (path) => new Promise((done) => {
+  const s = connect(path);
+  s.once("connect", () => { s.destroy(); done("connected"); });
+  s.once("error", (e) => done(e.code));
+});
+let run;
+try { run = readdirSync("/run"); } catch (e) { run = e.code; }
+writeFileSync("socket.json", JSON.stringify({
+  connect: await attempt(socketPath),
+  bus: await attempt(runtimeDir + "/bus"),
+  systemBus: await attempt("/run/dbus/system_bus_socket"),
+  visible: existsSync(socketPath),
+  runtimeVisible: existsSync(runtimeDir),
+  run,
+}));
+`,
+      );
+      await runEngine(
+        process.execPath,
+        [join(engineRoot, "socket-probe.mjs"), socketPath, runtimeDir],
+        { engineRoot, outputDir },
+        { wallTimeoutMs: 20000, cpuSeconds: 10, maxOutputBytes: 1024 * 1024 },
+      );
+      const result = JSON.parse(
+        readFileSync(join(outputDir, "socket.json"), "utf8"),
+      );
+      expect(result).toEqual({
+        connect: "ENOENT",
+        bus: "ENOENT",
+        systemBus: "ENOENT",
+        visible: false,
+        runtimeVisible: false,
+        run: [],
+      });
+      expect(hits).toBe(before);
+    } finally {
+      host.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(!usable)(
+  "--new-session: a wall-clock timeout still kills the whole sandbox (no orphan keeps writing)",
+  async () => {
+    writeFileSync(
+      join(engineRoot, "spin.mjs"),
+      `import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+// A detached grandchild in its own group, as a renderer's browser would be.
+spawn(process.execPath, ["-e", "setInterval(() => require('node:fs').writeFileSync('beat', String(Date.now())), 50)"], { detached: true, stdio: "ignore" });
+setInterval(() => writeFileSync("alive", String(Date.now())), 50);
+`,
+    );
+    await expect(
+      runEngine(
+        process.execPath,
+        [join(engineRoot, "spin.mjs")],
+        { engineRoot, outputDir },
+        { wallTimeoutMs: 1500, cpuSeconds: 10, maxOutputBytes: 1024 * 1024 },
+      ),
+    ).rejects.toThrow(/timeout/);
+    await new Promise((done) => setTimeout(done, 300));
+    const beat = join(outputDir, "beat");
+    expect(existsSync(beat)).toBe(true);
+    const settled = statSync(beat).mtimeMs;
+    await new Promise((done) => setTimeout(done, 500));
+    expect(statSync(beat).mtimeMs).toBe(settled);
+  },
+);
+
+it.skipIf(!usable)(
+  "RESIDUAL: a socket under a read-only bound path (e.g. $HOME) stays connectable",
+  async () => {
+    // Read-only binds do not stop connect(); $HOME stays visible for Chrome's cache.
+    // If this starts failing, the residual is closed: update SECURITY.md.
+    const socketPath = join(engineRoot, "ro.sock");
+    const host = createServer((socket) => socket.destroy());
+    await new Promise<void>((done) => host.listen(socketPath, done));
+    try {
+      writeFileSync(
+        join(engineRoot, "ro-probe.mjs"),
+        `import { connect } from "node:net";
+import { writeFileSync } from "node:fs";
+const s = connect(process.argv[2]);
+s.once("connect", () => { s.destroy(); writeFileSync("ro.json", '"connected"'); });
+s.once("error", (e) => writeFileSync("ro.json", JSON.stringify(e.code)));
+`,
+      );
+      await runEngine(
+        process.execPath,
+        [join(engineRoot, "ro-probe.mjs"), socketPath],
+        { engineRoot, outputDir },
+        { wallTimeoutMs: 20000, cpuSeconds: 10, maxOutputBytes: 1024 * 1024 },
+      );
+      expect(JSON.parse(readFileSync(join(outputDir, "ro.json"), "utf8"))).toBe(
+        "connected",
+      );
+    } finally {
+      host.close();
+    }
+  },
+);
