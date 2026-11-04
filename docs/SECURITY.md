@@ -16,19 +16,33 @@ Le moteur utilise `spawn` avec tableau d’arguments et `shell: false`. `prlimit
 impose une limite CPU héritée par processus (90 s par défaut) et une taille maximale
 par fichier. `bwrap` monte l’hôte en lecture seule, expose /proc et /dev, crée
 /tmp et /dev/shm privés, et ne rend inscriptible sur l’hôte que la révision courante.
-Le cache Chrome préinstallé dans ~/.cache/hyperframes reste en lecture seule.
 Les espaces réseau, PID, IPC, UTS et cgroup (si possible) sont séparés ;
 `--die-with-parent` ferme le sandbox avec le parent. Les processus sont démarrés
 dans un groupe distinct ; `--new-session` détache le sandbox du terminal (pas de
 TIOCSTI). Depuis T136b, `/run` est un tmpfs vide (monté juste après la racine) :
 les sockets de l'hôte sous `/run/user/$UID` (D-Bus de session, gnupg, pulse) et
 `/run/dbus` ne sont plus visibles ; les sockets abstraites relèvent de l'espace
-réseau séparé. Limite : une socket Unix sous un chemin monté en lecture seule (par
-exemple `$HOME`, conservé pour le cache Chrome) reste connectable (revue du 2026-11-04 :
-`~/.config/herdr/*.sock`, qui pilote des terminaux), et les secrets de `$HOME`
-(`~/.ssh`, `~/.claude/.credentials.json`) restent **lisibles** ; le réseau est coupé,
-mais la vidéo produite reste un canal de sortie. Correction prévue avec T127 : `$HOME`
-masqué, seuls les chemins nécessaires (cache HyperFrames/Chrome) remontés en lecture.
+réseau séparé.
+
+`$HOME` masqué (T127-sec N2, revue du 2026-11-04) : `/home` et `$HOME` (s'il est
+ailleurs) sont des tmpfs vides, montés avant la révision. `~/.ssh`,
+`~/.claude/.credentials.json`, les sockets sous `~/.config` (par exemple
+`~/.config/herdr/*.sock`, qui pilote des terminaux), les autres utilisateurs de
+`/home`, le dépôt et sa base `apps/studio/local.db` (s'ils sont sous `/home`) ne sont
+plus ni lisibles ni connectables. Seuls sont remontés en lecture seule, et seulement
+si le masque les cache : `~/.cache/hyperframes/chrome` (Chrome headless, nécessaire :
+sans lui le rendu échoue), `~/.cache/hyperframes/fonts` (Inter hors ligne ; sans lui
+le rendu passe mais en police de repli), `~/.local/share/fonts` et `~/.fonts` s'ils
+existent, le `node_modules` qui contient le CLI HyperFrames (nécessaire : sans lui
+`lint` échoue ; il contient aussi gsap et les autres dépendances, pas de secret) et le
+préfixe d'installation de node (nvm…). Le `HOME` de l'environnement reste le vrai
+chemin : il pointe sur le tmpfs, inscriptible mais éphémère (`~/.hyperframes` y est
+recréé puis perdu). Limites : une socket Unix sous un chemin remonté en lecture seule
+(racine d'un moteur, caches ci-dessus) reste connectable (`RESIDUAL` dans
+`engine-sandbox.test.ts`) ; hors de `/home`, la racine hôte reste lisible (un dépôt
+installé ailleurs, `/etc`, `/var`, `/opt`) ; le réseau est coupé, mais la vidéo
+produite reste un canal de sortie ; les tmpfs (`/tmp`, `$HOME`) ne sont pas bornés en
+taille (bwrap 0.8 sans `--size`).
 
 Le délai mural (120 s par invocation par défaut) tue le groupe par SIGKILL. Les
 sorties texte cumulées sont limitées à 2 Mio ; stderr conserve une queue de
@@ -48,9 +62,10 @@ fiables. Aucun repli n’a été utilisé pour le test lent de cette session.
 
 Environnement du rendu : PATH, HOME, LANG=C.UTF-8, HYPERFRAMES_TELEMETRY=0,
 DO_NOT_TRACK=1, HYPERFRAMES_SKIP_SKILLS=1 (plus PWD posé par bwrap), construit par
-l'exécuteur ci-dessous. La racine hôte reste lisible : cette isolation protège principalement le réseau
-et les écritures, pas la confidentialité des fichiers locaux. Ne pas accepter de
-HTML tiers arbitraire ; pour ce besoin futur, réduire aussi les montages lisibles.
+l'exécuteur ci-dessous. Hors de `/home`, la racine hôte reste lisible : cette
+isolation protège le réseau, les écritures et les secrets de l'utilisateur, pas la
+confidentialité de tout le système de fichiers. Ne pas accepter de HTML tiers
+arbitraire ; pour ce besoin futur, réduire aussi les montages lisibles.
 
 Moteurs locaux optionnels (T116) : installés seulement par `pnpm voice:install`
 après affichage du plan (URL, taille, SHA-256, licence, attribution) et confirmation
@@ -80,10 +95,18 @@ ffmpeg/ffprobe de `packages/video`, et `probe()` lisait ses entrées sans
   `CLAUDE_CONFIG_DIR`) ; une clé ressemblant à un secret (`ANTHROPIC_*`,
   `CLAUDE_CODE_*`, `AWS_*`, `GITHUB_*`, `OPENAI_*`, `*_TOKEN`, `*_KEY`, `*_SECRET`,
   `*_PASSWORD`, `*_CREDENTIAL(S)`) ou hors liste lève une erreur avant tout lancement ;
-- `PATH` fixe (T136b) : `<dossier de node>:/usr/local/bin:/usr/bin:/bin`
-  (dédoublonné), jamais le `PATH` du parent ni ses dossiers inscriptibles par
-  l'utilisateur (`~/.local/bin`…) ; les tests injectent leurs enregistreurs par
-  `setChildPathPrefixForTests`, qui lève une erreur hors Vitest ;
+- binaires en chemins absolus (T127-sec N8) : une commande nue (`ffmpeg`, `ffprobe`,
+  `prlimit`, `bwrap`…) est résolue une fois (`systemBinary`) dans `/usr/local/bin`,
+  `/usr/bin`, `/bin`, dans cet ordre, jamais dans le `PATH` du parent ni dans le
+  dossier de node ; introuvable, elle est refusée. La commande enveloppée par
+  `prlimit … -- ffmpeg` (chemins audio) est résolue de même, et les défauts
+  `bwrapPath`/`prlimitPath` de la sandbox aussi ;
+- `PATH` enfant fixe : `/usr/local/bin:/usr/bin:/bin:<dossier de node>`
+  (dédoublonné) ; le dossier de node vient en dernier (utile seulement aux enfants
+  node comme HyperFrames, qui cherchent `ffmpeg` dans le `PATH`) ; jamais le `PATH`
+  du parent (`~/.local/bin`…). Les tests injectent leurs enregistreurs par
+  `setChildPathPrefixForTests`, exporté seulement par `@veyra/video/testing` (pas par
+  `@veyra/video`) et qui lève une erreur hors Vitest ;
 - `ffmpeg`/`ffprobe` (selon le nom de base, `/usr/bin/ffmpeg` compris) sont lancés sous `prlimit` par défaut (CPU 600 s, fichier 2 Gio,
   espace d'adressage 8 Gio : filet de sécurité, le délai mural reste la borne
   principale) ; `runAudioProcess` garde ses propres limites (`config/audio.yaml`) et
@@ -113,19 +136,35 @@ Matroska/WebM n'est pas autorisé (aucun appelant). Les générateurs `-f lavfi`
 `fake`, `colorEngine`) ne lisent aucun fichier. Les sorties restent sous les
 contrôles existants (`safePath`, `ProjectStorage`).
 
+Contrôle avant lancement (T127-sec N7) : l'exécuteur refuse de démarrer
+ffmpeg/ffprobe (directement ou sous `prlimit`) si une entrée `-i` qui n'est pas un
+graphe lavfi (`-f lavfi` juste avant ce `-i`) n'a pas, parmi ses options d'entrée,
+`-protocol_whitelist file` et une `-format_whitelist` dont chaque démultiplexeur
+appartient à `MEDIA_FORMATS` ou `IMAGE_FORMATS` (donc ni `hls`, ni `concat`, ni
+`lavfi`) ; ffprobe (entrée positionnelle unique) doit porter les deux options, sauf
+graphe `-f lavfi`. Toute valeur de `-protocol_whitelist` autre qu'exactement `file`
+(`file,pipe`, `file,http`…) est refusée. Aucun appelant du runtime n'a dû changer
+(les chemins audio reçoivent toujours `MEDIA_FORMATS` de l'exécuteur).
+
 Limites : `runProcess` est une primitive de bas niveau : ses appelants ne doivent
-jamais lui passer d'argv contrôlé par le modèle ou l'utilisateur (un graphe lavfi
-`movie=` sans marqueur `-protocol_whitelist file` lit encore un fichier) ; pas de
-liste blanche de binaires (prévue avec le registre d'outils, T127). `MEDIA_FORMATS`
+jamais lui passer d'argv contrôlé par le modèle ou l'utilisateur (un graphe
+`-f lavfi -i movie=…`, ou un filtre `movie=`/`amovie=` dans `-vf`/`-filter_complex`,
+lit encore un fichier : le contrôle ne porte que sur les entrées `-i`) ; une
+commande donnée en chemin absolu est lancée telle quelle (pas de liste blanche de
+binaires). `MEDIA_FORMATS`
 est codé en dur : ajouter un format à `config/audio.yaml` exige de le reporter (test
 de cohérence dans `process-policy.test.ts`).
 Vérifications : `packages/video/src/process.test.ts`,
 `packages/video/src/process-policy.test.ts` (refus HLS/ffconcat/liens, PATH fixe,
-limites par nom de base, risques résiduels épinglés `RESIDUAL`),
+limites par nom de base, refus avant lancement des `-i` sans listes et des
+protocoles autres que `file`, faux `ffmpeg` à côté d'un node inscriptible jamais
+exécuté, risques résiduels épinglés `RESIDUAL`),
 `apps/studio/src/lib/server/jobs/process-env.test.ts` (ffmpeg/ffprobe réels derrière
 un enregistreur placé en tête du PATH enfant par le crochet de test),
 `packages/hyperframes-adapter/src/engine-sandbox.test.ts` (bwrap réel : réseau,
-socket sous `/run/user/$UID` invisible, délai mural sous `--new-session`).
+socket sous `/run/user/$UID` invisible, fichier et socket créés sous le vrai
+`$HOME`, `~/.ssh`, `~/.claude`, `~/.config` invisibles, délai mural sous
+`--new-session`).
 
 ## Serveur Studio
 

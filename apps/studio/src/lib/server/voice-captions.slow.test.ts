@@ -123,6 +123,8 @@ async function audioStream(path: string) {
   const { stdout } = await runProcess('ffprobe', [
     '-v',
     'error',
+    '-protocol_whitelist',
+    'file',
     '-select_streams',
     'a',
     '-show_entries',

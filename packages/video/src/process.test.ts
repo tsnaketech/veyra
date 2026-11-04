@@ -6,10 +6,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CHILD_ENV_KEYS, probe, runProcess } from "./index";
+import { CHILD_ENV_KEYS, probe, runProcess, systemBinary } from "./index";
 import { probeVideoStream } from "./stream";
 
 // Fake secrets in the parent: a child must never see them (T132).
@@ -192,18 +193,28 @@ it("an HLS playlist is refused by probe(); with hls forced, the protocol list st
   await expect(probe(playlist(segment))).rejects.toMatchObject({
     stderrTail: expect.stringMatching(/Format not on whitelist/),
   });
-  // Defence in depth: hls explicitly allowed, the protocol list is what still holds.
+  const hlsArgs = (path: string) => [
+    "-v",
+    "error",
+    "-protocol_whitelist",
+    "file",
+    "-format_whitelist",
+    "hls,mpegts",
+    "-show_streams",
+    path,
+  ];
+  // T127-sec N7: the executor refuses a list demuxer before spawning anything.
+  await expect(
+    runProcess("ffprobe", hlsArgs(playlist(segment))),
+  ).rejects.toThrow(/demuxer "hls" is not allowed/);
+  // Defence in depth, below the executor (direct spawn): with hls forced, the
+  // protocol list is what still holds.
   const forced = (path: string) =>
-    runProcess("ffprobe", [
-      "-v",
-      "error",
-      "-protocol_whitelist",
-      "file",
-      "-format_whitelist",
-      "hls,mpegts",
-      "-show_streams",
-      path,
-    ]);
+    new Promise<boolean>((done, fail) =>
+      execFile(systemBinary("ffprobe")!, hlsArgs(path), (error, _o, stderr) =>
+        error ? fail({ stderrTail: stderr }) : done(true),
+      ),
+    );
   // Control: the playlist mechanism itself works with a plain local segment.
   await expect(forced(playlist(segment))).resolves.toBeDefined();
   // Our flag, not ffmpeg's HLS default ('file,crypto,data'), is what refuses http.

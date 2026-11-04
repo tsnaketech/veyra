@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -22,7 +23,10 @@ import {
   extractFramesByIndex,
   probe,
   runProcess,
+  SYSTEM_BIN_DIRS,
+  systemBinary,
 } from "./index";
+import { setChildPathPrefixForTests } from "./testing";
 
 /**
  * T132 regression and negative cases not covered by process.test.ts. Everything here
@@ -134,12 +138,13 @@ describe("child environment", () => {
     ]);
     // LANG is forced to C, not the parent's fr_FR.UTF-8.
     expect(JSON.parse(stdout)).toEqual({
+      // System dirs first, node's own directory last (T127-sec N8).
       PATH: [
         ...new Set([
-          dirname(process.execPath),
           "/usr/local/bin",
           "/usr/bin",
           "/bin",
+          dirname(process.execPath),
         ]),
       ].join(":"),
       LANG: "C",
@@ -355,5 +360,199 @@ describe("demuxers that reference other files (closed by -format_whitelist, T136
     for (const format of allowed) expect(media).toContain(format);
     for (const format of ["hls", "concat", "matroska", "wav", "mp3"])
       expect(VIDEO_FORMATS.split(",")).not.toContain(format);
+  });
+});
+
+describe("T127-sec N7: every ffmpeg/ffprobe input carries the file and demuxer lists", () => {
+  let shims: string, marker: string;
+  beforeAll(() => {
+    // Recording shims: any spawn of ffmpeg/ffprobe/prlimit leaves the marker.
+    shims = mkdtempSync(join(tmpdir(), "veyra-n7-"));
+    marker = join(shims, "spawned");
+    for (const name of ["ffmpeg", "ffprobe", "prlimit"]) {
+      writeFileSync(
+        join(shims, name),
+        `#!/bin/sh\n: > ${JSON.stringify(marker)}\n`,
+      );
+      chmodSync(join(shims, name), 0o755);
+    }
+    setChildPathPrefixForTests(shims);
+  });
+  afterAll(() => {
+    setChildPathPrefixForTests(undefined);
+    rmSync(shims, { recursive: true, force: true });
+  });
+  const refusedBeforeSpawn = async (
+    command: string,
+    args: string[],
+    why: RegExp,
+  ) => {
+    await expect(runProcess(command, args)).rejects.toThrow(why);
+    expect(existsSync(marker)).toBe(false);
+  };
+
+  it("a bare -i file, an unlisted ffprobe input and a graph without -f lavfi are refused before spawning", async () => {
+    const out = join(root, "n7.png");
+    await refusedBeforeSpawn(
+      "ffmpeg",
+      ["-i", clip, "-frames:v", "1", out],
+      /without -protocol_whitelist file/,
+    );
+    // The protocol list alone is not enough when another input follows unmarked.
+    await refusedBeforeSpawn(
+      "ffmpeg",
+      [
+        "-protocol_whitelist",
+        "file",
+        "-format_whitelist",
+        VIDEO_FORMATS,
+        "-i",
+        clip,
+        "-i",
+        segment,
+        out,
+      ],
+      /input ".*secret-segment.ts" without -protocol_whitelist file/,
+    );
+    await refusedBeforeSpawn("ffprobe", ["-v", "error", clip], /without/);
+    await refusedBeforeSpawn(
+      "ffmpeg",
+      ["-i", "testsrc=size=8x8:duration=0.1", "-f", "null", "-"],
+      /without -protocol_whitelist file/,
+    );
+    // Same rules under an explicit prlimit wrapper (the audio path).
+    await refusedBeforeSpawn(
+      "prlimit",
+      ["--cpu=5", "--", "ffmpeg", "-i", clip, out],
+      /without -protocol_whitelist file/,
+    );
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it("-protocol_whitelist other than exactly file, or a list demuxer, is refused before spawning", async () => {
+    for (const protocols of ["file,pipe", "file,http", "pipe", "FILE", ""])
+      await refusedBeforeSpawn(
+        "ffmpeg",
+        ["-protocol_whitelist", protocols, ...["-i", clip, "-f", "null", "-"]],
+        /must be exactly file/,
+      );
+    for (const formats of ["hls", "mov,concat", "lavfi", "mov,"])
+      await refusedBeforeSpawn(
+        "ffprobe",
+        ["-protocol_whitelist", "file", "-format_whitelist", formats, clip],
+        /is not allowed/,
+      );
+  });
+
+  it("controls: fileInput, the executor's default list and an explicit -f lavfi graph do spawn", async () => {
+    setChildPathPrefixForTests(undefined);
+    try {
+      await expect(
+        runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-protocol_whitelist",
+          "file",
+          "-ss",
+          "0.1",
+          "-i",
+          clip,
+          "-f",
+          "lavfi",
+          "-i",
+          "color=c=black:s=8x8:d=0.1",
+          "-f",
+          "null",
+          "-",
+        ]),
+      ).resolves.toBeDefined();
+    } finally {
+      setChildPathPrefixForTests(shims);
+    }
+  });
+});
+
+describe("T127-sec N8: tools resolved once under system dirs only", () => {
+  it("ffmpeg, ffprobe, prlimit and bwrap resolve to absolute paths under /usr/local/bin, /usr/bin, /bin", () => {
+    expect(SYSTEM_BIN_DIRS).toEqual(["/usr/local/bin", "/usr/bin", "/bin"]);
+    for (const name of ["ffmpeg", "ffprobe", "prlimit", "bwrap"]) {
+      const path = systemBinary(name);
+      if (path === undefined) continue; // bwrap may be absent; the sandbox then refuses.
+      expect(SYSTEM_BIN_DIRS).toContain(dirname(path));
+      expect(path).toBe(
+        SYSTEM_BIN_DIRS.map((dir) => join(dir, name)).find(existsSync),
+      );
+    }
+    expect(systemBinary("veyra-no-such-tool")).toBeUndefined();
+  });
+
+  it("a fake ffmpeg next to a user-writable node is never executed (direct, under prlimit, or from a node child)", async () => {
+    // A copy of node in a temp dir stands for a user-writable node install (nvm, ~/.local).
+    const bin = mkdtempSync(join(tmpdir(), "veyra-n8-"));
+    try {
+      const marker = join(bin, "fake-ran");
+      copyFileSync(process.execPath, join(bin, "node"));
+      chmodSync(join(bin, "node"), 0o755);
+      for (const name of ["ffmpeg", "ffprobe", "prlimit"])
+        writeFileSync(
+          join(bin, name),
+          `#!/bin/sh\necho fake >> ${JSON.stringify(marker)}\n`,
+          { mode: 0o755 },
+        );
+      // A node-based child (like HyperFrames) looking ffmpeg up on the child PATH.
+      const lookup = join(bin, "lookup.cjs");
+      writeFileSync(
+        lookup,
+        `const out = require("node:child_process").execFileSync("ffmpeg", ["-version"]).toString();
+process.stdout.write(out.split("\\n")[0] + "|" + process.env.PATH);
+`,
+      );
+      const script = join(bin, "run.mts");
+      writeFileSync(
+        script,
+        `import { runProcess } from ${JSON.stringify(join(__dirname, "process.ts"))};
+const first = (s: string) => s.split("\\n")[0];
+const direct = await runProcess("ffmpeg", ["-version"]);
+const wrapped = await runProcess("prlimit", ["--cpu=5", "--", "ffmpeg", "-version"]);
+const child = await runProcess(process.execPath, [${JSON.stringify(lookup)}]);
+process.stdout.write(JSON.stringify({ direct: first(direct.stdout), wrapped: first(wrapped.stdout), child: child.stdout, execPath: process.execPath }));
+`,
+      );
+      const result = JSON.parse(
+        execFileSync(
+          join(bin, "node"),
+          ["--experimental-transform-types", "--no-warnings", script],
+          {
+            env: { PATH: `${bin}:${process.env.PATH}`, VITEST: "" },
+            encoding: "utf8",
+          },
+        ),
+      );
+      expect(result.execPath).toBe(join(bin, "node"));
+      expect(result.direct).toMatch(/^ffmpeg version/);
+      expect(result.wrapped).toMatch(/^ffmpeg version/);
+      const [version, path] = result.child.split("|");
+      expect(version).toMatch(/^ffmpeg version/);
+      // node's directory is on the child PATH, but last.
+      expect(path.split(":").at(-1)).toBe(bin);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  });
+
+  it("the test hook is not part of the public entry and refuses to run outside Vitest", async () => {
+    expect(Object.keys(await import("./index"))).not.toContain(
+      "setChildPathPrefixForTests",
+    );
+    const saved = process.env.VITEST;
+    delete process.env.VITEST;
+    try {
+      expect(() => setChildPathPrefixForTests("/tmp")).toThrow(
+        /outside Vitest/,
+      );
+    } finally {
+      process.env.VITEST = saved;
+    }
   });
 });

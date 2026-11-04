@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import {
   chmodSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -10,7 +9,7 @@ import {
   writeFileSync
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   analyzeFlashes,
   compareFrames,
@@ -18,8 +17,10 @@ import {
   extractFramesByIndex,
   probe,
   runProcess,
-  setChildPathPrefixForTests
+  SYSTEM_BIN_DIRS,
+  systemBinary
 } from '@veyra/video';
+import { setChildPathPrefixForTests } from '@veyra/video/testing';
 import {
   analyzeAudio,
   detectOnsets,
@@ -33,9 +34,10 @@ import { colorEngine } from '../test-engines';
 vi.setConfig({ testTimeout: 60000, hookTimeout: 60000 });
 
 /**
- * T132: real ffmpeg/ffprobe behind a recording shim placed first on the child PATH. The
- * child PATH is fixed (T136b), so the shim directory goes through the Vitest-only hook
- * setChildPathPrefixForTests, never through the parent PATH. The shim
+ * T132: real ffmpeg/ffprobe behind a recording shim. Bare tools resolve to absolute
+ * paths under the system dirs only and the child PATH is fixed (T127-sec N8), so the
+ * shim directory goes through the Vitest-only hook of `@veyra/video/testing`, never
+ * through the parent PATH. The shim
  * writes the environment, argv and rlimits it actually received, then execs the real
  * binary, so every public media path below runs for real and is observed from the child.
  */
@@ -44,11 +46,6 @@ const secrets = {
   CLAUDE_CODE_MESSAGING_TOKEN: 'x-should-not-leak',
   MY_SERVICE_TOKEN: 'y-should-not-leak'
 };
-const realBinary = (name: string) =>
-  (process.env.PATH ?? '')
-    .split(delimiter)
-    .map((dir) => join(dir, name))
-    .find((path) => existsSync(path))!;
 let root: string, shims: string, records: string, clip: string, wav: string;
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'veyra-env-'));
@@ -91,7 +88,7 @@ r=${JSON.stringify(records)}/${name}-$$
 env > "$r.env"
 printf '%s\\n' "$@" > "$r.args"
 cat /proc/self/limits > "$r.limits"
-exec ${JSON.stringify(realBinary(name))} "$@"
+exec ${JSON.stringify(systemBinary(name))} "$@"
 `
     );
     chmodSync(shim, 0o755);
@@ -200,10 +197,9 @@ it.each([
     });
     if (file.startsWith('ffprobe'))
       expect(args).toEqual(expect.arrayContaining(['-protocol_whitelist', '-format_whitelist']));
-    // The child PATH is the fixed one (plus the test shims), never the parent's.
-    const fixed = [
-      ...new Set([dirname(process.execPath), '/usr/local/bin', '/usr/bin', '/bin'])
-    ].join(':');
+    // The child PATH is the fixed one (plus the test shims), never the parent's:
+    // system dirs first, node's directory last (T127-sec N8).
+    const fixed = [...new Set([...SYSTEM_BIN_DIRS, dirname(process.execPath)])].join(':');
     expect(/^PATH=(.*)$/m.exec(text)![1]).toBe(`${shims}:${fixed}`);
     // prlimit really applied (executor defaults or the audio limits).
     expect(readFileSync(`${base}.limits`, 'utf8')).toMatch(/Max cpu time\s+\d+\s+\d+\s+seconds/);

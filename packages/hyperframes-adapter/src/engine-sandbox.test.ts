@@ -11,8 +11,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer, connect, type Server } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { runEngine } from "./sandbox";
 
 // Real bwrap, no network involved: the probe targets a listener of this test on host loopback.
@@ -218,11 +218,88 @@ setInterval(() => writeFileSync("alive", String(Date.now())), 50);
   },
 );
 
+// T127-sec N2: a file and a Unix socket the test owns under the real $HOME, plus the
+// host's ~/.ssh, ~/.claude and ~/.config, must be invisible from inside the sandbox.
 it.skipIf(!usable)(
-  "RESIDUAL: a socket under a read-only bound path (e.g. $HOME) stays connectable",
+  "$HOME is masked: a test file and socket under the real $HOME, ~/.ssh, ~/.claude and ~/.config are invisible",
   async () => {
-    // Read-only binds do not stop connect(); $HOME stays visible for Chrome's cache.
-    // If this starts failing, the residual is closed: update SECURITY.md.
+    const home = homedir();
+    const dir = mkdtempSync(join(home, ".veyra-home-probe-"));
+    const secretFile = join(dir, "secret.txt");
+    const socketPath = join(dir, "home.sock");
+    writeFileSync(secretFile, "should-not-leak");
+    let hits = 0;
+    const host = createServer((socket) => {
+      hits++;
+      socket.destroy();
+    });
+    await new Promise<void>((done) => host.listen(socketPath, done));
+    try {
+      // Control: both are reachable from the host.
+      expect(readFileSync(secretFile, "utf8")).toBe("should-not-leak");
+      await new Promise<void>((done, fail) =>
+        connect(socketPath).once("connect", done).once("error", fail),
+      );
+      await new Promise((done) => setTimeout(done, 50));
+      const before = hits;
+      writeFileSync(
+        join(engineRoot, "home-probe.mjs"),
+        `import { connect } from "node:net";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+const [home, file, socketPath] = process.argv.slice(2);
+const read = (path) => { try { return readFileSync(path, "utf8"); } catch (e) { return e.code; } };
+const list = (path) => { try { return readdirSync(path); } catch (e) { return e.code; } };
+const attempt = (path) => new Promise((done) => {
+  const s = connect(path);
+  s.once("connect", () => { s.destroy(); done("connected"); });
+  s.once("error", (e) => done(e.code));
+});
+writeFileSync("home.json", JSON.stringify({
+  file: read(file),
+  fileVisible: existsSync(file),
+  socket: await attempt(socketPath),
+  ssh: list(home + "/.ssh"),
+  claude: list(home + "/.claude"),
+  credentials: read(home + "/.claude/.credentials.json"),
+  config: list(home + "/.config"),
+  home: list(home),
+}));
+`,
+      );
+      await runEngine(
+        process.execPath,
+        [join(engineRoot, "home-probe.mjs"), home, secretFile, socketPath],
+        { engineRoot, outputDir },
+        { wallTimeoutMs: 20000, cpuSeconds: 10, maxOutputBytes: 1024 * 1024 },
+      );
+      const result = JSON.parse(
+        readFileSync(join(outputDir, "home.json"), "utf8"),
+      );
+      expect(result).toMatchObject({
+        file: "ENOENT",
+        fileVisible: false,
+        socket: "ENOENT",
+        ssh: "ENOENT",
+        claude: "ENOENT",
+        credentials: "ENOENT",
+        config: "ENOENT",
+      });
+      // Only mount points of the read-only re-binds remain (e.g. .cache, the repo path).
+      for (const name of [".ssh", ".claude", ".config", basename(dir)])
+        expect(result.home).not.toContain(name);
+      expect(hits).toBe(before);
+    } finally {
+      host.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(!usable)(
+  "RESIDUAL: a socket under a read-only bound path (the engine root) stays connectable",
+  async () => {
+    // Read-only binds do not stop connect(); only what is bound is exposed ($HOME is
+    // masked, T127-sec N2). If this starts failing, update SECURITY.md.
     const socketPath = join(engineRoot, "ro.sock");
     const host = createServer((socket) => socket.destroy());
     await new Promise<void>((done) => host.listen(socketPath, done));

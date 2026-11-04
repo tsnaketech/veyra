@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { lstatSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { accessSync, constants, lstatSync, statSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 export class ProcessError extends Error {
   constructor(
     message: string,
@@ -64,19 +64,55 @@ export const MEDIA_FORMATS = "mov,mp4,m4a,3gp,3g2,mj2,wav,mp3,flac,ogg,aiff";
 export const VIDEO_FORMATS = "mov,mp4,m4a,3gp,3g2,mj2";
 export const IMAGE_FORMATS = "png_pipe";
 const MEDIA_TOOLS = ["ffmpeg", "ffprobe"];
-/** Fixed child PATH: node's own directory and system dirs, never the parent's PATH. */
-const CHILD_PATH = [
-  ...new Set([dirname(process.execPath), "/usr/local/bin", "/usr/bin", "/bin"]),
-].join(":");
-let testPathPrefix: string | undefined;
+/** The only directories a bare command is resolved in, in this order (T127-sec N8). */
+export const SYSTEM_BIN_DIRS = ["/usr/local/bin", "/usr/bin", "/bin"];
 /**
- * Test-only: prepends `dir` to the fixed child PATH (recording shims). Throws outside
- * Vitest, so production code can never widen the child PATH.
+ * Fixed child PATH: system dirs first, node's own directory last (only node-based
+ * children such as HyperFrames need it), never the parent's PATH.
  */
-export function setChildPathPrefixForTests(dir: string | undefined) {
+const CHILD_PATH = [
+  ...new Set([...SYSTEM_BIN_DIRS, dirname(process.execPath)]),
+].join(":");
+let testBinDir: string | undefined;
+/** Test-only, reached through `@veyra/video/testing` (VITEST gate there and here). */
+export function setTestBinDir(dir: string | undefined) {
   if (!process.env.VITEST) throw new Error("Test-only hook outside Vitest");
-  testPathPrefix = dir;
+  testBinDir = dir;
 }
+const executable = (path: string) => {
+  try {
+    accessSync(path, constants.X_OK);
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+};
+const resolvedBinaries = new Map<string, string>();
+/**
+ * Absolute path of a bare system tool (ffmpeg, ffprobe, prlimit, bwrap…), searched once
+ * in SYSTEM_BIN_DIRS only: neither the parent PATH nor node's directory is consulted.
+ */
+export function systemBinary(name: string): string | undefined {
+  if (testBinDir && executable(join(testBinDir, name)))
+    return join(testBinDir, name);
+  if (!resolvedBinaries.has(name)) {
+    const found = SYSTEM_BIN_DIRS.map((dir) => join(dir, name)).find(
+      executable,
+    );
+    if (!found) return undefined;
+    resolvedBinaries.set(name, found);
+  }
+  return resolvedBinaries.get(name);
+}
+const absolute = (command: string) => {
+  if (command.includes("/")) return command;
+  const path = systemBinary(command);
+  if (!path)
+    throw new Error(
+      `${command} not found in ${SYSTEM_BIN_DIRS.join(", ")}; refused`,
+    );
+  return path;
+};
 const SECRET_KEY =
   /^(?:ANTHROPIC_|CLAUDE_CODE_|AWS_|GITHUB_|OPENAI_)|(?:TOKEN|KEY|SECRET|PASSWORD|CREDENTIALS?)$/i;
 const SHELLS = /^(?:a|ba|da|k|mk|tc|z|c|fi|yo)?sh$|^(?:env|busybox|xargs)$/;
@@ -88,7 +124,7 @@ export function childEnv(
   extra: Record<string, string | undefined> = {},
 ): Record<string, string> {
   const env: Record<string, string> = {
-    PATH: testPathPrefix ? `${testPathPrefix}:${CHILD_PATH}` : CHILD_PATH,
+    PATH: testBinDir ? `${testBinDir}:${CHILD_PATH}` : CHILD_PATH,
     LANG: "C",
   };
   for (const [key, value] of Object.entries(extra)) {
@@ -114,13 +150,20 @@ export function runProcess(
         `Refused command ${JSON.stringify(command)}: argv only, no shell`,
       );
     const env = childEnv(options.env);
+    command = absolute(command);
     const media = MEDIA_TOOLS.includes(basename(command));
     // Media tool run directly or through an explicit prlimit wrapper (audio limits).
-    const tool =
-      media ||
-      (basename(command) === "prlimit" &&
-        MEDIA_TOOLS.includes(basename(args[args.indexOf("--") + 1] ?? "")));
-    if (tool) args = withFormatWhitelist(args);
+    const wrapped =
+      basename(command) === "prlimit" ? args.indexOf("--") + 1 : 0;
+    if (wrapped)
+      args = args.map((arg, i) => (i === wrapped ? absolute(arg) : arg));
+    const tool = media
+      ? basename(command)
+      : wrapped && MEDIA_TOOLS.find((name) => name === basename(args[wrapped]));
+    if (tool) {
+      args = withFormatWhitelist(args);
+      assertFileInputs(tool, wrapped ? args.slice(wrapped + 1) : args);
+    }
     const limits = options.limits ?? (media ? MEDIA_LIMITS : false);
     const argv = limits
       ? [
@@ -134,7 +177,7 @@ export function runProcess(
           ...args,
         ]
       : args;
-    const child = spawn(limits ? "/usr/bin/prlimit" : command, argv, {
+    const child = spawn(limits ? absolute("prlimit") : command, argv, {
       shell: false,
       detached: true,
       cwd: options.cwd,
@@ -235,6 +278,45 @@ function withFormatWhitelist(args: string[]): string[] {
       ? [arg, "-format_whitelist", MEDIA_FORMATS]
       : [arg],
   );
+}
+const ALLOWED_FORMATS = new Set([...MEDIA_FORMATS.split(","), IMAGE_FORMATS]);
+const refuse = (tool: string, why: string): never => {
+  throw new Error(`Refused ${tool} argv: ${why}`);
+};
+/**
+ * T127-sec N7: every input carries `-protocol_whitelist file` and a `-format_whitelist`
+ * drawn from the media lists, or is a lavfi graph declared by `-f lavfi` right before
+ * its `-i`. ffmpeg input options are those between the previous input and its `-i`;
+ * ffprobe has a single input, often positional, so its options are checked globally.
+ */
+function assertFileInputs(tool: string, args: string[]) {
+  const lastValue = (options: string[], name: string) => {
+    const i = options.lastIndexOf(name);
+    return i < 0 ? undefined : (options[i + 1] ?? "");
+  };
+  const checkMarked = (options: string[], what: string) => {
+    if (lastValue(options, "-protocol_whitelist") !== "file")
+      refuse(tool, `${what} without -protocol_whitelist file`);
+    const formats = lastValue(options, "-format_whitelist");
+    if (!formats) refuse(tool, `${what} without -format_whitelist`);
+    for (const format of formats!.split(","))
+      if (!ALLOWED_FORMATS.has(format))
+        refuse(tool, `demuxer ${JSON.stringify(format)} is not allowed`);
+  };
+  args.forEach((arg, i) => {
+    if (arg === "-protocol_whitelist" && args[i + 1] !== "file")
+      refuse(tool, "-protocol_whitelist must be exactly file");
+  });
+  let start = 0;
+  args.forEach((arg, i) => {
+    if (arg !== "-i") return;
+    const options = args.slice(start, i);
+    start = i + 2;
+    if (args[i - 2] === "-f" && args[i - 1] === "lavfi") return;
+    checkMarked(options, `input ${JSON.stringify(args[i + 1] ?? "")}`);
+  });
+  const lavfi = args.some((arg, i) => arg === "lavfi" && args[i - 1] === "-f");
+  if (tool === "ffprobe" && !lavfi) checkMarked(args, "input");
 }
 /**
  * Media input path for ffmpeg/ffprobe: refuses options, protocol URLs (concat:, http:,

@@ -87,6 +87,8 @@ const streams = async (path: string) =>
       await runProcess('ffprobe', [
         '-v',
         'error',
+        '-protocol_whitelist',
+        'file',
         '-show_entries',
         'stream=codec_type,codec_name,sample_rate,channels:format=duration',
         '-of',

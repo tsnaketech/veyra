@@ -1,12 +1,15 @@
 import {
   accessSync,
   constants,
+  existsSync,
   lstatSync,
   readdirSync,
   realpathSync,
 } from "node:fs";
-import { basename, isAbsolute, join, relative } from "node:path";
-import { runProcess, ProcessError } from "@veyra/video";
+import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { runProcess, ProcessError, systemBinary } from "@veyra/video";
 import { z } from "zod";
 export class SandboxUnavailableError extends ProcessError {
   constructor(message: string, stderrTail = "") {
@@ -23,8 +26,13 @@ export const sandboxOptionsSchema = z.object({
     .int()
     .positive()
     .default(100 * 1024 * 1024),
-  bwrapPath: z.string().default("/usr/bin/bwrap"),
-  prlimitPath: z.string().default("/usr/bin/prlimit"),
+  // Resolved once under /usr/local/bin, /usr/bin, /bin (never the parent PATH).
+  bwrapPath: z
+    .string()
+    .default(() => systemBinary("bwrap") ?? "/usr/bin/bwrap"),
+  prlimitPath: z
+    .string()
+    .default(() => systemBinary("prlimit") ?? "/usr/bin/prlimit"),
   // Re-bound read-only after the private /tmp, so a root under /tmp stays visible.
   readOnlyBinds: z.array(z.string()).default([]),
 });
@@ -38,6 +46,44 @@ function writableSize(root: string): number {
     total += info.isDirectory() ? writableSize(path) : info.size;
   }
   return total;
+}
+const inside = (path: string, dir: string) => {
+  const rel = relative(dir, path);
+  return !rel.startsWith("..") && !isAbsolute(rel);
+};
+/**
+ * T127-sec N2: /home and $HOME are masked by a tmpfs (SSH keys, agent credentials,
+ * terminal sockets under ~/.config, the repo and its database). Only what a render
+ * needs is re-bound read-only, and only when the mask hides it: the HyperFrames
+ * Chrome and font caches (Inter, offline), user font dirs, the node_modules holding
+ * the HyperFrames CLI, and node's installation prefix.
+ */
+function homeMask(): string[] {
+  const home = realpathSync(homedir());
+  const masked = [
+    "/home",
+    ...(inside(home, "/home") || home === "/" ? [] : [home]),
+  ];
+  const cli = realpathSync(
+    createRequire(import.meta.url).resolve("hyperframes/package.json"),
+  );
+  const modules = `${sep}node_modules${sep}`;
+  const needed = [
+    join(home, ".cache/hyperframes/chrome"),
+    join(home, ".cache/hyperframes/fonts"),
+    join(home, ".local/share/fonts"),
+    join(home, ".fonts"),
+    cli.slice(0, cli.indexOf(modules) + modules.length - 1),
+    dirname(dirname(realpathSync(process.execPath))),
+  ];
+  return [
+    ...masked.flatMap((dir) => ["--tmpfs", dir]),
+    ...needed
+      .filter((dir) => existsSync(dir))
+      .map((dir) => realpathSync(dir))
+      .filter((dir) => masked.some((mask) => inside(dir, mask)))
+      .flatMap((dir) => ["--ro-bind", dir, dir]),
+  ];
 }
 export class Sandbox {
   readonly options: z.infer<typeof sandboxOptionsSchema>;
@@ -83,6 +129,7 @@ export class Sandbox {
           "/tmp",
           "--tmpfs",
           "/dev/shm",
+          ...homeMask(),
           "--bind",
           root,
           root,
@@ -104,7 +151,8 @@ export class Sandbox {
           ...args,
         ]
       : [command, ...args];
-    // Additions to the executor's minimal env (PATH, LANG); HOME locates Chrome's cache.
+    // Additions to the executor's minimal env (PATH, LANG); HOME (a tmpfs inside the
+    // sandbox) locates the re-bound Chrome and font caches.
     const environment = {
       HOME: process.env.HOME,
       LANG: "C.UTF-8",
@@ -173,10 +221,6 @@ export function runEngine(
 ) {
   const engine = realpathSync(dirs.engineRoot),
     output = realpathSync(dirs.outputDir);
-  const inside = (a: string, b: string) => {
-    const rel = relative(b, a);
-    return !rel.startsWith("..") && !isAbsolute(rel);
-  };
   if (inside(output, engine) || inside(engine, output))
     throw new Error("Engine root and output directory must be disjoint");
   return new Sandbox({
