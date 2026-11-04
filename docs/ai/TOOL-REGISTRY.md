@@ -120,6 +120,24 @@ boucle (T129), pas par le registre.
 
 Les autres lignes du § 3 restent au statut indiqué : non enregistrées dans le registre.
 
+### Garde-fous ajoutés après la revue indépendante (2026-11-04)
+
+- **Portée projet** : un registre sert un seul projet (`ToolContext.projectId`) ; les outils
+  lisent leurs révisions par `ctx.revision(id)`, qui refuse (`permission-denied`) toute
+  révision d'un autre projet.
+- **Entrées bornées** : 256 Kio de JSON au plus ; une entrée non JSON, trop grande ou trop
+  profonde est refusée (`invalid-input`) avant toute analyse, jamais levée en exception.
+- **Permissions validées à l'exécution** (`permissionClassSchema`), sans correspondance de
+  sous-chaîne.
+- **Délai** : seul un outil sans effet de bord est `retryable` ; pour les autres, le message
+  précise que l'opération peut se poursuivre (pas encore d'`AbortSignal` dans l'exécuteur).
+- **Messages d'erreur** : secrets masqués avant troncature avec la règle de l'exécuteur
+  (`isSecretEnvKey`), racine des projets remplacée par `<projets>`.
+
+Limites connues : `requires` reste déclaratif (un binaire absent donne `failed`, pas
+`unavailable`) ; `ToolResult` ne porte pas encore de coût ; historique en mémoire non borné ;
+`movie=` dans un graphe lavfi construit par le code reste hors du contrôle N7 (résiduel).
+
 ## 4. Classes de permission
 
 | Classe | Exemples | Par défaut |

@@ -4,7 +4,7 @@ import { permissionClassSchema, toolMetaSchema, toolResultSchema } from '@veyra/
 import { createToolRegistry, defineTool, studioTools, type ToolContext } from './index';
 
 // Registry behaviour only: the tools below that need no Studio service get an empty context.
-const ctx = {} as ToolContext;
+const ctx = { projectId: 'prj_test', storage: { root: '/srv/veyra-root' } } as ToolContext;
 const all = permissionClassSchema.options;
 const meta = {
   id: 'test.echo',
@@ -147,4 +147,79 @@ it('(f) unregistered engines answer unavailable with a reason and an install hin
     expect(result.error.message).toMatch(/indisponible : \S/);
     expect(result.error.installHint).toBeTruthy();
   }
+});
+
+it('review D1: deep or oversized inputs are refused, never thrown', async () => {
+  const registry = createToolRegistry(ctx, [echo]);
+  let deep: unknown = 1;
+  for (let i = 0; i < 20000; i++) deep = { x: deep };
+  expect(await registry.invoke('test.echo', { n: 1, deep }, { grants: all })).toMatchObject({
+    ok: false,
+    error: { code: 'invalid-input' }
+  });
+  const big = await registry.invoke(
+    'test.echo',
+    { n: 1, pad: 'x'.repeat(300 * 1024) },
+    { grants: all }
+  );
+  expect(big).toMatchObject({ ok: false, error: { code: 'invalid-input' } });
+  expect(big.ok || big.error.message).toMatch(/trop volumineuse/);
+});
+
+it('review D2: a timeout is retryable only for a tool without side effects', async () => {
+  const writer = defineTool({
+    meta: { ...meta, id: 'test.writer', sideEffects: 'revision', limits: { timeoutMs: 30 } },
+    input: z.object({}),
+    output: z.object({}),
+    run: () => new Promise<Record<string, never>>((resolve) => setTimeout(() => resolve({}), 500))
+  });
+  const result = await createToolRegistry(ctx, [slow, writer]).invoke(
+    'test.writer',
+    {},
+    { grants: all }
+  );
+  expect(result).toMatchObject({ ok: false, error: { code: 'timeout', retryable: false } });
+  expect(result.ok || result.error.message).toMatch(/peut se poursuivre/);
+});
+
+it('review D3: secrets are masked before truncation, with the executor rule, short ones too', async () => {
+  const long = 'L'.repeat(290) + 'TAILSECRET1234567890';
+  Object.assign(process.env, {
+    GITHUB_PAT: 'ghp-should-not-leak',
+    VEYRA_SHORT_TOKEN: 'abcd',
+    VEYRA_LONG_KEY: long
+  });
+  try {
+    const leaky2 = defineTool({
+      meta: { ...meta, id: 'test.leaky2' },
+      input: z.object({}),
+      output: z.object({}),
+      run: async () => {
+        throw new Error(`${long} ghp-should-not-leak abcd /srv/veyra-root/prj_x/a.mp4`);
+      }
+    });
+    const failed = await createToolRegistry(ctx, [leaky2]).invoke(
+      'test.leaky2',
+      {},
+      { grants: all }
+    );
+    const text = JSON.stringify(failed);
+    expect(text).not.toMatch(/ghp-should-not-leak|LLLLLLLLLL|TAILSECRET|abcd|\/srv\/veyra-root/);
+    expect(text).toContain('<projets>');
+  } finally {
+    for (const key of ['GITHUB_PAT', 'VEYRA_SHORT_TOKEN', 'VEYRA_LONG_KEY'])
+      delete process.env[key];
+  }
+});
+
+it('review D4: grants are validated at runtime (no substring match)', async () => {
+  const registry = createToolRegistry(ctx, [echo]);
+  for (const grants of ['read-only local-compute', ['read-only', 'root'], null])
+    expect(await registry.invoke('test.echo', { n: 1 }, { grants: grants as never })).toMatchObject(
+      { ok: false, error: { code: 'permission-denied' } }
+    );
+});
+
+it('review D5: a registry serves one project', () => {
+  expect(() => createToolRegistry({ ...ctx, projectId: 'nope' } as ToolContext, [echo])).toThrow();
 });

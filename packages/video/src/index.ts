@@ -17,6 +17,7 @@ import {
 export {
   runProcess,
   childEnv,
+  isSecretEnvKey,
   mediaPath,
   fileInput,
   MEDIA_LIMITS,

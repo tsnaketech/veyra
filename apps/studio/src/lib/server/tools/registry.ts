@@ -6,6 +6,7 @@ import type { VideoEngine } from '@veyra/hyperframes-adapter';
 import { inputHash } from '@veyra/schemas/hash';
 import {
   newId,
+  permissionClassSchema,
   toolMetaSchema,
   toolResultSchema,
   type PermissionClass,
@@ -15,6 +16,7 @@ import {
   type ToolResult
 } from '@veyra/schemas';
 import { safePath, validateId, type ProjectStorage } from '@veyra/storage';
+import { isSecretEnvKey } from '@veyra/video';
 import type { createRepository } from '../db/repo';
 import type { Studio, StudioSettings } from '../studio';
 
@@ -26,8 +28,12 @@ export interface ToolContext {
   engine: VideoEngine;
   /** For tools that must reuse a Studio flow (child revisions). */
   studio: Studio;
+  /** The registry serves one project: revisions of any other project are refused. */
+  projectId: string;
 }
 export interface CallContext extends ToolContext {
+  /** A revision of the registry's project; any other id is refused (permission-denied). */
+  revision(revisionId: string): ReturnType<ToolContext['repo']['getRevision']>;
   /** Path of a new file in this call's own folder `<prj>/tool-calls/<tcl_…>/` (never a revision folder). */
   artefactPath(projectId: string, name: string): string;
   /** Adds a written file to the call's manifest (sha256, path relative to the storage root). */
@@ -63,16 +69,21 @@ export function defineTool<I extends z.ZodType, O extends z.ZodType>(def: {
 }
 
 class ToolTimeout extends Error {}
-// Error text only (no stack); values of secret-looking parent variables are masked.
-function safeMessage(error: unknown) {
-  let text = (error instanceof Error ? error.message : String(error)).split('\n')[0].slice(0, 300);
+class ToolDenied extends Error {}
+/** Largest accepted input (JSON); deeper or larger inputs are refused before parsing. */
+export const MAX_INPUT_BYTES = 256 * 1024;
+// Error text only (no stack). Secrets are masked BEFORE truncation (a cut secret would
+// leak its start), with the executor's own secret-key rule; host paths are shortened.
+function safeMessage(error: unknown, root: string) {
+  let text = (error instanceof Error ? error.message : String(error)).split('\n')[0];
   for (const [key, value] of Object.entries(process.env))
-    if (value && value.length >= 8 && /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i.test(key))
-      text = text.split(value).join('***');
+    if (value && value.length >= 4 && isSecretEnvKey(key)) text = text.split(value).join('***');
+  text = text.split(root).join('<projets>').slice(0, 300);
   return text || 'erreur inconnue';
 }
 
 export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
+  validateId(ctx.projectId, 'prj');
   const byId = new Map(tools.map((tool) => [tool.meta.id, tool]));
   if (byId.size !== tools.length) throw new Error('Duplicate tool id');
   /** In-memory call log for tests and the future Director loop (persisted with T129). */
@@ -89,15 +100,18 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
   async function invoke(
     id: string,
     rawInput: unknown,
-    { grants }: { grants: readonly PermissionClass[] }
+    options: { grants: readonly PermissionClass[] }
   ): Promise<ToolResult> {
     const started = performance.now();
     const tool = byId.get(id);
     let hash: string | null = null;
+    let size = Infinity;
     try {
-      hash = inputHash(rawInput);
+      // Throws on non-JSON values and on nesting too deep for a recursive walk.
+      size = Buffer.byteLength(JSON.stringify(rawInput) ?? '');
+      if (size <= MAX_INPUT_BYTES) hash = inputHash(rawInput);
     } catch {
-      // Not plain JSON: refused below as invalid-input.
+      // Refused below as invalid-input.
     }
     const artefacts: ToolArtefact[] = [];
     const done = (outcome: { output: unknown } | { error: ToolError }) => {
@@ -118,12 +132,30 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
       done({ error: { code, message, retryable: false, ...extra } });
 
     if (!tool) return fail('unknown-tool', `Outil inconnu : ${id}`);
-    const parsed = tool.input.safeParse(rawInput);
-    if (hash === null || !parsed.success)
+    if (hash === null)
+      return fail(
+        'invalid-input',
+        size > MAX_INPUT_BYTES && size !== Infinity
+          ? `Entrée trop volumineuse (${size} > ${MAX_INPUT_BYTES} octets)`
+          : 'Entrée refusée : JSON simple et peu profond attendu'
+      );
+    let parsed: ReturnType<z.ZodType['safeParse']>;
+    try {
+      parsed = tool.input.safeParse(rawInput);
+    } catch {
+      return fail('invalid-input', 'Entrée refusée par le schéma de l’outil');
+    }
+    if (!parsed.success)
       return fail('invalid-input', 'Entrée refusée par le schéma de l’outil', {
         ...(parsed.success ? {} : { details: z.treeifyError(parsed.error) as z.core.util.JSONType })
       });
-    const missing = tool.meta.permissions.filter((p) => !grants.includes(p));
+    // Runtime check too: the future loop builds grants from data, not from TypeScript.
+    const grants = permissionClassSchema.array().safeParse(options.grants);
+    if (!grants.success)
+      return fail('permission-denied', 'Permissions accordées illisibles', {
+        details: { grants: 'invalides' }
+      });
+    const missing = tool.meta.permissions.filter((p) => !grants.data.includes(p));
     if (missing.length)
       return fail('permission-denied', `Permission non accordée : ${missing.join(', ')}`, {
         details: { missing }
@@ -141,6 +173,12 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
     const callId = newId('tcl');
     const call: CallContext = {
       ...ctx,
+      revision(revisionId) {
+        const revision = ctx.repo.getRevision(revisionId);
+        if (revision?.projectId !== ctx.projectId)
+          throw new ToolDenied('Révision hors du projet de ce registre');
+        return revision;
+      },
       artefactPath(projectId, name) {
         const dir = safePath(ctx.storage.root, validateId(projectId, 'prj'), 'tool-calls', callId);
         mkdirSync(dir, { recursive: true });
@@ -168,9 +206,17 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
         })
       ]);
     } catch (error) {
-      return error instanceof ToolTimeout
-        ? fail('timeout', `Délai dépassé (${tool.meta.limits.timeoutMs} ms)`, { retryable: true })
-        : fail('failed', `Échec de l’outil : ${safeMessage(error)}`);
+      if (error instanceof ToolDenied) return fail('permission-denied', error.message);
+      // The call ends but its work may go on (no AbortSignal yet): only a side-effect-free
+      // tool may be retried; others must be observed before any new attempt.
+      if (error instanceof ToolTimeout)
+        return fail(
+          'timeout',
+          `Délai dépassé (${tool.meta.limits.timeoutMs} ms)` +
+            (tool.meta.sideEffects === 'none' ? '' : ' ; l’opération peut se poursuivre'),
+          { retryable: tool.meta.sideEffects === 'none' }
+        );
+      return fail('failed', `Échec de l’outil : ${safeMessage(error, ctx.storage.root)}`);
     } finally {
       clearTimeout(timer);
     }

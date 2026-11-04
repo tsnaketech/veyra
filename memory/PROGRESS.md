@@ -80,3 +80,12 @@ exemples dans AGENT-WORKFLOWS ; 8 sous-agents de développement dans `.agents/ag
 (lien `.claude/agents`) ; G17 (T127–T136) dans TASKS. Écarts de sécurité P0 :
 Studio exposé sur le LAN (choix utilisateur), `runProcess` transmet tout l'environnement
 (T132). Prochaine étape recommandée : T132 puis T127 ; POC Piper en attente d'autorisation.
+
+2026-11-04 — Sécurité P0 et registre d'outils : T132 (exécuteur unique, env minimal),
+T136/T136b/T136c (Studio sur 127.0.0.1, garde Vite + hook, CSRF, Host, jeton en POST),
+T127-sec (sandbox sans $HOME, entrées ffmpeg contraintes, binaires absolus), T127
+(registre : 7 outils réels, 3 indisponibles ; portée projet). Revues de sécurité et
+indépendante faites, défauts confirmés corrigés. Architecture de la boucle du Director
+et des compositions : docs/ai/DIRECTOR-TOOL-LOOP.md, CREATIVE-COMPOSITION.md, D021
+proposée. Prochaine étape : T128 (EditOperation), puis T129a (moteur de pas sans IA).
+

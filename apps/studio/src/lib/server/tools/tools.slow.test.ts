@@ -50,7 +50,8 @@ it('composition.check runs the real HyperFrames check in the sandbox on a revisi
     storage,
     settings,
     engine: new HyperFramesEngine(settings.engine),
-    studio: app
+    studio: app,
+    projectId: project.id
   });
   const result = await registry.invoke(
     'composition.check',

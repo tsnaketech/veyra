@@ -120,6 +120,9 @@ const SHELLS = /^(?:a|ba|da|k|mk|tc|z|c|fi|yo)?sh$|^(?:env|busybox|xargs)$/;
  * Builds a child environment from the allow-list only; the parent environment is
  * never inherited. Throws on a secret-looking or unlisted key.
  */
+/** Same rule the executor uses to refuse an env key; reused to mask error messages. */
+export const isSecretEnvKey = (key: string) => SECRET_KEY.test(key);
+
 export function childEnv(
   extra: Record<string, string | undefined> = {},
 ): Record<string, string> {

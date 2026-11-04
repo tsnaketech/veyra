@@ -71,9 +71,9 @@ beforeAll(async () => {
     settings,
     storage
   );
-  registry = studioToolRegistry({ repo, storage, settings, engine, studio: app });
   const project = app.createProject('Outils');
   projectId = project.id;
+  registry = studioToolRegistry({ repo, storage, settings, engine, studio: app, projectId });
   await app.sendPrompt(project.id, saas);
   v1 = repo.listRevisions(project.id)[0].id;
 
@@ -328,4 +328,26 @@ it('captions.build gives approximate scene times; captions.export snaps them to 
       expected.map((q) => [q.startMs, q.endMs])
     );
   }
+});
+
+it('review D5: a revision of another project is refused (permission-denied)', async () => {
+  const other = app.createProject('Autre');
+  await app.sendPrompt(other.id, saas);
+  const foreignRevision = repo.listRevisions(other.id)[0];
+  const foreign = foreignRevision.id;
+  const sceneId = foreignRevision.storyboard.scenes[0].id;
+  for (const [id, input] of [
+    ['media.inspect', { revisionId: foreign }],
+    [
+      'scene.patch',
+      { revisionId: foreign, changes: [{ sceneId, patch: { text: 'Autre texte' } }] }
+    ],
+    ['captions.build', { revisionId: foreign }]
+  ] as const)
+    expect(
+      await registry.invoke(id, input, { grants: [...permissionClassSchema.options] })
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'permission-denied' }
+    });
 });

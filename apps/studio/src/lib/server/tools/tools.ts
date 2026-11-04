@@ -23,7 +23,7 @@ import {
 import { safePath } from '@veyra/storage';
 import { extractFrameByIndex, probe, probeSchema } from '@veyra/video';
 import { buildFallbackCaptions } from '../studio';
-import { defineTool, type ToolContext } from './registry';
+import { defineTool, type CallContext } from './registry';
 
 const revisionInput = z.object({ revisionId: idSchema('rev') }).strict();
 const free = { kind: 'free' } as const;
@@ -36,8 +36,8 @@ const base = {
 };
 
 /** Rendered MP4 of a revision, re-confined to the storage root. */
-function revisionVideo(ctx: ToolContext, revisionId: string) {
-  const revision = ctx.repo.getRevision(revisionId);
+function revisionVideo(ctx: CallContext, revisionId: string) {
+  const revision = ctx.revision(revisionId);
   if (!revision.videoPath) throw new Error('Révision sans vidéo rendue');
   const root = ctx.storage.root;
   if (!revision.videoPath.startsWith(root + '/')) throw new Error('Chemin refusé');
@@ -120,7 +120,7 @@ export const scenePatch = defineTool({
     unchangedSceneIds: z.array(idSchema('scn'))
   }),
   async run({ revisionId, changes }, ctx) {
-    const before = ctx.repo.getRevision(revisionId).storyboard;
+    const before = ctx.revision(revisionId).storyboard;
     const storyboard = applyProposal(before, changes, ctx.settings.app.maxDurationSeconds * 1000);
     // A shifted start (earlier duration change) counts as a change: only deep-equal scenes are unchanged.
     const same = (id: string) =>
@@ -162,7 +162,7 @@ export const audioTrackUpdate = defineTool({
     parentRevisionId: idSchema('rev')
   }),
   async run({ revisionId, trackId, patch }, ctx) {
-    const source = ctx.repo.getRevision(revisionId);
+    const source = ctx.revision(revisionId);
     if (!source.audio?.tracks.some((t) => t.id === trackId))
       throw new Error('Piste introuvable dans cette révision');
     // Same merge as Studio.patchedAudio (private), revalidated as a full composition.
@@ -210,7 +210,7 @@ export const captionsBuild = defineTool({
     note: z.string()
   }),
   async run({ revisionId }, ctx) {
-    const { storyboard } = ctx.repo.getRevision(revisionId);
+    const { storyboard } = ctx.revision(revisionId);
     const captions = buildFallbackCaptions(storyboard, storyboard);
     const precision = captionPrecisionSummary(captions);
     return {
@@ -247,7 +247,7 @@ export const captionsExport = defineTool({
     constantFrameRate: z.boolean()
   }),
   async run({ revisionId, format }, ctx) {
-    const { captions, media } = ctx.repo.getRevision(revisionId);
+    const { captions, media } = ctx.revision(revisionId);
     if (!captions) throw new Error('Révision sans sous-titres');
     if (!media) throw new Error('Vidéo non mesurée : cadence inconnue');
     const rate = { num: media.fpsNum, den: media.fpsDen };
@@ -281,7 +281,7 @@ export const compositionCheck = defineTool({
   input: revisionInput,
   output: compositionCheckSchema,
   async run({ revisionId }, ctx) {
-    const revision = ctx.repo.getRevision(revisionId);
+    const revision = ctx.revision(revisionId);
     const dir = safePath(ctx.storage.revision(revision.projectId, revision.id), 'composition');
     if (!existsSync(safePath(dir, 'index.html'))) throw new Error('Composition absente');
     return ctx.engine.check(dir);
