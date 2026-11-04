@@ -96,8 +96,8 @@ export class Sandbox {
           ...args,
         ]
       : [command, ...args];
-    const environment: NodeJS.ProcessEnv = {
-      PATH: process.env.PATH ?? "/usr/bin:/bin",
+    // Additions to the executor's minimal env (PATH, LANG); HOME locates Chrome's cache.
+    const environment = {
       HOME: process.env.HOME,
       LANG: "C.UTF-8",
       HYPERFRAMES_TELEMETRY: "0",

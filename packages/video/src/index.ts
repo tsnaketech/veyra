@@ -7,8 +7,18 @@ import {
   qualityCheckSchema,
   type QualityCheck,
 } from "@veyra/schemas";
-import { runProcess } from "./process";
-export { runProcess, ProcessError, type ProcessOptions } from "./process";
+import { fileInput, mediaPath, runProcess } from "./process";
+export {
+  runProcess,
+  childEnv,
+  mediaPath,
+  fileInput,
+  MEDIA_LIMITS,
+  CHILD_ENV_KEYS,
+  ProcessError,
+  type ProcessOptions,
+  type ProcessLimits,
+} from "./process";
 export * from "./photosensitivity";
 export * from "./text-contrast";
 export const probeSchema = z.object({
@@ -44,10 +54,12 @@ export const probeSchema = z.object({
 });
 export type VideoProbe = z.infer<typeof probeSchema>;
 export async function probe(file: string): Promise<VideoProbe> {
-  const path = resolve(file);
+  const path = mediaPath(file);
   const { stdout } = await runProcess("ffprobe", [
     "-v",
     "error",
+    "-protocol_whitelist",
+    "file",
     "-show_streams",
     "-show_format",
     "-of",
@@ -86,8 +98,7 @@ export async function probe(file: string): Promise<VideoProbe> {
       "-hide_banner",
       "-threads",
       "1",
-      "-i",
-      path,
+      ...fileInput(path),
       "-an",
       "-vf",
       "blackdetect=d=0.05:pix_th=0.10:pic_th=0.98",
@@ -248,8 +259,7 @@ export async function extractFrames(
       "error",
       "-ss",
       String(ms / 1000),
-      "-i",
-      path,
+      ...fileInput(path),
       "-frames:v",
       "1",
       "-threads",
@@ -276,8 +286,7 @@ export async function extractFrameByIndex(
       "-v",
       "error",
       "-y",
-      "-i",
-      resolve(file),
+      ...fileInput(file),
       "-vf",
       `select=eq(n\\,${frame})`,
       "-fps_mode",
@@ -299,10 +308,8 @@ export async function compareFrames(a: string, b: string): Promise<number> {
   const { stderr } = await runProcess("ffmpeg", [
     "-nostdin",
     "-hide_banner",
-    "-i",
-    resolve(a),
-    "-i",
-    resolve(b),
+    ...fileInput(a),
+    ...fileInput(b),
     "-lavfi",
     "psnr",
     "-f",
@@ -338,8 +345,7 @@ export async function extractFramesByIndex(
       "-v",
       "error",
       "-y",
-      "-i",
-      resolve(file),
+      ...fileInput(file),
       "-vf",
       `select='${unique.map((n) => `eq(n\\,${n})`).join("+")}'`,
       "-fps_mode",

@@ -1,4 +1,13 @@
 import { describe, expect, it } from "vitest";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { sceneAt } from "@veyra/schemas";
 import {
   applyProposal,
@@ -202,6 +211,39 @@ describe("claude-subscribe detection", () => {
       apiKeyInEnvironment: true,
     });
     expect(JSON.stringify(status)).not.toMatch(/example\.com|orgId/);
+  });
+  it("runs the real check with an allow-listed env only (T132)", async () => {
+    // A real executable standing in for `claude`: it records the env it received.
+    const dir = mkdtempSync(join(tmpdir(), "veyra-claude-"));
+    const fake = join(dir, "claude");
+    writeFileSync(
+      fake,
+      `#!${process.execPath}
+require("node:fs").writeFileSync(${JSON.stringify(join(dir, "env.json"))}, JSON.stringify(process.env));
+process.stdout.write(process.argv[2] === "--version" ? "9.9.9 (fake)" : '{"loggedIn":false}');
+`,
+    );
+    chmodSync(fake, 0o755);
+    try {
+      const status = await checkClaudeSubscribe({
+        command: fake,
+        env: {
+          PATH: "/usr/bin:/bin",
+          HOME: "/home/test",
+          ANTHROPIC_API_KEY: "sk-test-should-not-leak",
+          CLAUDE_CODE_MESSAGING_TOKEN: "x-should-not-leak",
+          MY_SERVICE_TOKEN: "y-should-not-leak",
+        },
+      });
+      expect(status).toMatchObject({
+        installed: true,
+        apiKeyInEnvironment: true,
+      });
+      const env = JSON.parse(readFileSync(join(dir, "env.json"), "utf8"));
+      expect(Object.keys(env).sort()).toEqual(["HOME", "PATH"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

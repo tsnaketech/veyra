@@ -38,7 +38,7 @@ const net = await new Promise((done) => {
   s.once("connect", () => { s.destroy(); done("connected"); });
   s.once("error", (e) => done(e.code));
 });
-writeFileSync("result.json", JSON.stringify({ net, engineWrite }));
+writeFileSync("result.json", JSON.stringify({ net, engineWrite, env: process.env }));
 `,
   );
 });
@@ -62,17 +62,36 @@ it.skipIf(!usable)(
     );
     await new Promise((done) => setTimeout(done, 50));
     const before = accepted;
+    // Fake secrets in the parent must not reach the sandboxed child (T132).
+    const secrets = {
+      ANTHROPIC_API_KEY: "sk-test-should-not-leak",
+      CLAUDE_CODE_MESSAGING_TOKEN: "x-should-not-leak",
+      MY_SERVICE_TOKEN: "y-should-not-leak",
+    };
+    Object.assign(process.env, secrets);
     await runEngine(
       process.execPath,
       [join(engineRoot, "probe.mjs"), engineRoot, String(port)],
       { engineRoot, outputDir },
       { wallTimeoutMs: 20000, cpuSeconds: 10, maxOutputBytes: 1024 * 1024 },
-    );
+    ).finally(() => {
+      for (const key of Object.keys(secrets)) delete process.env[key];
+    });
     const result = JSON.parse(
       readFileSync(join(outputDir, "result.json"), "utf8"),
     );
     expect(result.net).toBe("ECONNREFUSED");
     expect(result.engineWrite).toBe("EROFS");
+    expect(Object.keys(result.env).sort()).toEqual([
+      "DO_NOT_TRACK",
+      "HOME",
+      "HYPERFRAMES_SKIP_SKILLS",
+      "HYPERFRAMES_TELEMETRY",
+      "LANG",
+      "PATH",
+      "PWD", // set by bwrap --chdir
+    ]);
+    expect(JSON.stringify(result.env)).not.toMatch(/should-not-leak/);
     expect(accepted).toBe(before);
   },
 );

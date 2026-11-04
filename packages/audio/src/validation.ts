@@ -55,11 +55,8 @@ export function runAudioProcess(
       maxLogBytes: l.maxLogBytes,
       onLine,
       label: command,
-      env: {
-        PATH: process.env.PATH ?? "/usr/bin:/bin",
-        LANG: "C",
-        LC_ALL: "C",
-      },
+      // The executor adds PATH and LANG=C and never inherits the parent env.
+      env: { LC_ALL: "C" },
     },
   );
 }

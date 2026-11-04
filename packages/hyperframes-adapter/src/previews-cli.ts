@@ -17,7 +17,7 @@ import {
 } from "@veyra/motion";
 import type { Storyboard } from "@veyra/schemas";
 import { ProjectStorage } from "@veyra/storage";
-import { runProcess } from "@veyra/video";
+import { fileInput, runProcess } from "@veyra/video";
 import { createRequire } from "node:module";
 import {
   compose,
@@ -95,8 +95,7 @@ for (const component of motionComponents) {
     "-y",
     "-ss",
     String(seconds),
-    "-i",
-    result.path,
+    ...fileInput(result.path),
     "-frames:v",
     "1",
     "-vf",

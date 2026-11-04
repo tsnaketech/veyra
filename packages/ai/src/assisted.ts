@@ -146,9 +146,12 @@ export async function checkClaudeSubscribe(
     subscriptionType: null,
     apiKeyInEnvironment,
   };
-  // Without API credentials, the status reflects the subscription login itself.
+  // Allow-list only (same rule as @veyra/video childEnv): no API credentials, so the
+  // status reflects the subscription login; HOME locates ~/.claude (verified 2.1.318).
   const cleanEnv = Object.fromEntries(
-    Object.entries(env).filter(([name]) => !apiCredentialVars.includes(name)),
+    ["PATH", "HOME", "LANG", "LC_ALL", "TZ", "CLAUDE_CONFIG_DIR"].flatMap(
+      (name) => (env[name] ? [[name, env[name]]] : []),
+    ),
   );
   try {
     status.version = (await runner(command, ["--version"], cleanEnv)).stdout
