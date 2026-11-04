@@ -7,6 +7,16 @@ export const variables = defineEnvVars({
     description: 'Key for the anthropic-api provider only. Never logged or displayed.',
     schema: z.string().optional()
   },
+  VEYRA_ALLOW_LAN: {
+    description:
+      'Set to 1 to accept non-loopback clients (with VEYRA_ACCESS_TOKEN). Unset: local machine only.',
+    schema: z.enum(['0', '1']).optional()
+  },
+  VEYRA_ACCESS_TOKEN: {
+    description:
+      'Access token required from LAN clients (32+ URL-safe characters). Never logged or displayed.',
+    schema: z.string().optional()
+  },
   VEYRA_AI_PROVIDER: {
     description:
       'Locks the AI provider (fake = labelled test-only simulator). Unset: chosen in /settings.',

@@ -11,13 +11,13 @@ export default defineConfig({
   testMatch: '**/*.e2e.{ts,js}',
   timeout: 300_000,
   workers: 1,
-  use: { baseURL: 'http://localhost:4173' },
+  use: { baseURL: 'http://127.0.0.1:4173' },
   webServer: {
     // exec: Playwright stops the server process itself instead of an intermediate pnpm shell.
     command:
       'node_modules/.bin/vite build && exec node_modules/.bin/vite preview --port 4173 --strictPort',
     gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
-    port: 4173,
+    url: 'http://127.0.0.1:4173',
     timeout: 180_000,
     reuseExistingServer: false,
     env: {

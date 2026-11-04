@@ -152,6 +152,21 @@ pnpm dev                                        # Studio en développement (Vite
 pnpm --filter studio build && pnpm --filter studio preview   # build puis serveur local (port 4173)
 ```
 
+Accès (T136) : les serveurs de développement et de prévisualisation n'écoutent que
+`127.0.0.1`. Même lancé avec `--host`, le Studio refuse (403) tout client autre que
+la machine locale. Accès depuis le réseau local, à éviter et seulement en connaissance
+de cause (outil mono-utilisateur, pas de comptes) :
+
+```sh
+export VEYRA_ALLOW_LAN=1
+export VEYRA_ACCESS_TOKEN="$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 40)"
+pnpm dev --host <adresse-ipv4-du-lan>        # jamais 0.0.0.0 si une IPv6 publique existe
+# ouvrir une fois http://<adresse>:5173/?access=<jeton> : cookie HttpOnly, SameSite=Strict
+```
+
+Sans jeton d'au moins 32 caractères URL-safe, le mode LAN refuse tout client réseau
+(503). Ne jamais journaliser ni partager le jeton ; le changer pour révoquer l'accès.
+
 Lancer depuis le dépôt : les migrations (`apps/studio/drizzle/`) sont appliquées
 au démarrage et `config/` est trouvé en remontant l'arborescence.
 

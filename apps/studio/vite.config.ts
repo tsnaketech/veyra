@@ -7,6 +7,9 @@ import { sveltekit } from '@sveltejs/kit/vite';
 export default defineConfig({
   // Loaded from node_modules at runtime; bundling it pulls optional OpenTelemetry imports.
   ssr: { external: ['@anthropic-ai/sdk'] },
+  // Local-first: never listen on the network by default (T136); LAN needs VEYRA_ALLOW_LAN + token.
+  server: { host: '127.0.0.1' },
+  preview: { host: '127.0.0.1' },
   plugins: [
     tailwindcss(),
     sveltekit({
