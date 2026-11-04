@@ -163,6 +163,17 @@ describe.skipIf(!lanAddress)(`Studio access on a real server (LAN address ${lanA
         body: new URLSearchParams({ token: value })
       });
     expect((await login('wrong')).status).toBe(401);
+    // Review N1: an unauthenticated oversized body is refused before it is read.
+    const big = await fetch(`http://${lan}:${PREVIEW}/__veyra/access`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        origin: `http://${lan}:${PREVIEW}`
+      },
+      body: 'token=' + 'x'.repeat(64 * 1024)
+    });
+    expect(big.status).toBe(413);
     const ok = await login(token);
     expect(ok.status).toBe(303);
     expect(ok.headers.get('location')).toBe('/');
@@ -197,6 +208,15 @@ describe.skipIf(!lanAddress)(`Studio access on a real server (LAN address ${lanA
     expect((await post({ 'sec-fetch-site': 'cross-site' })).status).toBe(403);
     // DNS rebinding: a loopback client whose Host is a foreign name.
     expect(await rawStatus('127.0.0.1', PREVIEW, '/', 'evil.example')).toBe(403);
+    // Review N6: absolute-form request targets are refused.
+    expect(
+      await rawStatus(
+        '127.0.0.1',
+        PREVIEW,
+        `http://evil.example:${PREVIEW}/`,
+        `127.0.0.1:${PREVIEW}`
+      )
+    ).toBe(400);
     expect(await rawStatus('127.0.0.1', PREVIEW, '/', `localhost:${PREVIEW}`)).toBe(200);
   });
 

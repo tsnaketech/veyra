@@ -12,6 +12,11 @@ import { timingSafeEqual } from 'node:crypto';
  */
 export const ACCESS_COOKIE = 'veyra_access';
 export const LOGIN_PATH = '/__veyra/access';
+/** Largest login body read before authentication (a form with one token field). */
+export const MAX_LOGIN_BYTES = 4096;
+/** Unauthenticated login bodies must declare a small Content-Length (no chunked bodies). */
+export const loginBodyAllowed = (contentLength: string | null | undefined) =>
+  /^\d+$/.test(contentLength ?? '') && Number(contentLength) <= MAX_LOGIN_BYTES;
 export const MIN_TOKEN_LENGTH = 32;
 
 export interface AccessSettings {

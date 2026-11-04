@@ -24,7 +24,11 @@ TIOCSTI). Depuis T136b, `/run` est un tmpfs vide (monté juste après la racine)
 les sockets de l'hôte sous `/run/user/$UID` (D-Bus de session, gnupg, pulse) et
 `/run/dbus` ne sont plus visibles ; les sockets abstraites relèvent de l'espace
 réseau séparé. Limite : une socket Unix sous un chemin monté en lecture seule (par
-exemple `$HOME`, conservé pour le cache Chrome) reste connectable.
+exemple `$HOME`, conservé pour le cache Chrome) reste connectable (revue du 2026-11-04 :
+`~/.config/herdr/*.sock`, qui pilote des terminaux), et les secrets de `$HOME`
+(`~/.ssh`, `~/.claude/.credentials.json`) restent **lisibles** ; le réseau est coupé,
+mais la vidéo produite reste un canal de sortie. Correction prévue avec T127 : `$HOME`
+masqué, seuls les chemins nécessaires (cache HyperFrames/Chrome) remontés en lecture.
 
 Le délai mural (120 s par invocation par défaut) tue le groupe par SIGKILL. Les
 sorties texte cumulées sont limitées à 2 Mio ; stderr conserve une queue de
@@ -128,9 +132,13 @@ socket sous `/run/user/$UID` invisible, délai mural sous `--new-session`).
 - Accès (T136, T136b ; `apps/studio/src/lib/server/access.ts`, appliqué par le plugin
   Vite `accessGuard` de `vite.config.ts` **et** par le hook `src/hooks.server.ts`) :
   serveurs de développement et de prévisualisation sur `127.0.0.1`. La même politique
-  passe avant tous les middlewares de Vite (sources `/src`, `/@fs`, `/@vite/client`,
-  fichiers statiques, bundle) et coupe la websocket HMR ; SvelteKit ne voit sinon pas
-  ces requêtes. Règles : client non local refusé (403), même avec `--host` ; client
+  passe avant les middlewares de Vite qui servent des contenus (sources `/src`, `/@fs`,
+  `/@id`, `/@vite/client`, dépendances pré-groupées, fichiers statiques, bundle) et coupe
+  la websocket HMR ; seuls quatre middlewares internes de Vite la précèdent en
+  développement (rejet des requêtes invalides, CORS des préflights `OPTIONS`, contrôle
+  d'hôte, mesure du temps), sans servir de contenu. Requêtes en forme absolue refusées
+  (400) ; corps du formulaire de connexion non authentifié limité à 4 Kio
+  (`Content-Length` obligatoire, sinon 413). Règles : client non local refusé (403), même avec `--host` ; client
   local accepté seulement avec un `Host` de bouclage (`127.0.0.1`, `localhost`, `[::1]`,
   contre le DNS rebinding) ; écritures inter-sites refusées dans tous les modes
   (`Origin` différent ou `Sec-Fetch-Site: cross-site`), car SvelteKit ne contrôle pas

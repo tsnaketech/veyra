@@ -6,6 +6,7 @@ import {
   decideAccess,
   hostName,
   isLoopback,
+  loginBodyAllowed,
   readCookie,
   type AccessRequest
 } from './access';
@@ -91,6 +92,13 @@ describe('Studio access policy (T136, T136b)', () => {
     expect(decideAccess(lanOn, { ...lan, bearer: token })).toEqual({ allow: true });
     expect(decideAccess(lanOn, { ...lan, cookie: token })).toEqual({ allow: true });
     expect(accessCookie(token)).toMatch(/HttpOnly; SameSite=Strict/);
+  });
+
+  it('bounds the unauthenticated login body (review N1)', () => {
+    expect(loginBodyAllowed('60')).toBe(true);
+    expect(loginBodyAllowed('4096')).toBe(true);
+    for (const bad of [null, undefined, '', '4097', '157286400', '-1', '1e3', ' 60'])
+      expect(loginBodyAllowed(bad)).toBe(false);
   });
 
   it('parses headers strictly', () => {

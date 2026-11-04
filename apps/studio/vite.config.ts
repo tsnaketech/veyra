@@ -11,6 +11,7 @@ import {
   bearerOf,
   decideAccess,
   LOGIN_PATH,
+  loginBodyAllowed,
   loginPage,
   readCookie
 } from './src/lib/server/access.ts';
@@ -34,10 +35,21 @@ function accessGuard(): Plugin {
     });
   const install = (server: ViteDevServer | PreviewServer) => {
     server.middlewares.use((req, res, next) => {
+      // Origin-form only: an absolute-form target ("GET http://host/...") never reaches the app.
+      if (!(req.url ?? '').startsWith('/')) {
+        res.statusCode = 400;
+        return res.end();
+      }
       const decision = check(req);
       if (decision.allow) return next();
       // Only the login path reaches SvelteKit without a token (its hook checks the POST).
-      if (decision.status === 401 && (req.url ?? '').split('?')[0] === LOGIN_PATH) return next();
+      if (decision.status === 401 && (req.url ?? '').split('?')[0] === LOGIN_PATH) {
+        if (req.method === 'POST' && !loginBodyAllowed(req.headers['content-length'])) {
+          res.statusCode = 413;
+          return res.end();
+        }
+        return next();
+      }
       res.statusCode = decision.status;
       res.setHeader('cache-control', 'no-store');
       if (decision.status === 401) {

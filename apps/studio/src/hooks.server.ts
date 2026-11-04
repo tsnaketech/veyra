@@ -7,6 +7,7 @@ import {
   bearerOf,
   decideAccess,
   LOGIN_PATH,
+  loginBodyAllowed,
   loginPage,
   sameToken
 } from '#lib/server/access.ts';
@@ -32,6 +33,9 @@ export const handle: Handle = async ({ event, resolve }) => {
   // LAN client without a valid token: login form (token sent in a POST body, never a URL).
   if (!decision.allow && decision.status === 401) {
     if (event.url.pathname === LOGIN_PATH && request.method === 'POST') {
+      // Unauthenticated body: bounded before it is read (memory exhaustion).
+      if (!loginBodyAllowed(request.headers.get('content-length')))
+        return new Response(null, { status: 413 });
       const form = await request.formData().catch(() => null);
       const token = form?.get('token');
       if (typeof token === 'string' && sameToken(token, settings.token))
