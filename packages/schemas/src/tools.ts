@@ -43,6 +43,8 @@ export const toolErrorSchema = z.object({
     "timeout",
     "failed",
     "invalid-output",
+    // T128: stale parent, missing target or incompatible operations.
+    "conflict",
   ]),
   message: z.string().min(1),
   details: z.json().optional(),

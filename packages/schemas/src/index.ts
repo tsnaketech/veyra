@@ -5,3 +5,4 @@ export * from "./production";
 export * from "./captions";
 export * from "./captions-format";
 export * from "./tools";
+export * from "./edits";

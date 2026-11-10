@@ -71,7 +71,7 @@ Statut : **réel** (exécuteur et test réel), **simulé** (sortie de démonstra
 | `qa.measure.audio` | réel | `audioQualityChecks`, `analyzeAudio`, `detectOnsets` | local-compute | ffmpeg |
 | `qa.measure.captions` | réel (partiel) | `captionExport`, `captionPrecisionCheck` | local-compute | — |
 | `qa.evaluate` | simulé (fake) ; réel non testé (API) | `QualityEvaluator` | billable (API) | fournisseur |
-| `revision.patch` | réel | `applyProposal`, `reviseAudio`, `setNarration`, `setCaptionDelivery` | writes-revision-artefacts | — |
+| `revision.patch` | réel ; exposé dans le registre sous la forme `revision.apply` (T128) | `applyProposal`, `reviseAudio`, `setNarration`, `setCaptionDelivery` | writes-revision-artefacts | — |
 | `audio.place` / `audio.mix` | réel | `placeSceneVoice`, `resolveAudioComposition`, `mixToWav`, `muxAudio` | writes-revision-artefacts | ffmpeg, prlimit |
 | `voice.import` | réel | `probeAudio`, `importedVoiceResult`, `Studio.importVoice` | writes-revision-artefacts | ffmpeg |
 | `voice.fake` | simulé | `voiceProvider('fake')` | local-compute | ffmpeg |
@@ -100,7 +100,9 @@ Ordre d'`invoke` : outil inconnu → `unknown-tool` ; entrée non JSON ou refus�
 `permission-denied` ; `available()` → `unavailable` (+ `installHint`) ; exécution bornée
 par `limits.timeoutMs` → `timeout` / `failed` (première ligne du message, sans pile,
 valeurs secrètes masquées) ; sortie refusée par Zod ou plus grande que
-`limits.outputBytes` → `invalid-output`. Artefacts : dossier neuf
+`limits.outputBytes` → `invalid-output` ; refus typé levé par l'outil (`ToolFailure`, T128) →
+`conflict` (parent non à jour, cible absente, opérations incompatibles) ou `invalid-input`.
+Artefacts : dossier neuf
 `<prj>/tool-calls/<tcl_…>/` (jamais un dossier de révision), chemin relatif à la racine
 de stockage et sha256. L'enveloppe `agentResultSchema` (agent, phase) est ajoutée par la
 boucle (T129), pas par le registre.
@@ -111,6 +113,7 @@ boucle (T129), pas par le registre.
 | `media.frame` | réel | `extractFrameByIndex` | local-compute, writes-revision-artefacts | `tools.test.ts` (b, c, e) |
 | `scene.patch` | réel (aucune révision créée) | `applyProposal` | read-only | `tools.test.ts` (g) |
 | `audio.track.update` | réel | `Studio.reviseAudio` (révision enfant) | writes-revision-artefacts | `tools.test.ts` (d, g, e) |
+| `revision.apply` | réel (T128 ; révision enfant `draft`, sans rendu) | `applyProposal`, `refreshCaptions`, `reusableVariant` ([EDIT-OPERATIONS](EDIT-OPERATIONS.md)) | writes-revision-artefacts | `edits.test.ts`, `tools.test.ts` (revision.apply ×2, D5) |
 | `captions.build` | réel (temps `scene`, approximatifs) | `buildFallbackCaptions`, `captionPrecisionSummary` | read-only | `tools.test.ts` |
 | `captions.export` | réel (cadence et frames mesurées de `revision.media`) | `quantizeCues`, `toSrt`, `toWebVtt` | read-only | `tools.test.ts` |
 | `composition.check` | réel | `VideoEngine.check` (HyperFrames, bwrap) | local-compute | `tools.slow.test.ts` (h) |

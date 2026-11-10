@@ -464,3 +464,30 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   rafraîchie au démarrage, par `/settings` et à chaque choix. Une perte de Claude Code
   après ce dernier contrôle n'est vue qu'au contrôle suivant. Les tâches assistées et
   lots déjà exportés gardent leur fournisseur d'origine.
+
+## D025 — EditOperation et invalidation
+
+- Date : 2026-11-10
+- Statut : acceptée (T128)
+- Contexte : le Director (D021, T129) doit modifier une révision par des actions typées et
+  savoir ce que le rendu suivant reconstruira. Les éditions existantes (`applyProposal`,
+  `reviseAudio`, `setNarration`, `setCaptionDelivery`) sont dispersées, chacune crée un run
+  et un rendu, et passent la révision source `changes_requested`.
+- Décision : union discriminée `EditOperation` (`packages/schemas/src/edits.ts`) bâtie sur
+  les contrats existants (`scenePatchSchema`, `audioMixPatchSchema`, `sceneNarrationSchema`,
+  `captionCueSchema`) ; outil `revision.apply` (writes-revision-artefacts) qui applique un
+  lot tout ou rien et crée une révision enfant `draft` sans toucher la ligne ni les
+  fichiers du parent (état compris), sans lancer de rendu ; refus typés `conflict` (cible
+  absente, même cible éditée deux fois, cue reconstruit par une autre opération, parent non
+  `awaiting_approval` ou ayant déjà un enfant) et `invalid-input`. Plan d'invalidation pur
+  (`invalidationPlan`) fondé sur la règle réelle de réutilisation du rendu, extraite en
+  `reusableVariant` et partagée avec `RenderJobRunner.reusablePicture` : seule l'image
+  muette du parent est réutilisable ; le reste est déclaré invalidé avec sa cause. Trace
+  dans `resolvedConfig.origin` (outil, parent, opérations, plan). Aucune migration.
+- Conséquences : un enfant `draft` coexiste avec un parent `awaiting_approval` ; c'est à
+  l'orchestrateur (T129) de rendre l'enfant et de décider du sort du parent. Pas de
+  « rush » visuel tant que le storyboard ne référence aucun média image ou vidéo
+  (`media.replace` porte sur l'audio). Les cues sont comparés par contenu affiché (début,
+  fin, lignes), leurs identifiants étant renumérotés au regroupement. Pas de cache par
+  scène (T130) : la liste des scènes touchées est informative. Détail :
+  [EDIT-OPERATIONS](ai/EDIT-OPERATIONS.md).

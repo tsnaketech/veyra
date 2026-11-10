@@ -61,6 +61,7 @@ it('(a) lists every Studio tool with its validated meta and JSON Schemas', () =>
       'composition.check',
       'media.frame',
       'media.inspect',
+      'revision.apply',
       'scene.patch',
       'transcription.local-asr',
       'voice.local-tts'

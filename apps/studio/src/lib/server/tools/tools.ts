@@ -10,7 +10,10 @@ import {
   audioMixPatchSchema,
   captionPrecisionSummary,
   captionTrackSchema,
+  editOperationSchema,
   idSchema,
+  invalidationPlanSchema,
+  newId,
   quantizeCues,
   scenePatchSchema,
   storyboardSchema,
@@ -22,8 +25,9 @@ import {
 } from '@veyra/schemas';
 import { safePath } from '@veyra/storage';
 import { extractFrameByIndex, probe, probeSchema } from '@veyra/video';
+import { applyEdits, editState, invalidationPlan } from '../edits';
 import { buildFallbackCaptions } from '../studio';
-import { defineTool, type CallContext } from './registry';
+import { defineTool, ToolFailure, type CallContext } from './registry';
 
 const revisionInput = z.object({ revisionId: idSchema('rev') }).strict();
 const free = { kind: 'free' } as const;
@@ -180,6 +184,82 @@ export const audioTrackUpdate = defineTool({
     if (!finished.revisionId)
       throw new Error(`Révision enfant non créée : ${finished.error ?? finished.status}`);
     return { runId: run.id, revisionId: finished.revisionId, parentRevisionId: source.id };
+  }
+});
+
+export const revisionApply = defineTool({
+  meta: {
+    ...base,
+    id: 'revision.apply',
+    description:
+      'Applique des opérations d’édition typées (tout ou rien) : crée une révision enfant brouillon, parent intact, et retourne le plan d’invalidation des artefacts ; ne lance aucun rendu.',
+    capabilities: ['edit-revision', 'child-revision', 'invalidation-plan'],
+    permissions: ['writes-revision-artefacts'],
+    sideEffects: 'revision',
+    cost: free,
+    limits: { timeoutMs: 10_000 },
+    validation: ['zod', 'storyboard', 'conflicts', 'deep-equal'],
+    // Revision ids are random; the edited content and the plan are deterministic.
+    deterministic: false
+  },
+  input: z
+    .object({
+      revisionId: idSchema('rev'),
+      operations: z.array(editOperationSchema).min(1).max(50)
+    })
+    .strict(),
+  output: z.object({
+    revisionId: idSchema('rev'),
+    parentRevisionId: idSchema('rev'),
+    invalidation: invalidationPlanSchema,
+    warnings: z.array(z.string())
+  }),
+  async run({ revisionId, operations }, ctx) {
+    const parent = ctx.revision(revisionId);
+    const isHead = () => {
+      const current = ctx.repo.getRevision(parent.id);
+      if (current.status !== 'awaiting_approval')
+        throw new ToolFailure('conflict', `Révision parente non modifiable (${current.status})`);
+      if (ctx.repo.listRevisions(parent.projectId).some((r) => r.parentRevisionId === parent.id))
+        throw new ToolFailure(
+          'conflict',
+          'Révision parente non à jour : elle a déjà une révision enfant'
+        );
+    };
+    isHead();
+    const before = editState(parent);
+    const child = applyEdits(before, operations, {
+      maxDurationMs: ctx.settings.app.maxDurationSeconds * 1000,
+      usableAsset(id) {
+        const asset = ctx.repo.getAsset(id);
+        return asset?.projectId === parent.projectId && asset.audio?.status === 'valid';
+      }
+    });
+    const invalidation = invalidationPlan(parent.id, before, child);
+    const now = Date.now();
+    const id = newId('rev');
+    // Re-checked in the write transaction: a concurrent child makes this call a conflict.
+    ctx.repo.transaction(() => {
+      isHead();
+      ctx.repo.createRevision({
+        id,
+        projectId: parent.projectId,
+        parentRevisionId: parent.id,
+        storyboard: child.storyboard,
+        audio: child.audio,
+        captions: child.captions,
+        resolvedConfig: {
+          ...(child.delivery ? { captionDelivery: child.delivery } : {}),
+          origin: { tool: 'revision.apply', parentRevisionId: parent.id, operations, invalidation },
+          aiProvider: 'none'
+        },
+        videoPath: null,
+        error: null,
+        createdAt: now,
+        updatedAt: now
+      });
+    });
+    return { revisionId: id, parentRevisionId: parent.id, invalidation, warnings: child.warnings };
   }
 });
 
@@ -371,6 +451,7 @@ export const studioTools = [
   mediaFrame,
   scenePatch,
   audioTrackUpdate,
+  revisionApply,
   captionsBuild,
   captionsExport,
   compositionCheck,

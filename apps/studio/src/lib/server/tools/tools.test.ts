@@ -19,7 +19,7 @@ import { FakeAiProvider } from '@veyra/ai';
 import { ProjectStorage } from '@veyra/storage';
 import { runProcess } from '@veyra/video';
 import { setChildPathPrefixForTests } from '@veyra/video/testing';
-import { parseSrt, parseWebVtt, permissionClassSchema, quantizeCues } from '@veyra/schemas';
+import { newId, parseSrt, parseWebVtt, permissionClassSchema, quantizeCues } from '@veyra/schemas';
 import { createRepository } from '../db/repo';
 import * as schema from '../db/schema';
 import { defaultConfigDir, loadRenderSettings, RenderJobRunner } from '../jobs/runner';
@@ -53,6 +53,7 @@ const realBinary = (name: string) =>
 let root: string, records: string, client: Database.Database;
 let repo: ReturnType<typeof createRepository>;
 let app: Studio, storage: ProjectStorage, registry: ReturnType<typeof studioToolRegistry>;
+let runner: RenderJobRunner;
 let projectId: string, v1: string;
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'veyra-tools-'));
@@ -64,13 +65,8 @@ beforeAll(async () => {
   const settings = loadStudioSettings(loadRenderSettings(), defaultConfigDir());
   storage = new ProjectStorage(join(root, 'projects'));
   const engine = colorEngine((id) => repo.getRevision(id).storyboard);
-  app = new Studio(
-    repo,
-    new RenderJobRunner(repo, storage, engine, settings),
-    new FakeAiProvider(),
-    settings,
-    storage
-  );
+  runner = new RenderJobRunner(repo, storage, engine, settings);
+  app = new Studio(repo, runner, new FakeAiProvider(), settings, storage);
   const project = app.createProject('Outils');
   projectId = project.id;
   registry = studioToolRegistry({ repo, storage, settings, engine, studio: app, projectId });
@@ -342,7 +338,11 @@ it('review D5: a revision of another project is refused (permission-denied)', as
       'scene.patch',
       { revisionId: foreign, changes: [{ sceneId, patch: { text: 'Autre texte' } }] }
     ],
-    ['captions.build', { revisionId: foreign }]
+    ['captions.build', { revisionId: foreign }],
+    [
+      'revision.apply',
+      { revisionId: foreign, operations: [{ op: 'scene.transition', sceneId, enter: 'scale' }] }
+    ]
   ] as const)
     expect(
       await registry.invoke(id, input, { grants: [...permissionClassSchema.options] })
@@ -350,4 +350,153 @@ it('review D5: a revision of another project is refused (permission-denied)', as
       ok: false,
       error: { code: 'permission-denied' }
     });
+});
+
+/** sha256 of every file under a folder (relative path → hash). */
+function tree(dir: string): Record<string, string> {
+  if (!existsSync(dir)) return {};
+  return Object.fromEntries(
+    readdirSync(dir, { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => {
+        const path = join(e.parentPath, e.name);
+        return [path.slice(dir.length), sha(path)];
+      })
+  );
+}
+
+it('revision.apply: typed refusals, atomic child revision, byte-identical parent, no render', async () => {
+  const parent = repo.listRevisions(projectId).at(-1)!;
+  // Rendered, reviewed, with music and burned captions (earlier tests of this file).
+  expect(parent.status).toBe('awaiting_approval');
+  expect(parent.audio?.tracks.map((t) => t.id)).toContain('atr_music');
+  expect(parent.captions).not.toBeNull();
+  const [first, second] = parent.storyboard.scenes;
+  const row = () => [
+    client.prepare('select * from video_revisions where id = ?').get(parent.id),
+    client.prepare('select * from scenes where revision_id = ? order by start').all(parent.id)
+  ];
+  const parentDir = storage.revision(projectId, parent.id);
+  const rowBefore = row(),
+    filesBefore = tree(parentDir);
+  expect(Object.keys(filesBefore).length).toBeGreaterThan(0);
+  const counts = () => [
+    repo.listRevisions(projectId).length,
+    repo.listRuns(projectId).length,
+    repo.renderJobsFor(repo.listRevisions(projectId).map((r) => r.id)).length
+  ];
+  const before = counts();
+  const music = { op: 'audio.track', trackId: 'atr_music', patch: { gainDb: -6 } };
+  const call = (operations: unknown[], grants = ['writes-revision-artefacts'] as const) =>
+    registry.invoke('revision.apply', { revisionId: parent.id, operations }, { grants });
+
+  expect(await call([music], ['read-only'] as never)).toMatchObject({
+    ok: false,
+    error: { code: 'permission-denied' }
+  });
+  expect(await call([{ op: 'scene.delete', sceneId: first.id }])).toMatchObject({
+    ok: false,
+    error: { code: 'invalid-input' }
+  });
+  // Valid then invalid (params on a scene without component): nothing is written.
+  expect(
+    await call([
+      music,
+      { op: 'scene.update', sceneId: first.id, patch: { text: 'Valide' } },
+      { op: 'scene.update', sceneId: second.id, patch: { params: { value: 1 } } }
+    ])
+  ).toMatchObject({ ok: false, error: { code: 'invalid-input', message: /composant/ } });
+  expect(
+    await call([{ op: 'scene.duration', sceneId: 'scn_absent', durationMs: 2000 }])
+  ).toMatchObject({
+    ok: false,
+    error: { code: 'conflict', message: /Scène introuvable/ }
+  });
+  expect(await call([music, { ...music, patch: { gainDb: -3 } }])).toMatchObject({
+    ok: false,
+    error: { code: 'conflict', message: /même cible/ }
+  });
+  expect(counts()).toEqual(before);
+
+  const out = okOutput<{
+    revisionId: string;
+    parentRevisionId: string;
+    invalidation: { artefacts: { artefact: string; status: string; cause: string | null }[] };
+    warnings: string[];
+  }>(await call([music]));
+  const child = repo.getRevision(out.revisionId);
+  expect(child).toMatchObject({ parentRevisionId: parent.id, status: 'draft', videoPath: null });
+  expect(child.audio!.tracks.find((t) => t.id === 'atr_music')!.gainDb).toBe(-6);
+  expect(child.storyboard).toStrictEqual(parent.storyboard);
+  expect(child.captions).toStrictEqual(parent.captions);
+  // Traced: tool, parent, operations and plan in the child's origin.
+  expect(child.resolvedConfig.origin).toStrictEqual({
+    tool: 'revision.apply',
+    parentRevisionId: parent.id,
+    operations: [music],
+    invalidation: out.invalidation
+  });
+  const picture = out.invalidation.artefacts.find((a) => a.artefact === 'picture')!;
+  expect(picture).toMatchObject({ status: 'reused' });
+  // A child revision and nothing else: no run, no render job, no file.
+  expect(counts()).toEqual([before[0] + 1, before[1], before[2]]);
+  expect(tree(storage.revision(projectId, child.id))).toEqual({});
+
+  // The parent now has a child: a second edit from it is stale.
+  expect(await call([music])).toMatchObject({
+    ok: false,
+    error: { code: 'conflict', message: /non à jour/ }
+  });
+  // Immutability: same row bytes (status, updatedAt included) and same files.
+  expect(row()).toStrictEqual(rowBefore);
+  expect(tree(parentDir)).toStrictEqual(filesBefore);
+
+  // The orchestrator's render (not the tool) reuses the parent picture, as the plan said.
+  const now = Date.now();
+  const job = repo.createRenderJob({
+    id: newId('rnd'),
+    revisionId: child.id,
+    outputPath: null,
+    error: null,
+    createdAt: now,
+    updatedAt: now
+  });
+  const done = await runner.enqueue(job.id);
+  expect(done.status).toBe('succeeded');
+  expect(done.resolvedConfig).toMatchObject({ videoReusedFrom: parent.id });
+  expect(row()[1]).toStrictEqual(rowBefore[1]);
+  expect(tree(parentDir)).toStrictEqual(filesBefore);
+});
+
+it('revision.apply: a scene edit is planned as a new picture for that scene only', async () => {
+  const parent = repo.listRevisions(projectId).at(-1)!;
+  expect(parent.status).toBe('awaiting_approval');
+  const [first, ...others] = parent.storyboard.scenes;
+  const out = okOutput<{
+    revisionId: string;
+    invalidation: {
+      scenes: { sceneId: string; change: string }[];
+      artefacts: { artefact: string; status: string; targets: string[] }[];
+    };
+  }>(
+    await registry.invoke(
+      'revision.apply',
+      {
+        revisionId: parent.id,
+        operations: [{ op: 'scene.transition', sceneId: first.id, enter: 'scale' }]
+      },
+      { grants: ['writes-revision-artefacts'] }
+    )
+  );
+  expect(out.invalidation.scenes).toEqual([
+    { sceneId: first.id, change: 'content' },
+    ...others.map((s) => ({ sceneId: s.id, change: 'unchanged' }))
+  ]);
+  expect(out.invalidation.artefacts.find((a) => a.artefact === 'picture')).toMatchObject({
+    status: 'invalidated',
+    targets: [first.id]
+  });
+  const child = repo.getRevision(out.revisionId);
+  expect(child.storyboard.scenes[0].animation).toMatchObject({ enter: 'scale' });
+  expect(child.storyboard.scenes.slice(1)).toStrictEqual(parent.storyboard.scenes.slice(1));
 });

@@ -70,6 +70,15 @@ export function defineTool<I extends z.ZodType, O extends z.ZodType>(def: {
 
 class ToolTimeout extends Error {}
 class ToolDenied extends Error {}
+/** Typed refusal raised by a tool after parsing (T128): stale parent, missing target, invalid edit. */
+export class ToolFailure extends Error {
+  constructor(
+    readonly code: 'conflict' | 'invalid-input',
+    message: string
+  ) {
+    super(message);
+  }
+}
 /** Largest accepted input (JSON); deeper or larger inputs are refused before parsing. */
 export const MAX_INPUT_BYTES = 256 * 1024;
 // Error text only (no stack). Secrets are masked BEFORE truncation (a cut secret would
@@ -207,6 +216,8 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
       ]);
     } catch (error) {
       if (error instanceof ToolDenied) return fail('permission-denied', error.message);
+      if (error instanceof ToolFailure)
+        return fail(error.code, safeMessage(error, ctx.storage.root));
       // The call ends but its work may go on (no AbortSignal yet): only a side-effect-free
       // tool may be retried; others must be observed before any new attempt.
       if (error instanceof ToolTimeout)

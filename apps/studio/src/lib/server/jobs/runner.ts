@@ -33,7 +33,8 @@ import {
   toWebVtt,
   type CaptionTrack,
   type QuantizedCue,
-  type RenderJob
+  type RenderJob,
+  type VideoRevision
 } from '@veyra/schemas';
 import type { ReviewFinding } from '@veyra/ai';
 import { mixToWav, muxAudio, resolveAudioComposition, type AudioMetadata } from '@veyra/audio';
@@ -101,6 +102,20 @@ export const CAPTION_PRECISION_CHECK_NAME = 'Sous-titres — précision des temp
 // Narration is spoken, never drawn: it does not change the picture (burned captions are compared separately).
 const pictureKey = (board: { scenes: { narration?: unknown }[] }) =>
   JSON.stringify(board, (key, value) => (key === 'narration' ? undefined : value));
+type PictureSide = Pick<VideoRevision, 'storyboard' | 'captions'>;
+/**
+ * Which parent picture can stand in for the child's (pure; shared with the T128 edit plan):
+ * `plain` = the parent's only picture (it had no captions), `burned` = its picture with the
+ * same captions burned in, `clean` = its clean picture; null = must be rendered.
+ */
+export function reusableVariant(parent: PictureSide, child: PictureSide, burned: boolean) {
+  if (pictureKey(parent.storyboard) !== pictureKey(child.storyboard)) return null;
+  if (!parent.captions) return burned ? null : ('plain' as const);
+  if (!burned) return 'clean' as const;
+  return JSON.stringify(parent.captions) === JSON.stringify(child.captions)
+    ? ('burned' as const)
+    : null;
+}
 export class RenderJobRunner {
   private tail: Promise<void> = Promise.resolve();
   private pending = new Map<string, Promise<ReturnType<Repository['getRenderJob']>>>();
@@ -410,25 +425,17 @@ export class RenderJobRunner {
     // An automatic re-render exists precisely to produce a new picture.
     if ((revision.resolvedConfig.origin as { autoFix?: number } | undefined)?.autoFix) return null;
     const parent = this.repo.getRevision(revision.parentRevisionId);
-    if (
-      !parent.silentVideoPath ||
-      !parent.silentVideoPath.startsWith(this.storage.root + '/') ||
-      pictureKey(parent.storyboard) !== pictureKey(revision.storyboard)
-    )
+    if (!parent.silentVideoPath || !parent.silentVideoPath.startsWith(this.storage.root + '/'))
       return null;
     const base = /^(.*\/rnd_[A-Za-z0-9-]+)(?:\.clean)?\.video\.mp4$/.exec(
       parent.silentVideoPath
     )?.[1];
     if (!base) return null;
-    const path = !parent.captions
-      ? burned
-        ? null
-        : parent.silentVideoPath
-      : !burned
-        ? `${base}.clean.video.mp4`
-        : JSON.stringify(parent.captions) === JSON.stringify(revision.captions)
-          ? `${base}.video.mp4`
-          : null;
+    const variant = reusableVariant(parent, revision, burned);
+    const path =
+      variant === 'plain'
+        ? parent.silentVideoPath
+        : variant && `${base}${variant === 'clean' ? '.clean' : ''}.video.mp4`;
     return path && existsSync(path) ? { parent, path } : null;
   }
 

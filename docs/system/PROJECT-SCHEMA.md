@@ -12,7 +12,7 @@ Implémentations : `packages/schemas/src/index.ts` (validation et types),
 | Asset | ast_ | Projet, chemin fichier, type média, dates |
 | Conversation | cnv_ | Projet, dates |
 | Message | msg_ | Conversation, rôle user/assistant/system/tool, texte, date |
-| VideoRevision | rev_ | Projet, révision parente nullable, état, storyboard JSON, configuration JSON (origine : prompt, plan, lot ou correction auto ; `aiProvider`), chemin vidéo, `media` JSON mesuré (fpsNum/fpsDen, durée, startMs, frameCount, constantFrameRate), erreur, dates |
+| VideoRevision | rev_ | Projet, révision parente nullable, état, storyboard JSON, configuration JSON (origine : prompt, plan, lot, correction auto ou outil `revision.apply` avec parent, opérations `EditOperation` et plan d'invalidation, D025 ; `aiProvider`), chemin vidéo, `media` JSON mesuré (fpsNum/fpsDen, durée, startMs, frameCount, constantFrameRate), erreur, dates |
 | RenderJob | rnd_ | Révision, état, progression 0–100, étape, configuration résolue masquée JSON, chemin de sortie, erreur, stderrTail, dates |
 | Feedback | fdb_ | Projet, révision, timestampMs, frameIndex / fpsNum / fpsDen (nullables : commentaires antérieurs à 0001), capturePath nullable, batchId nullable, sceneId nullable, texte, état, auteur, dates |
 | CorrectionBatch | cbt_ | Projet, révision source (FK composite), submissionKey unique, état, fournisseur, feedbackIds, plan, révision produite, vérification JSON (verdict par commentaire), erreur, dates |
@@ -48,6 +48,8 @@ passer par ce dépôt ; une connexion SQL directe n’applique pas les règles m
   changes_requested ; rendering | qa → failed. changes_requested et failed sont
   terminaux : une correction ou une relance crée une révision enfant
   (`parentRevisionId`), la révision rendue n'est jamais rouverte.
+  L'outil `revision.apply` (D025) crée un enfant draft sans changer l'état du parent
+  (qui reste awaiting_approval) ; il refuse un parent ayant déjà un enfant.
   approved → published est une opération d'état uniquement. Le contenu approuvé
   ou publié est immuable ; published est terminal.
 - Feedback : draft → queued → submitted → applied | rejected ; queued | submitted
