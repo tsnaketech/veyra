@@ -72,7 +72,10 @@ export const evaluationStatusLabels: Record<string, string> = {
 export const providerLabels: Record<string, string> = {
   fake: 'Simulateur de test — aucun modèle',
   'anthropic-api': 'Claude par API (clé, facturation API)',
-  'claude-subscribe': 'Claude Code — abonnement, mode assisté'
+  'claude-subscribe': 'Claude Code — abonnement, mode assisté',
+  'openai-api': 'OpenAI par API (clé, facturation API)',
+  'codex-chatgpt': 'Codex CLI — abonnement ChatGPT',
+  local: 'Modèle local (non implémenté)'
 };
 export const modeLabels: Record<string, string> = {
   'not-performed': 'Non réalisé',

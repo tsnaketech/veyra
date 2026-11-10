@@ -1,9 +1,13 @@
 import { fail } from '@sveltejs/kit';
-import { providerIds, type ProviderId } from '@veyra/ai';
+import { providerCapabilities, providerIds, type ProviderId } from '@veyra/ai';
 import {
   apiKeyConfigured,
   chooseProvider,
   claudeSubscribeStatus,
+  codexEnabled,
+  openaiKeyConfigured,
+  providerAvailability,
+  setCodexEnabled,
   providerError,
   providerLocked,
   selectedProviderId,
@@ -26,7 +30,16 @@ export const load: PageServerLoad = async () => ({
     // Local price list used for the spend envelope (D022).
     pricing: settings.models.pricing,
     // Local read-only check through Claude Code itself; no identity is returned.
-    claude: await claudeSubscribeStatus()
+    claude: await claudeSubscribeStatus(),
+    openaiKeyConfigured,
+    openaiModel: settings.models.openai.model,
+    codex: {
+      enabled: codexEnabled(),
+      command: settings.models.codexChatgpt.command
+    },
+    // Declared capabilities (static) and whether each provider can run now (T139).
+    capabilities: providerCapabilities,
+    availability: await providerAvailability()
   },
   formats: settings.formats.formats,
   maxDurationSeconds: settings.app.maxDurationSeconds,
@@ -40,10 +53,15 @@ export const actions: Actions = {
     if (!(providerIds as readonly string[]).includes(id))
       return fail(400, { error: 'Fournisseur inconnu' });
     try {
-      chooseProvider(id as ProviderId);
+      await chooseProvider(id as ProviderId);
     } catch (cause) {
       return fail(400, { error: cause instanceof Error ? cause.message : 'Choix impossible' });
     }
+    return { ok: true };
+  },
+  // Explicit activation of codex-chatgpt by the user (D023); nothing runs before it.
+  codex: async ({ request }) => {
+    setCodexEnabled((await request.formData()).get('enabled') === '1');
     return { ok: true };
   },
   // Re-runs the load, which re-checks availability.

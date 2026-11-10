@@ -30,8 +30,9 @@ des politiques pnpm a été refaite par un `pnpm install` normal le 2026-10-28.
 | Variable | Rôle |
 |---|---|
 | `DATABASE_URL` | Fichier SQLite (défaut `local.db`, relatif à `apps/studio`) |
-| `VEYRA_AI_PROVIDER` | Optionnel, **verrouille** le fournisseur : `fake` (simulateur de test étiqueté), `anthropic-api`, `claude-subscribe`. Absent : choix dans `/settings` |
+| `VEYRA_AI_PROVIDER` | Optionnel, **verrouille** le fournisseur : `fake` (simulateur de test étiqueté), `anthropic-api`, `claude-subscribe`, `openai-api`, `codex-chatgpt`. Absent : choix dans `/settings` |
 | `ANTHROPIC_API_KEY` | Clé du seul fournisseur `anthropic-api` (jamais versionnée, jamais affichée) |
+| `OPENAI_API_KEY` | Clé du seul fournisseur `openai-api` (jamais versionnée, jamais affichée, jamais transmise à Codex) |
 | `VEYRA_PROJECTS_ROOT` | Optionnel : racine des médias (défaut `projects/` du dépôt) |
 | `VEYRA_CONFIG_DIR` | Optionnel : répertoire `config/` absolu |
 
@@ -69,6 +70,30 @@ Aucun appel facturable n'est fait sans enveloppe (0 par défaut).
    le résultat ». Si la production a été arrêtée entre-temps, le résultat est
    enregistré sans relance : cliquer sur « Reprendre ». Le plan importé attend
    votre décision.
+
+### Configurer OpenAI (`openai-api`, D023)
+
+1. Créer une clé API sur OpenAI Platform (facturation à l'usage) et la définir dans
+   `OPENAI_API_KEY` (même fichier que les variables ci-dessus).
+2. Dans `config/models.json`, renseigner `"openai": { "model": "<modèle>" }` et une
+   entrée `pricing["<modèle>"]` relevée sur la page de tarifs d'OpenAI (`source`,
+   `checkedAt`). Sans tarif, le fournisseur reste indisponible.
+3. `/settings` → « Vérifier la disponibilité », choisir `openai-api`. Enveloppe :
+   comme pour `anthropic-api` ci-dessus. Les images (frames annotées, revue) sont
+   refusées tant qu'aucune borne de jetons d'image n'est sourcée (T140).
+
+### Activer Codex avec l'abonnement ChatGPT (`codex-chatgpt`, D023)
+
+Statut contractuel ambigu, accepté par l'utilisateur ; tout est fait par lui.
+
+1. Installer Codex CLI (dépôt officiel `openai/codex`) puis `codex login` avec son
+   compte ChatGPT. Ne pas définir `OPENAI_API_KEY` ni `CODEX_API_KEY` pour Codex.
+2. Dans `config/models.json` : `"codexChatgpt": { "command": "/chemin/absolu/codex" }`
+   (option : `"codexHome"` absolu si la connexion a été faite avec un `CODEX_HOME`
+   dédié ; `"timeoutMs"`, 300000 par défaut).
+3. `/settings` → « Activer Codex », puis « Vérifier la disponibilité » (lance
+   seulement `codex --version` et `codex login status`) et choisir `codex-chatgpt`.
+   « Désactiver Codex » le rend de nouveau indisponible.
 
 ## Skills externes HyperFrames (après un clone)
 

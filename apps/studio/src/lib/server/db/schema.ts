@@ -319,7 +319,9 @@ export const qualityEvaluations = sqliteTable(
       .notNull()
       .references(() => videoRevisions.id),
     batchId: text('batch_id').references(() => correctionBatches.id),
-    evaluator: text('evaluator', { enum: ['fake', 'anthropic-api', 'claude-subscribe'] }),
+    evaluator: text('evaluator', {
+      enum: ['fake', 'anthropic-api', 'claude-subscribe', 'openai-api', 'codex-chatgpt']
+    }),
     analysisMode: text('analysis_mode', {
       enum: ['deterministic', 'multimodal', 'text-only', 'simulated']
     }),

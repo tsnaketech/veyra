@@ -7,9 +7,24 @@ const prompt =
 test('settings never display secret values', async ({ page }) => {
   await page.goto('/settings');
   await expect(page.getByTestId('ai-provider')).toHaveText(/Simulateur de test/);
-  // Three explicit providers; the environment lock prevents any switch from the UI.
-  for (const id of ['fake', 'anthropic-api', 'claude-subscribe'])
+  // One card per provider; the environment lock prevents any switch from the UI.
+  for (const id of [
+    'fake',
+    'anthropic-api',
+    'claude-subscribe',
+    'openai-api',
+    'codex-chatgpt',
+    'local'
+  ])
     await expect(page.getByTestId(`provider-${id}`)).toBeVisible();
+  // Nothing prepared or simulated is presented as operational (T139).
+  for (const id of ['openai-api', 'codex-chatgpt', 'local'])
+    await expect(page.getByTestId(`status-${id}`)).toHaveText(/^Statut : Préparé/);
+  await expect(page.getByTestId('status-fake')).toHaveText(/^Statut : Simulé/);
+  await expect(page.getByTestId('availability-codex-chatgpt')).toHaveText(
+    /Indisponible · Statut contractuel ambigu/
+  );
+  await expect(page.getByTestId('provider-local').getByRole('radio')).toBeDisabled();
   await expect(page.getByText('Choix imposé par')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Utiliser ce fournisseur' })).toBeDisabled();
   await expect(page.getByText(/Aucun basculement automatique/)).toBeVisible();

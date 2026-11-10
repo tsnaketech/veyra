@@ -243,7 +243,7 @@
           placeholder="Décrivez votre vidéo…"
           required
           disabled={!!data.activity || data.aiKind === null}></textarea>
-        {#if data.aiKind === 'anthropic-api'}
+        {#if data.aiKind === 'anthropic-api' || data.aiKind === 'openai-api'}
           <label for="budgetUsd" class="block text-xs text-muted">Enveloppe autorisée (USD)</label>
           <input
             id="budgetUsd"
@@ -407,7 +407,7 @@
     <ProductionPanel
       run={data.runs.at(-1) ?? null}
       phases={data.phases}
-      billable={data.aiKind === 'anthropic-api'}
+      billable={data.aiKind === 'anthropic-api' || data.aiKind === 'openai-api'}
     />
     <AudioPanel
       assets={data.assets}

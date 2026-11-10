@@ -10,7 +10,7 @@
 | config/ | Configuration versionnée et guide de marque | Phase 1 |
 | apps/studio/src/lib/server/jobs | File de rendu en processus, concurrence 1 | Itération 2 |
 | apps/worker | Worker isolé lors du passage multi-instance | Différé, voir D006 |
-| packages/ai | Fournisseurs `fake`, `anthropic-api` (non vérifié), `claude-subscribe` (mode assisté, `assisted.ts`), détection Claude Code ; aucun basculement (D010, D011) ; `QualityEvaluator` et validation des expertises (`evaluation.ts`, D015) | MVP + fournisseurs + expertise |
+| packages/ai | Fournisseurs `fake`, `anthropic-api` (non vérifié), `claude-subscribe` (mode assisté, `assisted.ts`), `openai-api` (`openai.ts`) et `codex-chatgpt` (`codex.ts`, D023) sur la base commune `StructuredProvider` (`structured.ts`), capacités déclarées (`capabilities.ts`), détection Claude Code et Codex ; aucun basculement (D010, D011) ; `QualityEvaluator` et validation des expertises (`evaluation.ts`, D015) | MVP + fournisseurs + expertise |
 | packages/core | Orchestration partagée | Non créé : l'orchestration vit dans le Studio tant qu'il n'y a pas de worker |
 | packages/motion | Registre versionné de composants animés (schémas, durées, capacités, HTML échappé + animations en données, CSS, aperçus) — D017 | Motion Engine v0.2 |
 | packages/audio | Validation, résolution des ancrages, mixage WAV, mux AAC et mesures déterministes — [AUDIO-PIPELINE](video/AUDIO-PIPELINE.md) | v0.3 Phase B |
@@ -55,6 +55,8 @@ packages installés dans `node_modules` ; conserver leurs notices lors de redist
 | Vitest, Playwright | Tests | MIT / Apache-2.0 |
 | HyperFrames 0.8.214 | Moteur CLI installé | Manifest Apache-2.0, aucun fichier LICENSE livré dans le paquet npm inspecté ; **à vérifier pour redistribution** |
 | @anthropic-ai/sdk 1.3.0 | Fournisseur IA réel (API Messages, D007) | Apache-2.0 |
+| openai 7.47.0 (épinglée) | Fournisseur `openai-api` (Responses API, D023) ; Node ≥ 22 | Apache-2.0 |
+| Codex CLI (binaire de l'utilisateur, non livré) | Fournisseur `codex-chatgpt`, lancé seulement après activation (D023) | Apache-2.0 (dépôt `openai/codex`) ; jamais redistribué |
 | Plugin Claude Code `hyperframes@hyperframes` (tag v0.8.214) | Skills HyperFrames pour les agents (non versionnés, D018) | Apache-2.0 (marketplace.json) ; réinstallés, jamais redistribués |
 | tsx 4.23.15 | Exécution de `pnpm qa:bench` (dev, `@veyra/ai`) | MIT |
 | GSAP 3.14.2 | Animations, copie locale à la composition | Manifest « Standard 'no charge' license », en-tête renvoyant à gsap.com/standard-license ; **à vérifier pour redistribution** |
@@ -73,6 +75,18 @@ Détails : [REVIEW-SYSTEM](system/REVIEW-SYSTEM.md), [AGENT-WORKFLOWS](ai/AGENT-
 Claude Code (binaire de l'utilisateur, conditions [Anthropic](https://code.claude.com/docs/en/legal-and-compliance))
 n'est jamais lancé par Veyra pour une requête modèle ; seules `claude --version` et
 `claude auth status` sont exécutées pour afficher la disponibilité.
+
+### Couche de capacités des fournisseurs (T139)
+
+Chaque fournisseur déclare un descripteur statique validé par Zod
+(`providerCapabilities`) : sortie structurée, images, outils, streaming, annulation,
+reprise, coût (`metered-api`, `subscription`, `none`, `local`), limites,
+authentification, statut (`operational`, `prepared`, `unavailable`, `simulated`) et
+raison. `/settings` l'affiche avec la disponibilité calculée
+(`providerAvailability`) ; un fournisseur indisponible n'est pas sélectionnable.
+`openai-api` et `codex-chatgpt` partagent `StructuredProvider` (schéma Zod, texte et
+PNG) ; le Studio réserve l'enveloppe D022 pour `anthropic-api` et `openai-api`, et
+ne donne que le signal d'arrêt à `codex-chatgpt`.
 
 Le système requiert ffmpeg/ffprobe avec libx264 et PNG (9.0.2 présents, [install_ffmpeg](install_ffmpeg.md)), bwrap, prlimit et Chrome
 Headless Shell (`hyperframes browser ensure`, dans `~/.cache/hyperframes`).

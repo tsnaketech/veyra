@@ -80,6 +80,8 @@ export function agentResultSchema<T extends z.ZodType>(payloadSchema: T) {
       "fake",
       "anthropic-api",
       "claude-subscribe",
+      "openai-api",
+      "codex-chatgpt",
       "rules",
       "engine",
       "human",

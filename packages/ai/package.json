@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",
+    "@veyra/motion": "workspace:*",
     "@veyra/schemas": "workspace:*",
-    "zod": "^4.0.0",
-    "@veyra/motion": "workspace:*"
+    "@veyra/video": "workspace:*",
+    "openai": "7.47.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^24",

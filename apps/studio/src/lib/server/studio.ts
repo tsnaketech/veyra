@@ -121,6 +121,9 @@ const verdictLabels: Record<CorrectionVerdict, string> = {
   contradicts_request: 'contraire à la demande',
   unverifiable: 'non vérifiable'
 };
+/** Providers billed per call on an API key: every call goes through the D022 envelope. */
+const isBillable = (ai: Provider): ai is Provider & { model?: string } =>
+  ai.kind === 'anthropic-api' || ai.kind === 'openai-api';
 const modeLabel = (evaluator: string | null, mode: string | null) =>
   mode === 'simulated'
     ? 'simulée, aucune image analysée'
@@ -322,6 +325,8 @@ export class Studio {
     if (kind === 'fake') return `[Simulé] ${text}`;
     if (kind === 'claude-subscribe') return `[Claude Code — mode assisté] ${text}`;
     if (kind === 'anthropic-api' && model) return `[API Anthropic — ${model}] ${text}`;
+    if (kind === 'openai-api' && model) return `[API OpenAI — ${model}] ${text}`;
+    if (kind === 'codex-chatgpt') return `[Codex — abonnement ChatGPT] ${text}`;
     return text;
   }
 
@@ -356,7 +361,9 @@ export class Studio {
    * Simulated providers cost nothing and get no meter.
    */
   private callFor(ai: Provider, runId: string | null): CallOptions & { model?: string } {
-    if (ai.kind !== 'anthropic-api') return {};
+    // Subscription (codex-chatgpt): no dollars to reserve, but « Arrêter » still stops the process.
+    if (ai.kind === 'codex-chatgpt') return runId ? { signal: this.signalFor(runId) } : {};
+    if (!isBillable(ai)) return {};
     if (!runId)
       throw new Error(
         'Appel facturable refusé : aucune production (et donc aucune enveloppe) ne couvre cette révision'
@@ -401,8 +408,7 @@ export class Studio {
   /** Worst case of one storyboard call, for the prompt form; null without a billable provider. */
   storyboardEstimate() {
     const ai = this.ai;
-    if (ai?.kind !== 'anthropic-api' || !ai.model || !this.settings.models.pricing[ai.model])
-      return null;
+    if (!ai || !isBillable(ai) || !ai.model || !this.settings.models.pricing[ai.model]) return null;
     const system = instructions.storyboard({
       targetDurationMs: 20000,
       styleInstructions: this.settings.style.instructions

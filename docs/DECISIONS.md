@@ -378,3 +378,49 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   Remplace, pour les appels du fournisseur, la confirmation « de cette action » de
   [DIRECTOR-TOOL-LOOP § 4](ai/DIRECTOR-TOOL-LOOP.md#4-bornes-et-garde-fous) : l'enveloppe
   saisie par l'utilisateur pour la production vaut autorisation, dans sa limite.
+
+## D023 — Fournisseurs OpenAI et Codex
+
+- Date : 2026-11-10
+- Statut : acceptée (choix de l'utilisateur ; T139–T141)
+- Contexte : étude [OPENAI-CODEX-INTEGRATIONS](research/OPENAI-CODEX-INTEGRATIONS.md)
+  (sources consultées le 2026-11-04). La clé API OpenAI est la voie recommandée par
+  OpenAI pour l'automatisation (**AUTORISÉ**) ; piloter Codex avec le compte ChatGPT
+  de son titulaire n'est ni autorisé ni interdit explicitement (**AMBIGU**), les
+  Terms of Use n'ayant pas pu être lus (403).
+- Décision :
+  - `openai-api` : autorisé par clé (`OPENAI_API_KEY`, lue seulement par
+    `$app/env/private`, passée explicitement au SDK `openai` 7.47.0, `maxRetries: 0`,
+    `{ signal, timeout }`). Responses API, `store: false`, sortie structurée
+    (`zodTextFormat` strict quand le schéma s'y prête, sinon `json_schema` non strict),
+    toujours revalidée par Zod. Même enveloppe que D022 : sans équivalent sourcé et
+    gratuit de `countTokens`, l'entrée est bornée hors ligne par un jeton par octet
+    UTF-8 (consigne, schéma, texte, libellés) + 256 jetons de cadrage ; le coût
+    constaté vient de `usage`. Images refusées tant qu'aucune borne de jetons d'image
+    n'est sourcée. Sans modèle configuré (`openai.model`) ni tarif sourcé dans
+    `pricing`, le fournisseur est **indisponible** (aucun tarif inventé).
+  - `codex-chatgpt` : statut AMBIGU **accepté par l'utilisateur le 2026-11-04** ;
+    désactivé par défaut. Conditions d'activation, toutes de l'utilisateur :
+    installer Codex, `codex login` avec son compte ChatGPT, renseigner le chemin
+    absolu du binaire (`codexChatgpt.command`), puis « Activer Codex » dans
+    `/settings`. Avant cela, Veyra ne lance aucun processus Codex et affiche
+    « Indisponible » avec la raison. Exécution par l'exécuteur unique `runProcess` :
+    `codex exec --json --ephemeral --skip-git-repo-check --ignore-user-config
+    --ignore-rules --sandbox read-only --output-schema … --output-last-message …`,
+    `-c approval_policy="never"`, `features.shell_tool=false`,
+    `tools.web_search=false`, `features.view_image=false`,
+    `forced_login_method="chatgpt"` ; dossier de travail temporaire vide ; sortie
+    validée par Zod. Coût « abonnement » : pas d'enveloppe en dollars, limites du plan
+    affichées.
+  - Capacités déclarées par fournisseur (statique, Zod) ; un fournisseur indisponible
+    n'est pas sélectionnable ; aucun repli (D011).
+- Protections : env de Codex en liste blanche (`PATH` fixe, `LANG`, `HOME`,
+  `CODEX_HOME`) ; refus de démarrer si `OPENAI_API_KEY` ou `CODEX_API_KEY` y figure
+  (ordre de priorité clé/abonnement non documenté) ; délai et « Arrêter » tuent le
+  groupe de processus ; aucune lecture de `~/.codex` ni d'identifiants par Veyra ;
+  sonde limitée à `codex --version` et `codex login status` (code de sortie seul).
+- Conséquences et limites : aucun des deux fournisseurs n'a été appelé réellement
+  (clients et binaire simulés). `codex login status` et le séparateur `--` avant le
+  prompt ne sont pas documentés dans le rapport : à vérifier à l'installation. Les
+  surcharges `-c` sont tirées de la référence de configuration, sans test réel de
+  leur effet. Tarifs OpenAI et coût des images : non sourcés.

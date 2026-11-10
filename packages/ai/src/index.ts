@@ -116,6 +116,8 @@ export const providerIds = [
   "fake",
   "anthropic-api",
   "claude-subscribe",
+  "openai-api",
+  "codex-chatgpt",
 ] as const;
 export type ProviderId = (typeof providerIds)[number];
 /**
@@ -134,7 +136,7 @@ export interface CallOptions {
 }
 /** Providers Veyra calls itself. "fake" must be surfaced to users as simulated output. */
 export interface AiProvider {
-  readonly kind: "fake" | "anthropic-api";
+  readonly kind: "fake" | "anthropic-api" | "openai-api" | "codex-chatgpt";
   readonly mode: "direct";
   /** Model sent with billable calls; absent for the simulator. */
   readonly model?: string;
@@ -653,6 +655,15 @@ export class ProviderUnavailableError extends Error {
   name = "ProviderUnavailableError";
 }
 export type Provider = AiProvider | AssistedProvider;
+/** What createProvider needs beyond the Anthropic model (T140, T141). */
+export interface ProviderSettings {
+  /** OpenAI model, null when none is configured. */
+  openaiModel?: string | null;
+  /** True when the model has a sourced local price (D022). */
+  priced?: (model: string) => boolean;
+  /** Codex settings once the user enabled codex-chatgpt in /settings; null otherwise. */
+  codex?: CodexOptions | null;
+}
 /**
  * Builds exactly the provider that was selected. An unavailable provider is an
  * error: there is never a fallback to another provider (in particular not to the paid API).
@@ -662,9 +673,36 @@ export function createProvider(
   env: Record<string, string | undefined>,
   model: string,
   limits?: AnthropicLimits,
+  more: ProviderSettings = {},
 ): Provider {
   if (id === "fake") return new FakeAiProvider();
   if (id === "claude-subscribe") return new AssistedProvider();
+  if (id === "codex-chatgpt") {
+    if (!more.codex)
+      throw new ProviderUnavailableError(
+        `codex-chatgpt indisponible : ${CODEX_DEFAULT_REASON}`,
+      );
+    return new CodexExecProvider(more.codex);
+  }
+  if (id === "openai-api") {
+    if (!env.OPENAI_API_KEY)
+      throw new ProviderUnavailableError(
+        "openai-api indisponible : OPENAI_API_KEY n'est pas définie.",
+      );
+    if (!more.openaiModel)
+      throw new ProviderUnavailableError(
+        "openai-api indisponible : aucun modèle OpenAI configuré (openai.model de config/models.json).",
+      );
+    if (!more.priced?.(more.openaiModel))
+      throw new ProviderUnavailableError(
+        `openai-api indisponible : aucun tarif sourcé pour ${more.openaiModel} dans config/models.json (D022).`,
+      );
+    return new OpenAiProvider(
+      more.openaiModel,
+      openaiClient(env.OPENAI_API_KEY),
+      limits,
+    );
+  }
   if (!env.ANTHROPIC_API_KEY)
     throw new ProviderUnavailableError(
       "anthropic-api indisponible : ANTHROPIC_API_KEY n'est pas définie.",
@@ -678,4 +716,11 @@ export function createProvider(
 export * from "./assisted";
 export * from "./evaluation";
 export * from "./agents";
+export * from "./capabilities";
+export * from "./structured";
+export * from "./openai";
+export * from "./codex";
+import { CODEX_DEFAULT_REASON } from "./capabilities";
+import { OpenAiProvider, openaiClient } from "./openai";
+import { CodexExecProvider, type CodexOptions } from "./codex";
 import { isAudioFeedback, simulateAudioChange } from "./agents";

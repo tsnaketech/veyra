@@ -11,6 +11,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   AnthropicProvider,
   AssistedProvider,
+  CodexExecProvider,
+  OpenAiProvider,
   FakeAiProvider,
   planProduction,
   type Provider
@@ -42,8 +44,13 @@ let renders: number;
 let failRender: boolean;
 let onRender: (() => void) | null;
 
-function studio(ai: Provider = new FakeAiProvider(), review = false) {
+function studio(
+  ai: Provider = new FakeAiProvider(),
+  review = false,
+  extraPricing: ReturnType<typeof loadStudioSettings>['models']['pricing'] = {}
+) {
   const settings = loadStudioSettings(loadRenderSettings(), defaultConfigDir());
+  Object.assign(settings.models.pricing, extraPricing);
   const storage = new ProjectStorage(root);
   const engine = colorEngine((id) => repo.getRevision(id).storyboard);
   const runner = new RenderJobRunner(
@@ -950,4 +957,32 @@ it('refuses a billable call about a revision that no run produced', async () => 
     app.review({ id: 'rev_orphan', projectId, resolvedConfig: {} } as never, '/nonexistent')
   ).rejects.toThrow(/aucune production/);
   expect(mock.countTokens).not.toHaveBeenCalled();
+});
+
+it('bills openai-api through the same envelope, and gives codex-chatgpt only the stop signal (T140, T141)', async () => {
+  const create = vi.fn(async (body: { model: string }) => ({
+    model: body.model,
+    status: 'completed',
+    output: [],
+    output_text: JSON.stringify(draft),
+    usage: { input_tokens: 900, output_tokens: 1200 }
+  }));
+  const ai = new OpenAiProvider('gpt-test', { responses: { create } } as never);
+  // Test-only price: no OpenAI price is sourced in config/models.json.
+  app = studio(ai, false, { 'gpt-test': { ...pricing, source: 'test', checkedAt: '2026-11-10' } });
+  await app.sendPrompt(projectId, prompt, 0);
+  expect(create).not.toHaveBeenCalled();
+  expect(repo.listRuns(projectId)[0].error).toMatch(/Budget insuffisant/);
+  await app.sendPrompt(projectId, prompt, 1);
+  const run = repo.listRuns(projectId).at(-1)!;
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(repo.getRun(run.id)).toMatchObject({ spentMicroUsd: callCost, reservedMicroUsd: 0 });
+  expect(messages().some((m) => m.startsWith('[API OpenAI — gpt-test] Storyboard'))).toBe(true);
+
+  const codex = new CodexExecProvider({ command: '/nonexistent/codex', env: {}, timeoutMs: 1000 });
+  const call = (app as unknown as { callFor(ai: Provider, runId: string | null): object }).callFor(
+    codex,
+    run.id
+  );
+  expect(call).toEqual({ signal: expect.any(AbortSignal) });
 });

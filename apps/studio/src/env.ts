@@ -7,6 +7,10 @@ export const variables = defineEnvVars({
     description: 'Key for the anthropic-api provider only. Never logged or displayed.',
     schema: z.string().optional()
   },
+  OPENAI_API_KEY: {
+    description: 'Key for the openai-api provider only. Never logged, displayed or given to Codex.',
+    schema: z.string().optional()
+  },
   VEYRA_ALLOW_LAN: {
     description:
       'Set to 1 to accept non-loopback clients (with VEYRA_ACCESS_TOKEN). Unset: local machine only.',
@@ -20,6 +24,8 @@ export const variables = defineEnvVars({
   VEYRA_AI_PROVIDER: {
     description:
       'Locks the AI provider (fake = labelled test-only simulator). Unset: chosen in /settings.',
-    schema: z.enum(['fake', 'anthropic-api', 'claude-subscribe']).optional()
+    schema: z
+      .enum(['fake', 'anthropic-api', 'claude-subscribe', 'openai-api', 'codex-chatgpt'])
+      .optional()
   }
 });

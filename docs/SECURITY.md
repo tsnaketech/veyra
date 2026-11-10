@@ -247,6 +247,27 @@ contenant les secrets ; le runner ne conserve que la vue redacted().
 - Limite : coût calculé depuis la grille tarifaire locale, à revérifier sur la page
   Pricing d'Anthropic ; l'enveloppe ne protège pas contre une grille fausse.
 
+## Fournisseurs OpenAI et Codex (D023)
+
+- `openai-api` : `OPENAI_API_KEY` lue seulement par `$app/env/private`, passée
+  explicitement (`new OpenAI({ apiKey, maxRetries: 0 })`), présence seule affichée.
+  Même enveloppe que D022 (borne d'entrée hors ligne d'un jeton par octet) ; erreurs
+  du SDK traduites sans contenu ; images refusées faute de borne sourcée.
+- `codex-chatgpt` : rien ne s'exécute avant l'activation explicite dans `/settings`
+  et un chemin absolu configuré. Lancement par `runProcess` : environnement enfant
+  construit en liste blanche (`PATH` fixe, `LANG`, `HOME`, `CODEX_HOME`), jamais
+  hérité ; `OPENAI_API_KEY` ou `CODEX_API_KEY` dans cet environnement → refus de
+  démarrer (pas de bascule silencieuse vers la facturation API, ordre de priorité
+  non documenté), en plus de `forced_login_method="chatgpt"`. Bac à sable Codex
+  `read-only`, `approval_policy="never"`, outils shell, web et `view_image`
+  désactivés, `--ignore-user-config`, `--ignore-rules`, `--ephemeral`, dossier de
+  travail temporaire vide (pas d'`AGENTS.md`). Délai et « Arrêter » tuent le groupe
+  de processus. Sortie lue depuis `--output-last-message` et validée par Zod ; stderr
+  jamais affiché. Veyra ne lit ni `~/.codex` ni aucun fichier d'identifiants.
+- Limites : portée de lecture du mode `read-only` de Codex non documentée (il peut
+  lire hors du dossier de travail) ; injection de prompt reconnue par OpenAI ;
+  surcharges `-c` non testées sur un vrai binaire.
+
 ## Vérifications et limites
 
 Tests rapides : tentatives de traversée/symlink, originaux exclusifs, HTML/CSS/JS

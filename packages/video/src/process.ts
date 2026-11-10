@@ -35,6 +35,8 @@ export interface ProcessOptions {
   monitor?: () => void;
   /** Name used in error messages instead of the spawned binary (e.g. a wrapper). */
   label?: string;
+  /** Aborting kills the whole process group, like the wall-clock timeout. */
+  signal?: AbortSignal;
 }
 /** Backstop limits for media tools; wall timeouts stay the primary bound. */
 export const MEDIA_LIMITS: ProcessLimits = {
@@ -53,6 +55,7 @@ export const CHILD_ENV_KEYS = [
   "HYPERFRAMES_SKIP_SKILLS",
   "DO_NOT_TRACK",
   "CLAUDE_CONFIG_DIR",
+  "CODEX_HOME",
 ] as const;
 /**
  * Demuxers a file input may select (`-format_whitelist`, T136b): playlists (hls),
@@ -205,6 +208,9 @@ export function runProcess(
       () => kill("Process wall-clock timeout"),
       options.timeoutMs ?? 30000,
     );
+    const onAbort = () => kill("Process aborted");
+    if (options.signal?.aborted) onAbort();
+    options.signal?.addEventListener("abort", onAbort, { once: true });
     const monitor = setInterval(() => {
       try {
         options.monitor?.();
@@ -250,6 +256,7 @@ export function runProcess(
     const cleanup = () => {
       clearTimeout(timer);
       clearInterval(monitor);
+      options.signal?.removeEventListener("abort", onAbort);
     };
     child.on("error", (error) => {
       cleanup();

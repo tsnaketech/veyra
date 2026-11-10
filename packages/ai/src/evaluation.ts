@@ -103,7 +103,7 @@ export interface QualityEvaluation {
 }
 /** Provider-independent expert QA of a corrected revision. */
 export interface QualityEvaluator {
-  readonly kind: "fake" | "anthropic-api";
+  readonly kind: "fake" | "anthropic-api" | "openai-api" | "codex-chatgpt";
   evaluate(input: EvaluationInput): Promise<QualityEvaluation>;
 }
 

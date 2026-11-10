@@ -286,7 +286,13 @@ export const configSchemas = {
     ...version,
     // Initial provider when neither /settings nor VEYRA_AI_PROVIDER chose one; null = none.
     defaultProvider: z
-      .enum(["fake", "anthropic-api", "claude-subscribe"])
+      .enum([
+        "fake",
+        "anthropic-api",
+        "claude-subscribe",
+        "openai-api",
+        "codex-chatgpt",
+      ])
       .nullable()
       .default(null),
     models: z.array(z.string()).min(1),
@@ -307,6 +313,18 @@ export const configSchemas = {
     callTimeoutMs: z.number().int().positive().max(600000).default(120000),
     // Name of the variable holding the key: the secret itself never enters config.
     apiKeyEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
+    // openai-api (T140): no model by default; it also needs a sourced entry in `pricing`.
+    openai: z
+      .object({ model: z.string().min(1).nullable().default(null) })
+      .default({ model: null }),
+    // codex-chatgpt (D023): user-installed binary, absolute paths only; enabled in /settings.
+    codexChatgpt: z
+      .object({
+        command: z.string().regex(/^\//).nullable().default(null),
+        codexHome: z.string().regex(/^\//).nullable().default(null),
+        timeoutMs: z.number().int().positive().max(600000).default(300000),
+      })
+      .default({ command: null, codexHome: null, timeoutMs: 300000 }),
     // Assisted only: Veyra exports requests, the user runs Claude Code, Veyra imports results.
     claudeSubscribe: z.object({
       mode: z.literal("assisted"),
