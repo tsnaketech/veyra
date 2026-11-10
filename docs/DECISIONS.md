@@ -380,8 +380,10 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
 - Conséquences et limites : le coût n'est exact que si la grille locale
   (`pricing` de `config/models.json`, source et date de vérification affichées dans
   `/settings`) suit la page Pricing d'Anthropic ; un modèle sans tarif est refusé.
-  Une réservation en cours lors d'un arrêt brutal reste réservée, de même qu'une
-  réservation dont le règlement échoue (journalisé sans contenu, l'erreur ou la
+  Une réservation en cours lors d'un arrêt brutal est comptée comme dépensée au
+  redémarrage suivant (T146 : `Orchestrator.settleOrphanReservations`, message dans la
+  conversation du projet ; facturation réelle inconnue, choix prudent). Une
+  réservation dont le règlement échoue reste réservée jusqu'au redémarrage suivant (journalisé sans contenu, l'erreur ou la
   réponse d'origine est conservée). Le pire cas du
   formulaire de prompt est une estimation locale (un jeton par octet, prompt ≤ 4 Ko).
   Remplace, pour les appels du fournisseur, la confirmation « de cette action » de
@@ -433,3 +435,32 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   prompt ne sont pas documentés dans le rapport : à vérifier à l'installation. Les
   surcharges `-c` sont tirées de la référence de configuration, sans test réel de
   leur effet. Tarifs OpenAI et coût des images : non sourcés.
+
+## D024 — Fournisseur IA par projet
+
+- Date : 2026-11-10
+- Statut : acceptée (T143, T146)
+- Contexte : le choix du fournisseur était global (`aiProvider` de `app_settings`,
+  `VEYRA_AI_PROVIDER`) ; T143 demandait de pouvoir le remplacer pour un projet.
+- Décision : colonne nullable `projects.ai_provider` (migration 0007, contrat
+  `projectSchema.aiProvider`, valeurs de `aiProviderIdSchema`). Fournisseur effectif =
+  celui du projet s'il est défini, sinon le choix global ; `VEYRA_AI_PROVIDER` reste
+  prioritaire et verrouille tout (choix par projet ignoré et non modifiable). Le
+  `Studio` résout le fournisseur du projet au moment de chaque appel (`aiFor`), via un
+  cache par identifiant tenu par `jobs/index.ts` ; un seul orchestrateur, enveloppe
+  D022 et `callFor` inchangés. Choix depuis la page projet : « Par défaut (global) »
+  ou un fournisseur disponible (vérification de `providerAvailability` à l'envoi ;
+  les indisponibles sont affichés désactivés avec leur raison). Un fournisseur de
+  projet devenu indisponible (dernière disponibilité connue, ou construction
+  impossible) donne l'erreur « Fournisseur du projet indisponible : <raison> », sans
+  repli (D011) ; la revue qualitative est alors « non effectuée » avec cette raison.
+  Au démarrage, le choix global enregistré est revérifié en arrière-plan (sonde déjà
+  autorisée de `/settings`) : tant que la vérification n'a pas abouti, et si elle
+  échoue, le Studio n'a pas d'IA active et affiche « Fournisseur enregistré
+  indisponible : <raison> » dans `/settings` et sur la page projet ; le choix
+  enregistré est conservé.
+- Conséquences et limites : la page projet lit la dernière disponibilité connue (la
+  page s'actualise toutes les 1 à 2 s : pas de sonde à chaque chargement) ; elle est
+  rafraîchie au démarrage, par `/settings` et à chaque choix. Une perte de Claude Code
+  après ce dernier contrôle n'est vue qu'au contrôle suivant. Les tâches assistées et
+  lots déjà exportés gardent leur fournisseur d'origine.

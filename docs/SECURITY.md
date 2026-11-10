@@ -246,6 +246,11 @@ contenant les secrets ; le runner ne conserve que la vue redacted().
 - Enveloppe plafonnée à `maxBudgetUsd` (20 $ par défaut) par production.
 - Aucun appel facturable sans enveloppe : 0 par défaut ; réservation du pire cas avant
   l'appel, transactionnelle (`reserveBudget`) ; aucun nouvel essai automatique du SDK.
+  Réservation orpheline après arrêt brutal : comptée comme dépensée au démarrage
+  suivant, jamais libérée (facturation inconnue, T146).
+- Fournisseur par projet (D024) : même contrôle de disponibilité que le choix global,
+  aucun repli ; un choix enregistré indisponible désactive l'IA (global) ou le projet
+  avec la raison affichée ; `VEYRA_AI_PROVIDER` verrouille tout.
 - Erreurs du SDK (limite de débit, clé refusée, connexion, délai, annulation, autre
   statut) traduites en messages sans contenu de requête ni de réponse.
 - Limite : coût calculé depuis la grille tarifaire locale, à revérifier sur la page

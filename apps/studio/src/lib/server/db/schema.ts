@@ -35,6 +35,10 @@ export const projects = sqliteTable('projects', {
   resolvedConfig: text('resolved_config', { mode: 'json' })
     .$type<Record<string, unknown>>()
     .notNull(),
+  // Per-project provider (D024); null = the global choice.
+  aiProvider: text('ai_provider', {
+    enum: ['fake', 'anthropic-api', 'claude-subscribe', 'openai-api', 'codex-chatgpt']
+  }),
   ...timestamps()
 });
 export const videoRevisions = sqliteTable(

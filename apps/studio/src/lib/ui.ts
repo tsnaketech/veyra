@@ -84,6 +84,12 @@ export const modeLabels: Record<string, string> = {
   'text-only': 'Texte seul',
   simulated: 'Simulé — aucun modèle'
 };
+const skippedReview = 'Revue IA non effectuée : ';
+/** Reasons of AI reviews that did not happen (T145): shown as such, never as passed checks. */
+export const skippedAiReviews = (checks: { analysisMode: string; evidence: string }[]) =>
+  checks
+    .filter((c) => c.analysisMode === 'not-performed' && c.evidence.startsWith(skippedReview))
+    .map((c) => c.evidence.slice(skippedReview.length));
 export type Tone = 'neutral' | 'busy' | 'warn' | 'ok' | 'bad';
 export const toneClass: Record<Tone, string> = {
   neutral: 'border-line text-muted',

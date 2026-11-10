@@ -40,22 +40,26 @@ function codexOptions(): CodexOptions | null {
   };
 }
 const priced = (model: string) => Boolean(settings.models.pricing[model]);
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+function create(id: ProviderId): Provider {
+  const { models, maxTokens, callTimeoutMs, openai, baseUrls } = settings.models;
+  // Keys come from $app/env/private only and go straight to the SDK clients.
+  return createProvider(
+    id,
+    { ANTHROPIC_API_KEY, OPENAI_API_KEY },
+    models[0],
+    { maxTokens, timeoutMs: callTimeoutMs },
+    { openaiModel: openai.model, priced, codex: codexOptions(), baseUrls }
+  );
+}
 function build(id: ProviderId | null): Provider | null {
   providerError = null;
   if (!id) return null;
   try {
-    const { models, maxTokens, callTimeoutMs, openai, baseUrls } = settings.models;
-    // Keys come from $app/env/private only and go straight to the SDK clients.
-    return createProvider(
-      id,
-      { ANTHROPIC_API_KEY, OPENAI_API_KEY },
-      models[0],
-      { maxTokens, timeoutMs: callTimeoutMs },
-      { openaiModel: openai.model, priced, codex: codexOptions(), baseUrls }
-    );
+    return create(id);
   } catch (error) {
     // Unavailable stays unavailable: no other provider is substituted.
-    providerError = error instanceof Error ? error.message : String(error);
+    providerError = message(error);
     return null;
   }
 }
@@ -69,10 +73,14 @@ export const renderJobRunner = createRenderJobRunner(repo, settings, (revision, 
   studio.review(revision, path)
 );
 export const storage = new ProjectStorage(settings.storageRoot);
+// A stored choice is re-checked before use (Claude Code may be gone): the Studio starts
+// without AI and gets the provider only if the check passes, without blocking startup.
+const initial = selectedProvider();
+const verify = !providerLocked && initial !== null;
 export const studio = new Studio(
   repo,
   renderJobRunner,
-  build(selectedProvider()),
+  verify ? null : build(initial),
   settings,
   storage
 );
@@ -87,8 +95,11 @@ export const codexStatus = () => {
     env: { HOME: process.env.HOME, CODEX_HOME: codexHome ?? undefined }
   });
 };
+type Availability = Record<ProviderId | 'local', { ok: boolean; reason: string }>;
+/** Last result of providerAvailability(): the project page reads it without probing again. */
+export let knownAvailability: Availability | null = null;
 /** Whether each provider can run now, and why not (T139); local is never available. */
-export async function providerAvailability() {
+export async function providerAvailability(): Promise<Availability> {
   const { models, openai } = settings.models;
   const claude = await claudeSubscribeStatus();
   const codex = await codexStatus();
@@ -105,7 +116,7 @@ export async function providerAvailability() {
         ? `Aucun tarif sourcé pour ${openai.model} : fournisseur indisponible faute de tarif.`
         : null;
   const row = (ok: boolean, reason: string) => ({ ok, reason });
-  return {
+  return (knownAvailability = {
     fake: row(true, 'Toujours disponible. Résultats simulés, étiquetés comme tels.'),
     'anthropic-api': row(
       !anthropic,
@@ -118,7 +129,7 @@ export async function providerAvailability() {
     ),
     'codex-chatgpt': row(codex.available, codex.reason),
     local: row(false, 'Non implémenté (T142).')
-  };
+  });
 }
 /** A provider that cannot run now is refused here, never stored as the choice. */
 export async function chooseProvider(id: ProviderId) {
@@ -131,7 +142,49 @@ export async function chooseProvider(id: ProviderId) {
 /** Explicit activation by the user (D023); disabling also drops it if it was active. */
 export function setCodexEnabled(enabled: boolean) {
   repo.setSetting('codexChatgptEnabled', enabled ? '1' : '0');
+  projectProviders.delete('codex-chatgpt');
   if (selectedProvider() === 'codex-chatgpt') studio.setProvider(build('codex-chatgpt'));
+}
+
+if (verify) providerError = `Vérification du fournisseur enregistré (${initial}) en cours…`;
+void (verify ? providerAvailability() : Promise.resolve(null)).then(
+  (all) => {
+    // The user may have chosen again meanwhile: that choice wins.
+    if (!all || !initial || selectedProvider() !== initial || studio.aiKind) return;
+    if (all[initial].ok) studio.setProvider(build(initial));
+    else providerError = `Fournisseur enregistré indisponible : ${all[initial].reason}`;
+  },
+  (error: unknown) => {
+    if (!studio.aiKind) providerError = `Fournisseur enregistré indisponible : ${message(error)}`;
+  }
+);
+
+/** Per-project providers (D024), cached by id; VEYRA_AI_PROVIDER locks every project. */
+const projectProviders = new Map<ProviderId, Provider>();
+function projectProvider(id: ProviderId): Provider {
+  const known = knownAvailability?.[id];
+  if (known && !known.ok) throw new Error(`Fournisseur du projet indisponible : ${known.reason}`);
+  let provider = projectProviders.get(id);
+  if (!provider) {
+    try {
+      provider = create(id);
+    } catch (error) {
+      throw new Error(`Fournisseur du projet indisponible : ${message(error)}`, { cause: error });
+    }
+    projectProviders.set(id, provider);
+  }
+  return provider;
+}
+if (!providerLocked) studio.setProjectProviders(projectProvider);
+/** Project choice (null = global); refused when locked or when the provider cannot run now. */
+export async function chooseProjectProvider(projectId: string, id: ProviderId | null) {
+  if (providerLocked) throw new Error('Fournisseur imposé par VEYRA_AI_PROVIDER');
+  if (!repo.getProject(projectId)) throw new Error('Projet introuvable');
+  if (id) {
+    const status = (await providerAvailability())[id];
+    if (!status.ok) throw new Error(`${id} indisponible : ${status.reason}`);
+  }
+  repo.setProjectProvider(projectId, id);
 }
 
 // Assisted mode: import result.json as soon as the user's Claude Code session wrote it.

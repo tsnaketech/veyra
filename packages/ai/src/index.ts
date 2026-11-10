@@ -13,6 +13,7 @@ import {
   type Storyboard,
   audioMixPatchSchema,
   type AudioComposition,
+  aiProviderIdSchema,
 } from "@veyra/schemas";
 import { AssistedProvider } from "./assisted";
 import {
@@ -112,13 +113,7 @@ export interface Frame {
   timestampMs: number;
   path: string;
 }
-export const providerIds = [
-  "fake",
-  "anthropic-api",
-  "claude-subscribe",
-  "openai-api",
-  "codex-chatgpt",
-] as const;
+export const providerIds = aiProviderIdSchema.options;
 export type ProviderId = (typeof providerIds)[number];
 /**
  * Spend hooks of one billable call (D022), supplied by the caller: the budget logic

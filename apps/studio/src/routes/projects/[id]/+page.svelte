@@ -20,6 +20,7 @@
     modeLabels,
     preciseTimecode,
     providerLabels,
+    skippedAiReviews,
     timecode
   } from '#lib/ui.ts';
   import type { PageProps } from './$types';
@@ -33,6 +34,7 @@
   const jobs = $derived(data.jobs.filter((job) => job.revisionId === revision?.id));
   const job = $derived(jobs.at(-1) ?? null);
   const report = $derived(data.reports.filter((r) => r.revisionId === revision?.id).at(-1) ?? null);
+  const skippedReviews = $derived(report ? skippedAiReviews(report.checks) : []);
   const resolvedAudio = $derived(
     job?.resolvedConfig.audio as
       | {
@@ -145,7 +147,38 @@
   {:else}
     <span class="badge border-line text-muted">{providerLabels[data.aiKind]}</span>
   {/if}
+  {#if data.providerChoice}
+    <form method="POST" action="?/setProvider" use:enhance class="ml-auto flex items-center gap-1">
+      <label class="text-xs text-muted" for="project-provider">Fournisseur du projet</label>
+      <select
+        id="project-provider"
+        name="provider"
+        class="rounded border border-line bg-transparent px-1 py-0.5 text-xs"
+        value={data.project.aiProvider ?? ''}
+        onchange={(e) => e.currentTarget.form?.requestSubmit()}
+      >
+        <option value="">Par défaut (global)</option>
+        {#each data.providerChoice as choice (choice.id)}
+          <option
+            value={choice.id}
+            disabled={!choice.ok && choice.id !== data.project.aiProvider}
+            title={choice.reason}
+            >{providerLabels[choice.id]}{choice.ok ? '' : ' (indisponible)'}</option
+          >
+        {/each}
+      </select>
+    </form>
+  {/if}
 </div>
+{#if data.providerError}
+  <p
+    role="alert"
+    class="mx-4 mt-2 rounded-lg border border-bad/50 bg-bad/10 px-3 py-2 text-sm text-bad"
+    data-testid="provider-error"
+  >
+    {data.providerError}
+  </p>
+{/if}
 
 <div role="tablist" aria-label="Zones du studio" class="flex border-b border-line lg:hidden">
   {#each tabs as item (item.id)}
@@ -439,6 +472,12 @@
           {/if}
         </div>
         {#if revision.status === 'awaiting_approval'}
+          {#if skippedReviews.length}
+            <p class="text-xs text-warn" data-testid="approval-ai-review-skipped">
+              Revue IA non effectuée : {skippedReviews.join(' ; ')} Vérifiez le rendu vous-même avant
+              de valider.
+            </p>
+          {/if}
           <p class="text-xs text-muted">Le contrôle qualité ne remplace pas votre validation.</p>
         {/if}
       </div>
@@ -707,10 +746,16 @@
             {revision.status === 'qa' ? 'Audit en cours…' : 'Aucun rapport pour cette révision.'}
           </p>
         {:else}
+          {#each skippedReviews as reason, i (i)}
+            <p class="mb-2 text-xs" data-testid="ai-review-skipped">
+              <span class="badge border-warn/50 text-warn">Revue IA non effectuée</span>
+              <span class="text-muted">{reason}</span>
+            </p>
+          {/each}
           <p class="mb-2 text-xs text-muted">
-            {report.checks.filter((c) => c.passed).length}/{report.checks.filter(
-              (c) => c.analysisMode !== 'not-performed'
-            ).length} contrôles réussis ·
+            {report.checks.filter((c) => c.passed && c.analysisMode !== 'not-performed')
+              .length}/{report.checks.filter((c) => c.analysisMode !== 'not-performed').length} contrôles
+            réussis ·
             {report.analysisModes.map((m) => modeLabels[m]).join(', ')}
           </p>
           {#each checkGroups as group (group)}

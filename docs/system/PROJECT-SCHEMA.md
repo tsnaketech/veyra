@@ -7,7 +7,7 @@ Implémentations : `packages/schemas/src/index.ts` (validation et types),
 
 | Entité | Identifiant | Champs et relations principaux |
 |---|---|---|
-| Project | prj_ | Nom, configuration résolue masquée, dates de création et mise à jour |
+| Project | prj_ | Nom, configuration résolue masquée, fournisseur IA du projet nullable (`aiProvider`, D024 ; null = choix global), dates de création et mise à jour |
 | Scene | scn_ | Révision, début, durée, texte, paramètres d’animation JSON |
 | Asset | ast_ | Projet, chemin fichier, type média, dates |
 | Conversation | cnv_ | Projet, dates |
@@ -99,6 +99,10 @@ Dans `apps/studio/drizzle/` (snapshot et journal), appliquées au démarrage :
   `production_runs.budget_micro_usd`, `spent_micro_usd`, `reserved_micro_usd`
   (`integer NOT NULL DEFAULT 0`) ; runs existants conservés, enveloppe 0 (aucun appel
   facturable tant qu'elle n'est pas augmentée). Test : `migration.test.ts` (0005 → 0006).
+- `0007_project_ai_provider` (D024) : colonne ajoutée uniquement —
+  `projects.ai_provider` (`text`, nullable) ; projets existants à null (choix global).
+  Valeurs contrôlées par `aiProviderIdSchema` (Zod) à l'écriture. Test :
+  `jobs/providers.test.ts` (base fichier migrée, choix enregistré puis remis à null).
 - `0002_quality_evaluations` (D015) : table `quality_evaluations` ; reconstruction
   de `ai_tasks` (CHECK `kind` + `evaluation`), lignes copiées telles quelles.
 

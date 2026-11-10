@@ -74,6 +74,7 @@ import {
   toStoryboard,
   type FeedbackInput,
   type Provider,
+  type ProviderId,
   type ReviewFinding,
   type RevisionProposal,
   type StoryboardDraft,
@@ -285,6 +286,8 @@ export class Studio {
           this.controllers.delete(runId);
       }
     );
+    // No call can be in flight yet: reservations still held were orphaned by a crash.
+    this.orchestrator.settleOrphanReservations();
   }
 
   get aiKind() {
@@ -293,6 +296,24 @@ export class Studio {
   /** Changing provider is explicit; work already exported keeps its own provider. */
   setProvider(provider: Provider | null) {
     this.ai = provider;
+  }
+  /** Builds a provider by id or throws why it cannot run; null when VEYRA_AI_PROVIDER locks the choice. */
+  private projectAi: ((id: ProviderId) => Provider) | null = null;
+  setProjectProviders(resolve: ((id: ProviderId) => Provider) | null) {
+    this.projectAi = resolve;
+  }
+  /** Effective provider (D024): the project's own choice if set, else the global one; never a fallback. */
+  private aiFor(projectId: string): Provider | null {
+    const id = this.repo.getProject(projectId)?.aiProvider;
+    return id && this.projectAi ? this.projectAi(id) : this.ai;
+  }
+  /** Effective provider of a project for display; an unavailable one is reported, not replaced. */
+  providerFor(projectId: string) {
+    try {
+      return { kind: this.aiFor(projectId)?.kind ?? null, error: null };
+    } catch (error) {
+      return { kind: null, error: message(error) };
+    }
   }
   activityFor(projectId: string) {
     return this.activity.get(projectId) ?? null;
@@ -419,8 +440,8 @@ export class Studio {
     return call;
   }
   /** Worst case of one storyboard call, for the prompt form; null without a billable provider. */
-  storyboardEstimate() {
-    const ai = this.ai;
+  storyboardEstimate(projectId: string) {
+    const ai = this.providerFor(projectId).kind ? this.aiFor(projectId) : null;
     if (!ai || !isBillable(ai) || !ai.model || !this.settings.models.pricing[ai.model]) return null;
     const system = instructions.storyboard({
       targetDurationMs: 20000,
@@ -445,12 +466,13 @@ export class Studio {
         `Enveloppe refusée : ${usd} $ dépasse le plafond de ${max} $ par production (maxBudgetUsd de config/models.json)`
       );
   }
-  private requireAi() {
-    if (!this.ai)
+  private requireAi(projectId: string) {
+    const ai = this.aiFor(projectId);
+    if (!ai)
       throw new Error(
         'IA non configurée : choisir un fournisseur dans Paramètres (ou VEYRA_AI_PROVIDER).'
       );
-    return this.ai;
+    return ai;
   }
   private busy(projectId: string, stage: Activity['stage']) {
     if (this.activity.has(projectId)) throw new Error('Un traitement est déjà en cours');
@@ -469,7 +491,7 @@ export class Studio {
     const text = prompt.trim();
     if (!text) throw new Error('Message vide');
     if (!this.repo.getProject(projectId)) throw new Error('Projet introuvable');
-    const ai = this.requireAi();
+    const ai = this.requireAi(projectId);
     this.assertBudgetCeiling(budgetUsd);
     const parent = this.repo.listRevisions(projectId).at(-1) ?? null;
     if (ai.mode !== 'assisted') this.busy(projectId, 'generating');
@@ -629,7 +651,7 @@ export class Studio {
       script: {
         usesAi: true,
         run: async () => {
-          const ai = this.requireAi();
+          const ai = this.requireAi(projectId);
           const options = {
             targetDurationMs: brief.targetDurationMs,
             styleInstructions: this.settings.style.instructions
@@ -740,7 +762,7 @@ export class Studio {
     storyboard: VideoRevision['storyboard'],
     parentRevisionId: string | null,
     origin: Record<string, string | number>,
-    kind: string = this.ai?.kind ?? 'none',
+    kind: string = this.providerFor(projectId).kind ?? 'none',
     // Corrections and re-renders keep the soundtrack; a new prompt starts silent.
     audio: VideoRevision['audio'] = null,
     // Same rule for captions: children keep the source track; a new prompt has none.
@@ -950,12 +972,12 @@ export class Studio {
   submitBatch(input: { revisionId: string; feedbackIds: string[]; submissionKey: string }) {
     const existing = this.repo.batchByKey(input.submissionKey);
     if (existing) return existing;
-    const ai = this.requireAi();
     const ids = [...new Set(input.feedbackIds)];
     if (!ids.length) throw new Error('Aucun commentaire sélectionné');
     if (ids.length > this.settings.app.review.maxBatchSize)
       throw new Error(`Lot limité à ${this.settings.app.review.maxBatchSize} commentaires`);
     const revision = this.repo.getRevision(input.revisionId);
+    const ai = this.requireAi(revision.projectId);
     if (revision.status !== 'awaiting_approval')
       throw new Error('Seule une révision en attente de validation peut être corrigée');
     if (this.activity.has(revision.projectId)) throw new Error('Un traitement est déjà en cours');
@@ -1027,7 +1049,6 @@ export class Studio {
   private processBatch(batchId: string): Promise<void> {
     const batch = this.repo.getBatch(batchId);
     const revision = this.repo.getRevision(batch.sourceRevisionId);
-    const ai = this.ai;
     const fail = (error: unknown) => {
       // Comments are kept; the batch can be retried as is.
       this.repo.updateBatch(batchId, { status: 'failed', error: message(error).slice(0, 2000) });
@@ -1038,6 +1059,13 @@ export class Studio {
       }
       this.say(revision.projectId, 'system', `Échec du lot de corrections : ${message(error)}`);
     };
+    let ai: Provider | null;
+    try {
+      ai = this.aiFor(revision.projectId);
+    } catch (error) {
+      fail(error);
+      return Promise.resolve();
+    }
     if (!ai || ai.kind !== batch.provider) {
       fail(new Error(`Fournisseur « ${batch.provider} » non actif : aucun autre n'est utilisé.`));
       return Promise.resolve();
@@ -1371,7 +1399,13 @@ export class Studio {
     const run = this.repo.getRun(runId);
     const runners =
       run.kind === 'production' ? this.productionRunners(run) : this.revisionRunners(run);
-    if (this.ai?.mode !== 'assisted') this.busy(run.projectId, 'generating');
+    let assisted = false;
+    try {
+      assisted = this.aiFor(run.projectId)?.mode === 'assisted';
+    } catch {
+      // Unavailable provider: the run fails at its next AI phase with the reason.
+    }
+    if (!assisted) this.busy(run.projectId, 'generating');
     return this.background(run.projectId, async () => {
       await this.orchestrator.resume(runId, runners);
     });
@@ -1592,17 +1626,26 @@ export class Studio {
 
   async review(revision: RevisionRow, videoPath: string): Promise<ReviewFinding[]> {
     const findings: ReviewFinding[] = [];
-    if (this.ai?.mode === 'direct') {
+    // An unavailable project provider is reported as an unperformed review, never replaced.
+    let ai: Provider | null = null;
+    let unavailable: unknown = null;
+    try {
+      ai = this.aiFor(revision.projectId);
+    } catch (error) {
+      unavailable = error;
+    }
+    if (unavailable || ai?.mode === 'direct') {
       // The AI review is optional: a refused or failed call never loses the render (T145).
       try {
-        const call = this.callFor(this.ai, this.runOf(revision));
+        if (ai?.mode !== 'direct') throw unavailable;
+        const call = this.callFor(ai, this.runOf(revision));
         // Frames at each scene's midpoint: what the qualitative reviewer actually receives.
         const times = revision.storyboard.scenes.map((s) => Math.round(s.start + s.duration / 2));
         const frames = (await extractFrames(videoPath, times)).map((path, index) => ({
           path,
           timestampMs: times[index]
         }));
-        findings.push(...(await this.ai.reviewFrames(revision.storyboard, frames, call)));
+        findings.push(...(await ai.reviewFrames(revision.storyboard, frames, call)));
       } catch (error) {
         findings.push({
           name: 'Revue qualitative',
@@ -1858,7 +1901,8 @@ export class Studio {
     if (!plan || !revision.parentRevisionId || !revision.videoPath)
       throw new Error('Aucune correction rendue à évaluer pour cette révision');
     const base = this.repo.getRevision(revision.parentRevisionId);
-    const ai = this.ai;
+    const { error: unavailable } = this.providerFor(revision.projectId);
+    const ai = unavailable ? null : this.aiFor(revision.projectId);
     const now = Date.now();
     const row = this.repo.createEvaluation({
       id: newId('qev'),
@@ -1870,7 +1914,12 @@ export class Studio {
       createdAt: now,
       updatedAt: now
     });
-    if (!ai) return this.endEvaluation(row.id, 'unavailable', 'Aucun fournisseur IA configuré.');
+    if (!ai)
+      return this.endEvaluation(
+        row.id,
+        'unavailable',
+        unavailable ?? 'Aucun fournisseur IA configuré.'
+      );
     let pack: EvaluationInput;
     try {
       pack = await this.buildPack(row.id, revision, base, plan);

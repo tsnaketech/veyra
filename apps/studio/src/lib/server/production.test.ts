@@ -1081,3 +1081,39 @@ it('bills openai-api through the same envelope, and gives codex-chatgpt only the
   );
   expect(call).toEqual({ signal: expect.any(AbortSignal) });
 });
+
+it('keeps a reservation orphaned by a crash as spent at startup (D022, T146)', () => {
+  const file = join(root, 'veyra.db');
+  const open = () => {
+    const handle = new Database(file);
+    const fileDb = drizzle(handle, { schema });
+    migrate(fileDb, { migrationsFolder: './drizzle' });
+    return { handle, repo: createRepository(fileDb) };
+  };
+  const first = open();
+  repo = first.repo;
+  const id = studio().createProject('Crash').id;
+  const run = new Orchestrator(repo, () => {}).create({
+    projectId: id,
+    kind: 'production',
+    plan: plan(['script'])
+  });
+  repo.raiseBudget(run.id, 500_000);
+  repo.reserveBudget(run.id, 300_000);
+  first.handle.close();
+  // Reopened after the crash: the reservation is still there until the Studio starts.
+  const second = open();
+  repo = second.repo;
+  try {
+    expect(repo.getRun(run.id).reservedMicroUsd).toBe(300_000);
+    const restarted = studio();
+    expect(repo.getRun(run.id)).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: 300_000 });
+    expect(restarted.snapshot(id)!.messages.at(-1)!.text).toContain(
+      'réservation de 0.3000 $ comptée comme dépensée'
+    );
+    // The envelope is no longer blocked by a phantom reservation.
+    repo.reserveBudget(run.id, 200_000);
+  } finally {
+    second.handle.close();
+  }
+});

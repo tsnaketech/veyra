@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   assertTransition,
@@ -273,6 +273,14 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
     getProject(id: string) {
       return db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
     },
+    /** Per-project provider (D024); null returns the project to the global choice. */
+    setProjectProvider(id: string, aiProvider: string | null) {
+      const value = projectSchema.shape.aiProvider.parse(aiProvider);
+      db.update(tables.projects)
+        .set({ aiProvider: value, updatedAt: Date.now() })
+        .where(eq(tables.projects.id, id))
+        .run();
+    },
     touchProject(id: string) {
       db.update(tables.projects)
         .set({ updatedAt: Date.now() })
@@ -531,6 +539,15 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
         .get();
       if (!row) throw new Error('Production introuvable');
       return productionRunSchema.parse(row);
+    },
+    /** Runs still holding a reservation (D022), whatever their project. */
+    reservedRuns() {
+      return db
+        .select()
+        .from(tables.productionRuns)
+        .where(gt(tables.productionRuns.reservedMicroUsd, 0))
+        .all()
+        .map((row) => productionRunSchema.parse(row));
     },
     listRuns(projectId: string) {
       return db

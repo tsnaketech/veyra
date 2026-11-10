@@ -30,7 +30,7 @@ des politiques pnpm a été refaite par un `pnpm install` normal le 2026-10-28.
 | Variable | Rôle |
 |---|---|
 | `DATABASE_URL` | Fichier SQLite (défaut `local.db`, relatif à `apps/studio`) |
-| `VEYRA_AI_PROVIDER` | Optionnel, **verrouille** le fournisseur : `fake` (simulateur de test étiqueté), `anthropic-api`, `claude-subscribe`, `openai-api`, `codex-chatgpt`. Absent : choix dans `/settings` |
+| `VEYRA_AI_PROVIDER` | Optionnel, **verrouille** le fournisseur, y compris pour tous les projets : `fake` (simulateur de test étiqueté), `anthropic-api`, `claude-subscribe`, `openai-api`, `codex-chatgpt`. Absent : choix global dans `/settings` (revérifié au démarrage), remplaçable par projet depuis la page projet (D024) |
 | `ANTHROPIC_API_KEY` | Clé du seul fournisseur `anthropic-api` (jamais versionnée, jamais affichée) |
 | `OPENAI_API_KEY` | Clé du seul fournisseur `openai-api` (jamais versionnée, jamais affichée, jamais transmise à Codex) |
 | `VEYRA_PROJECTS_ROOT` | Optionnel : racine des médias (défaut `projects/` du dépôt) |
@@ -52,7 +52,9 @@ Aucun appel facturable n'est fait sans enveloppe (0 par défaut).
    insuffisant », saisir une enveloppe plus grande (« Augmenter »), puis
    « Reprendre ». Plans de correction, revue et expertise QA d'une révision sont
    imputés au run qui l'a produite. « Arrêter » annule l'appel en cours (sa
-   réservation reste comptée comme dépensée).
+   réservation reste comptée comme dépensée). Après un arrêt brutal du Studio, les
+   réservations restantes sont comptées comme dépensées au démarrage suivant (message
+   dans la conversation du projet).
 
 ### Utiliser l'abonnement Claude (`claude-subscribe`, mode assisté)
 

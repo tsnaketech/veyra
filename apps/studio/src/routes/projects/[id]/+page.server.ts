@@ -1,15 +1,33 @@
-import { audioCategorySchema } from '@veyra/schemas';
+import { aiProviderIdSchema, audioCategorySchema } from '@veyra/schemas';
 import { error, fail } from '@sveltejs/kit';
-import { studio, settings } from '#lib/server/jobs/index.ts';
+import {
+  chooseProjectProvider,
+  knownAvailability,
+  providerAvailability,
+  providerError,
+  providerLocked,
+  studio,
+  settings
+} from '#lib/server/jobs/index.ts';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ params }) => {
+export const load: PageServerLoad = async ({ params }) => {
   const snapshot = studio.snapshot(params.id);
   if (!snapshot) error(404, 'Projet introuvable');
+  const provider = studio.providerFor(params.id);
+  // The page polls: availability is probed once, then refreshed by /settings or a new choice.
+  const availability = providerLocked
+    ? null
+    : (knownAvailability ?? (await providerAvailability()));
   return {
     ...snapshot,
-    aiKind: studio.aiKind,
-    estimate: studio.storyboardEstimate(),
+    aiKind: provider.kind,
+    // Project provider unavailable, or the global one when the project has none.
+    providerError: provider.error ?? (provider.kind ? null : providerError),
+    providerChoice: providerLocked
+      ? null
+      : aiProviderIdSchema.options.map((id) => ({ id, ...availability![id] })),
+    estimate: studio.storyboardEstimate(params.id),
     maxBudgetUsd: settings.models.maxBudgetUsd
   };
 };
@@ -47,6 +65,15 @@ const ownedRun = (projectId: string, runId: string) => {
   return runId;
 };
 export const actions: Actions = {
+  setProvider: async ({ params, request }) => {
+    try {
+      const value = str(await request.formData(), 'provider');
+      await chooseProjectProvider(params.id, value ? aiProviderIdSchema.parse(value) : null);
+      return { ok: true };
+    } catch (cause) {
+      return fail(400, { error: cause instanceof Error ? cause.message : 'Choix impossible' });
+    }
+  },
   stopProduction: async ({ params, request }) => {
     const data = await request.formData();
     return attempt(() => studio.stopProduction(ownedRun(params.id, str(data, 'runId'))));

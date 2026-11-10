@@ -407,3 +407,233 @@ jeton OAuth (O7, O11), sans binaire Codex.
   une génération Veyra peut épuiser la fenêtre de 5 h (Plus).
 - Lecture partielle de C6, C7 et A1 : des options pertinentes peuvent exister dans les
   parties non lues.
+
+## 10. Vérification avant installation — 2026-11-10
+
+- Date de consultation : 2026-11-10. Auteur : Research Analyst. Rien installé, téléchargé,
+  exécuté ni connecté. Même limite d'outil qu'en tête de document (citations restituées
+  par un outil qui résume).
+- Contrôle local demandé (`command -v codex node npm`, `node --version`) : **non réalisé**,
+  aucun outil shell n'était disponible pour cet agent. Présence de `codex`, `node`, `npm`
+  sur la machine : **Non vérifiée**. Seul fait connu par le dépôt : Veyra cible Node 24.19
+  (AGENTS.md).
+
+### 10.1 Sources consultées
+
+| # | Page | URL | Accès |
+|---|---|---|---|
+| V1 | Releases openai/codex | https://github.com/openai/codex/releases | OK (liste d'assets partielle) |
+| V2 | Assets de `rust-v0.167.0` | https://github.com/openai/codex/releases/expanded_assets/rust-v0.167.0 | OK |
+| V3 | Métadonnées npm `@openai/codex@0.167.0` | https://registry.npmjs.org/@openai/codex/0.167.0 | OK |
+| V4 | Attestations npm `@openai/codex@0.167.0` | https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@0.167.0 | OK |
+| V5 | Métadonnées npm `@openai/codex@0.167.0-linux-x64` | https://registry.npmjs.org/@openai/codex/0.167.0-linux-x64 | OK |
+| V6 | Métadonnées npm `@openai/codex-sdk` (latest) | https://registry.npmjs.org/@openai/codex-sdk/latest | OK |
+| V7 | Codex CLI (accueil) | https://learn.chatgpt.com/docs/cli | OK (onglets npm/Homebrew/Windows non restitués) |
+| V8 | Référence de la ligne de commande | https://learn.chatgpt.com/docs/cli/reference | OK (0–100 000 sur 109 288 lus) |
+| V9 | Non-interactive mode | https://learn.chatgpt.com/docs/non-interactive-mode | OK |
+| V10 | Config reference | https://learn.chatgpt.com/docs/config-file/config-reference | OK (deux parties, 0–164 203) |
+| V11 | Authentication | https://learn.chatgpt.com/docs/auth | OK |
+| V12 | CI/CD auth (avancé) | https://learn.chatgpt.com/docs/auth/ci-cd-auth.md | OK |
+| V13 | Pricing | https://learn.chatgpt.com/docs/pricing | OK |
+| V14 | Sandboxing | https://learn.chatgpt.com/docs/sandboxing | OK |
+| V15 | Changelog | https://learn.chatgpt.com/docs/changelog | OK (0–100 000 sur 221 313 lus) |
+| V16 | Script d'installation | https://chatgpt.com/codex/install.sh → 302 → https://releases.openai.com/codex/install.sh | OK (lu, non exécuté) |
+| V17 | README du dépôt | https://github.com/openai/codex | OK |
+| V18 | Source `codex login status` / `logout` (tag 0.167.0) | https://raw.githubusercontent.com/openai/codex/rust-v0.167.0/codex-rs/cli/src/login.rs | OK |
+| V19 | Source chargement de l'auth (tag 0.167.0) | https://raw.githubusercontent.com/openai/codex/rust-v0.167.0/codex-rs/login/src/auth/manager.rs | OK (0–100 000 sur 142 891 lus) |
+| V20 | SIWC Quickstart (relecture) | https://developers.openai.com/siwc/quickstart | OK |
+| V21 | `npm audit` (doc npm) | https://docs.npmjs.com/cli/v11/commands/npm-audit | OK |
+| — | Help center 11369540 | https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan | **HTTP 403** (nouvel essai) |
+| — | Terms of Use | https://openai.com/policies/terms-of-use/ et https://openai.com/policies/row-terms-of-use/ | **HTTP 403** (nouvel essai) |
+| — | Usage Policies | https://openai.com/policies/usage-policies/ | **HTTP 403** (nouvel essai) |
+| — | Page AGENTS.md | https://learn.chatgpt.com/docs/agents-md et `/docs/guides/agents-md` | **HTTP 404** (URL devinées) |
+
+V18 et V19 sont du code source au tag publié, pas de la documentation : comportement
+constaté dans le code, susceptible de changer sans préavis.
+
+### 10.2 Changements depuis le 2026-11-04 et version stable
+
+- Stable courante : **0.167.0** (tag `rust-v0.167.0`), publiée le 6 nov. 2026 (V1, V15) ;
+  elle remplace `rust-v0.166.0` citée au § 3.9. Pré-versions 0.168.0-alpha.* et
+  0.169.0-alpha.* du 5 au 9 nov. (V1) : à ne pas utiliser.
+- Notes 0.167.0 : options API key et fournisseurs cloud déplacées sous « Sign in another
+  way » ; « Support managed network requirements under `permissions.network` » ; « Add an
+  incremental exec tools feature flag ». Aucun changement de flag `codex exec`, de bac à
+  sable, d'`AGENTS.md` ni des clés `web_search`/`tools` dans la partie lue (V15, V1).
+- SDK `@openai/codex-sdk` 0.167.0 : dépend exactement de `@openai/codex` 0.167.0,
+  `engines` Node `>=18`, Apache-2.0, provenance SLSA (V6). Aucune entrée SDK ni app-server
+  datée de la période dans la partie lue (V15).
+- Nouveautés de la référence utiles à Veyra : clé de premier niveau `web_search`
+  (« Use `"live"` for unrestricted live retrieval, or `"disabled"` to remove the tool. »),
+  `skills.bundled.enabled` (« Load the system skills bundled with Codex. »), flag
+  `--dangerously-bypass-hook-trust` (à ne pas utiliser) (V8, V10).
+
+### 10.3 Modalités d'usage de l'abonnement (conformité)
+
+| Point | Extrait littéral | Source | Classement |
+|---|---|---|---|
+| Recommandation générale | « API keys are still the recommended default for automation » ; API key pour « programmatic Codex CLI workflows, such as CI/CD jobs » | V11 | Recommandation, pas une interdiction |
+| Compte Codex en automatisation | « This is an advanced workflow for enterprise and other trusted private automation. » ; « Use this guide only if you specifically need to run the workflow as your Codex account. » | V12 | **AMBIGU** pour Veyra (vise la CI/CD privée) |
+| Dépôts publics | « Do not use this workflow for public or open-source repositories. » | V12 | **INTERDIT** pour ce flux CI/CD ; Veyra privé non concerné tant qu'il n'est pas publié |
+| Exposition | « Don't expose Codex execution in untrusted or public environments. » | V11 | **INTERDIT** : Veyra doit rester sur 127.0.0.1, mono-utilisateur |
+| Plan usage tiers | « ChatGPT plan usage is available to all open-source partners and selected private clients. » (inchangé) | V20 | Mécanisme 2 non acquis pour Veyra privé |
+| Usage personnel d'une appli locale qui lance Codex avec son login ChatGPT | Aucun texte trouvé | V11, V12, V13 | **AMBIGU** |
+| Terms of Use, Usage Policies, help 11369540 | Non lus (403) | — | **Non vérifié** |
+
+Verdict inchangé : **AMBIGU**, aucune clause lue n'interdit ni n'autorise explicitement
+le cas Veyra. Le statut a été accepté par l'utilisateur (D023) ; ce complément n'apporte
+aucun élément qui le lève. Les conditions générales restent à lire par l'utilisateur.
+
+### 10.4 Prérequis et limites
+
+- Plans incluant Codex : « ChatGPT Work and Codex are included in your ChatGPT Free, Go,
+  Plus, Pro, Business, Edu, or Enterprise plan » (V13).
+- Limites (V13) : messages locaux par fenêtre de 5 h pour Plus, estimations par modèle
+  (ex. « GPT-6.1 Sol: 15-160 », « GPT-6 Luna: 350-3,000 ») ; « Pro plans currently have no
+  five-hour limit. » ; « Weekly limits may also apply. » ; « GPT-5.5 retires from Codex
+  with ChatGPT sign-in on October 14, 2026 ». Le modèle utilisé par défaut par Veyra
+  n'est pas fixé dans codex.ts : **à définir** (le défaut de Codex s'applique).
+- OS : installateur autonome « for macOS and Linux » (V7) ; bac à sable Linux :
+  « install `bubblewrap` with your package manager first », sinon assistant embarqué qui
+  « requires support for unprivileged user namespace creation » (V14). Présence de
+  `bwrap` et des user namespaces sur l'hôte (noyau Proxmox) : **Non vérifiée**.
+- Node : aucun prérequis pour le binaire autonome (V7 ne mentionne pas Node) ; paquet npm
+  `engines` `node >=16` (V3) ; SDK `>=18` (V6). Veyra (Node 24.19) satisfait les deux.
+
+### 10.5 Provenance, intégrité, dépendances
+
+| Canal | Éditeur / build | Intégrité vérifiable | Binaire | Remarques |
+|---|---|---|---|---|
+| npm `@openai/codex@0.167.0` | Publié par « GitHub Actions » en trusted publishing OIDC ; 18 mainteneurs `*-openai` (V3) | `integrity` sha512, 2 signatures registre, attestation de publication + **provenance SLSA v1** avec entrée Rekor : dépôt `github.com/openai/codex`, workflow `.github/workflows/rust-release.yml`, `refs/tags/rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a` (V3, V4) ; vérifiable par `npm audit signatures`, qui « will also verify the provenance attestations » (V21) | Lanceur JS `bin/codex.js` (3 fichiers, 13,5 Ko) ; binaire natif **embarqué** dans la dépendance optionnelle `@openai/codex-linux-x64` → `npm:@openai/codex@0.167.0-linux-x64` (45 fichiers, 458,6 Mo, `os: linux`, `cpu: x64`, provenance SLSA) (V3, V5) | **Aucun script** (`scripts` absent) : pas de postinstall, rien téléchargé à l'installation hors du registre (V3, V5). Aucune dépendance de production. Apache-2.0 |
+| GitHub Releases | Assets du tag `rust-v0.167.0` (V2) | Digest sha256 affiché par GitHub : `codex-x86_64-unknown-linux-musl.tar.gz` = `9d64836106d5b374e90ee4454c7ebcde7ca7106558bd7e41a34b9f26ebda251a` ; bundle `codex-x86_64-unknown-linux-musl.sigstore` ; `codex-package_SHA256SUMS` pour les archives `codex-package-*` (V2) | Binaire musl statique (nom à renommer en `codex`, V17) | Vérifier le bundle sigstore exige `cosign` (autre installation) ; l'identité de signature attendue n'est pas documentée : **Non vérifié** |
+| Installateur `curl … install.sh \| sh` | Script OpenAI (V16) | Vérifie le sha256 (« Downloaded Codex archive checksum did not match expected digest. ») ; aucune vérification de signature (V16) | Téléchargé depuis `releases.openai.com`, repli GitHub (V16) | **Déconseillé** : pipe vers `sh`, ajoute un bloc `export PATH` à `~/.bashrc`, installe sous `$CODEX_HOME/packages/standalone` (mélange binaire et `CODEX_HOME` dédié), propose de désinstaller d'autres Codex. Épinglage possible (`--release`, `CODEX_RELEASE`) |
+| Homebrew `brew install --cask codex` | (V17) | Non examiné | — | Non pertinent sur ce Linux |
+
+**Recommandation : npm épinglé, préfixe dédié hors dépôt, sans sudo**, car c'est le seul
+canal dont la provenance (dépôt, workflow, commit, tag) se vérifie avec un outil déjà
+requis par Veyra (V4, V21). Commandes proposées, **non exécutées**, à lancer par
+l'utilisateur (`npm` doit d'abord être confirmé présent) :
+
+```sh
+mkdir -p /home/user/.local/share/veyra/codex-cli
+cd /home/user/.local/share/veyra/codex-cli
+npm install --prefix /home/user/.local/share/veyra/codex-cli --ignore-scripts --save-exact @openai/codex@0.167.0
+npm audit signatures --prefix /home/user/.local/share/veyra/codex-cli
+/home/user/.local/share/veyra/codex-cli/node_modules/.bin/codex --version
+```
+
+- `--ignore-scripts` : précaution (aucun script déclaré, V3, V5). `npm audit signatures`
+  exige probablement le `package-lock.json` créé par l'installation (V21 ne le précise
+  que pour `npm audit`) ; sortie attendue non documentée (V21).
+- Chemin à déclarer dans `codexChatgpt.command` :
+  `/home/user/.local/share/veyra/codex-cli/node_modules/.bin/codex`. Le lanceur est un
+  script Node : `runProcess` fournit un `PATH` fixe incluant le répertoire de `node`
+  (`packages/video/src/process.ts`, `CHILD_PATH`), ce qui devrait suffire ; **à
+  confirmer** au premier `--version`.
+- Repli sans npm : archive GitHub `codex-x86_64-unknown-linux-musl.tar.gz` du tag
+  `rust-v0.167.0`, contrôlée par `sha256sum` contre le digest ci-dessus (V2), extraite dans
+  `/home/user/.local/share/veyra/codex-bin/` et renommée `codex` (V17). Intégrité
+  vérifiée, provenance non vérifiée sans `cosign`.
+
+### 10.6 Connexion, statut, déconnexion
+
+- Méthodes (V11, V8) : `codex login` (navigateur, « the default authentication path ») ;
+  `codex login --device-auth` (« Use OAuth device code flow instead of launching a browser
+  window. », marqué « beta ») ; `--with-api-key` (à **ne pas** utiliser pour Veyra).
+- Machine sans navigateur (SSH) : V11 recommande le device code ; replis documentés :
+  copier `auth.json` depuis une machine avec navigateur (« Treat that file like a
+  password ») ou rediriger le port de callback local (défaut 1455) par SSH.
+- `CODEX_HOME` : `file` « stores credentials in `auth.json` under `CODEX_HOME` (defaults
+  to `~/.codex`) » ; `cli_auth_credentials_store` = `file | keyring | auto | ephemeral`,
+  `auto` utilise le trousseau système s'il existe (V11). La valeur par défaut n'est pas
+  restituée : **Non vérifiée**. Pour que les identifiants restent dans le `CODEX_HOME`
+  dédié, forcer `file` à la connexion **et** à l'exécution (`--ignore-user-config` ignore
+  `config.toml`, mais « Authentication still uses `CODEX_HOME` », V8).
+- Procédure proposée (non exécutée, par l'utilisateur) :
+
+```sh
+mkdir -p -m 700 /home/user/.local/share/veyra/codex-home
+CODEX_HOME=/home/user/.local/share/veyra/codex-home \
+  /home/user/.local/share/veyra/codex-cli/node_modules/.bin/codex \
+  -c cli_auth_credentials_store='"file"' -c forced_login_method='"chatgpt"' login --device-auth
+CODEX_HOME=/home/user/.local/share/veyra/codex-home \
+  /home/user/.local/share/veyra/codex-cli/node_modules/.bin/codex login status
+```
+
+- `codex login status` : « Print the active authentication mode and exit with 0 when
+  logged in. » (V8) ; format non documenté sur V11. Dans le code 0.167.0 (V18), tout est
+  écrit sur **stderr** : `Logged in using ChatGPT` (code 0), `API key configured - <clé
+  masquée>` (code 0, 8 premiers et 5 derniers caractères visibles), `Not logged in`
+  (code 1), `Logged in using access token`, etc. La sonde Veyra (`/chatgpt/i` sur
+  stdout+stderr, code 0) est **compatible**. Comme la sortie API key contient un fragment
+  de clé, la règle « ne garder que le booléen » de codex.ts reste nécessaire.
+- Déconnexion : `codex logout` « Remove saved credentials for both API key and ChatGPT
+  authentication » (V8) ; affiche `Successfully logged out` ou `Not logged in`, code 0 dans
+  les deux cas (V18). Toujours avec le même `CODEX_HOME`.
+- Révocation côté compte : non décrite pour une session ChatGPT ; V11 renvoie à la page
+  « Access tokens » pour la révocation des jetons d'entreprise. **Non vérifié** ; à défaut,
+  `codex logout` puis suppression du répertoire `CODEX_HOME` dédié.
+
+### 10.7 Options utilisées par codex.ts
+
+| Option (codex.ts) | Statut 0.167.0 | Source | Action |
+|---|---|---|---|
+| `exec` + `--json` | Existe (alias `--experimental-json`) | V8, V9 | OK |
+| `--ephemeral` | Existe | V8, V9 | OK |
+| `--skip-git-repo-check` | Existe | V8, V9 | OK |
+| `--ignore-user-config` | Existe ; « Authentication still uses `CODEX_HOME`. » | V8 | OK |
+| `--ignore-rules` | Existe | V8 | OK |
+| `--sandbox read-only` | Existe (`-s`) | V8 | OK |
+| `--output-schema <path>` | Existe | V8, V9 | OK |
+| `--output-last-message <path>` | Existe (`-o`) ; écrit aussi sur stdout | V8, V9 | OK |
+| `-c key=value` | Existe sur `exec` ; parsing TOML documenté pour le `-c` global | V8 | OK (`"never"` et `"chatgpt"` déjà entre guillemets TOML) |
+| `-c approval_policy="never"` | Existe (`on-request \| never \| granular`) | V10 | OK |
+| `-c features.shell_tool=false` | Existe | V10 | OK |
+| `-c tools.web_search=false` | Existe (`boolean \| {…}`) | V10 | OK ; ajouter `-c web_search="disabled"` (clé de premier niveau documentée) |
+| `-c features.view_image=false` | Existe | V10 | OK |
+| `-c forced_login_method="chatgpt"` | Existe (`chatgpt \| api`) | V10, V11 | OK |
+| `--image <path>` | Existe (`-i`), « Repeatable; supports comma-separated lists » | V8 | **À corriger** : un chemin contenant une virgule serait découpé ; refuser ces chemins |
+| Séparateur `--` | Non documenté pour `exec` (seulement `codex mcp add`) | V8 | À tester (`--help`) ; garder, il protège le prompt d'un `--image` à valeurs multiples |
+| Stockage des identifiants | Non passé | V10, V11 | **À ajouter** : `-c cli_auth_credentials_store="file"` (cohérence avec le login) |
+
+Questions connexes :
+- **AGENTS.md / instructions globales** : aucune clé de désactivation trouvée (V10) ;
+  `project_doc_max_bytes` (« Maximum bytes read from `AGENTS.md` »), effet de `0` non
+  documenté ; `model_instructions_file` remplace les instructions intégrées. Page AGENTS.md
+  introuvable (404). Mesure fiable : `CODEX_HOME` dédié ne contenant que `auth.json` + cwd
+  vide (déjà fait). Durcissements optionnels, à tester : `-c skills.bundled.enabled=false`,
+  `-c features.hooks=false`.
+- **`apply_patch` / écriture** : aucune clé trouvée (V10) ; la page sandboxing ne dit pas
+  si `apply_patch` est bloqué en read-only (V14). La protection reste le bac à sable
+  `read-only` (« can't edit files »), plus le cwd temporaire supprimé après l'appel.
+- **Priorité des clés** : non documentée (V9, V11). Code 0.167.0 (V19) : « API key via env
+  var takes precedence over any other auth method. » pour `CODEX_API_KEY`, mais seulement
+  si la méthode `ApiKey` est autorisée par les restrictions de connexion ; avec
+  `forced_login_method="chatgpt"`, la clé d'environnement ne devrait donc pas être
+  retenue. Usage d'`OPENAI_API_KEY` dans le chargement de l'auth non vu dans la partie lue.
+  Veyra refuse déjà les deux variables (`assertSafe`, `childEnv`) : défense suffisante.
+
+### 10.8 Actions qui exigent l'autorisation de l'utilisateur
+
+1. Lire lui-même les Terms of Use, Usage Policies et l'article help 11369540 (403 pour
+   l'agent), puis confirmer le maintien de D023.
+2. Installer Codex 0.167.0 (téléchargement d'environ 459 Mo depuis le registre npm) dans
+   `/home/user/.local/share/veyra/codex-cli`, puis lancer `npm audit signatures`.
+3. Créer `/home/user/.local/share/veyra/codex-home` et se connecter avec son compte
+   ChatGPT (`login --device-auth` : saisie du code dans un navigateur), ce qui crée
+   `auth.json`, un secret.
+4. Exécuter `codex --version` et `codex login status` hors de Veyra.
+5. Installer `bubblewrap` si absent (gestionnaire de paquets, donc sudo).
+6. Modifier codex.ts (virgule dans `--image`, `cli_auth_credentials_store`,
+   `web_search="disabled"`) et mettre à jour ARCHITECTURE/RUNBOOK (version 0.167.0) :
+   hors du périmètre de cet agent.
+7. Renseigner `codexChatgpt.command` et `codexHome` dans `config/models.json`, activer
+   Codex dans `/settings`, puis lancer le premier appel réel, qui consomme le quota du plan.
+
+### 10.9 Risques supplémentaires
+
+- Paquet natif npm de 458,6 Mo (V5) : il contient d'autres exécutables que `codex`.
+- Device code marqué « beta » (V11).
+- V18/V19 décrivent le code, pas un contrat : le format de `login status` peut changer
+  entre versions ; garder la version épinglée et revérifier à chaque mise à jour.
+- Lectures partielles : V8 (fin), V15 (fin), V19 (fin).

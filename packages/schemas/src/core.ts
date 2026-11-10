@@ -202,10 +202,20 @@ export function sceneAt(storyboard: Storyboard, ms: number): Scene | undefined {
     (scene) => ms >= scene.start && ms < scene.start + scene.duration,
   );
 }
+/** AI providers selectable in Veyra (D023); the source of `providerIds` in @veyra/ai. */
+export const aiProviderIdSchema = z.enum([
+  "fake",
+  "anthropic-api",
+  "claude-subscribe",
+  "openai-api",
+  "codex-chatgpt",
+]);
 export const projectSchema = z.object({
   id: idSchema("prj"),
   name: z.string().min(1),
   resolvedConfig: z.record(z.string(), z.json()),
+  /** Per-project provider (D024); null = the global choice. */
+  aiProvider: aiProviderIdSchema.nullable().default(null),
   ...base,
 });
 export const assetSchema = z.object({

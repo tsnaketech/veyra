@@ -9,6 +9,7 @@ import {
   storyboardSchema,
   newId,
   BudgetExceededError,
+  formatUsd,
   type Phase,
   type ProductionPhase,
   type ProductionPlan,
@@ -123,6 +124,21 @@ export class Orchestrator {
       }
       return this.repo.getRun(run.id);
     });
+  }
+
+  /**
+   * Startup only, before any call: a reservation left by a crash cannot be settled with
+   * a real cost, so it is kept as spent (D022: billing unknown) instead of blocking the
+   * envelope forever.
+   */
+  settleOrphanReservations() {
+    for (const run of this.repo.reservedRuns()) {
+      this.repo.settleBudget(run.id, run.reservedMicroUsd, null);
+      this.log(
+        run.projectId,
+        `Appel IA interrompu par un arrêt du Studio : réservation de ${formatUsd(run.reservedMicroUsd)} $ comptée comme dépensée (facturation réelle inconnue).`
+      );
+    }
   }
 
   phases(runId: string) {
