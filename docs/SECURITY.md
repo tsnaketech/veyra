@@ -239,7 +239,11 @@ contenant les secrets ; le runner ne conserve que la vue redacted().
 - Clé : lue une seule fois depuis `$app/env/private` et passée explicitement au client
   SDK (`new Anthropic({ apiKey, maxRetries: 0 })`) ; le SDK ne lit donc pas
   `process.env` pour l'identifiant. `/settings` n'expose que sa présence, depuis la
-  même source. Jamais dans un log, un message ou une page.
+  même source. Jamais dans un log, un message ou une page. Le point d'accès (`baseURL`)
+  est lui aussi explicite (`baseUrls` de `config/models.json`, HTTPS seulement) :
+  `ANTHROPIC_BASE_URL` ou `OPENAI_BASE_URL` dans l'environnement du serveur ne peuvent
+  pas détourner la clé (T145).
+- Enveloppe plafonnée à `maxBudgetUsd` (20 $ par défaut) par production.
 - Aucun appel facturable sans enveloppe : 0 par défaut ; réservation du pire cas avant
   l'appel, transactionnelle (`reserveBudget`) ; aucun nouvel essai automatique du SDK.
 - Erreurs du SDK (limite de débit, clé refusée, connexion, délai, annulation, autre
@@ -252,7 +256,9 @@ contenant les secrets ; le runner ne conserve que la vue redacted().
 - `openai-api` : `OPENAI_API_KEY` lue seulement par `$app/env/private`, passée
   explicitement (`new OpenAI({ apiKey, maxRetries: 0 })`), présence seule affichée.
   Même enveloppe que D022 (borne d'entrée hors ligne d'un jeton par octet) ; erreurs
-  du SDK traduites sans contenu ; images refusées faute de borne sourcée.
+  du SDK traduites sans contenu ; capacité `images` non déclarée faute de borne
+  sourcée : aucune image n'est envoyée (revue « non effectuée », plan et expertise en
+  texte seul).
 - `codex-chatgpt` : rien ne s'exécute avant l'activation explicite dans `/settings`
   et un chemin absolu configuré. Lancement par `runProcess` : environnement enfant
   construit en liste blanche (`PATH` fixe, `LANG`, `HOME`, `CODEX_HOME`), jamais
@@ -264,8 +270,13 @@ contenant les secrets ; le runner ne conserve que la vue redacted().
   travail temporaire vide (pas d'`AGENTS.md`). Délai et « Arrêter » tuent le groupe
   de processus. Sortie lue depuis `--output-last-message` et validée par Zod ; stderr
   jamais affiché. Veyra ne lit ni `~/.codex` ni aucun fichier d'identifiants.
+  Disponible seulement si `codex login status` mentionne une connexion ChatGPT (seul
+  ce booléen est gardé, jamais la sortie) : une connexion par clé serait déconnectée
+  par `forced_login_method`. Le refus précoce de `assertSafe` est redondant : la
+  protection effective est `childEnv` (liste blanche, `OPENAI_*`/`*_KEY` refusés).
 - Limites : portée de lecture du mode `read-only` de Codex non documentée (il peut
-  lire hors du dossier de travail) ; injection de prompt reconnue par OpenAI ;
+  lire hors du dossier de travail) ; le prompt passe en argv, donc visible localement
+  via `ps` par les autres utilisateurs de la machine ; injection de prompt reconnue par OpenAI ;
   surcharges `-c` non testées sur un vrai binaire.
 
 ## Vérifications et limites

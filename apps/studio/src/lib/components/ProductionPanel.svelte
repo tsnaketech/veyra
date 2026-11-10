@@ -5,8 +5,14 @@
   let {
     run,
     phases,
-    billable = false
-  }: { run: ProductionRun | null; phases: ProductionPhase[]; billable?: boolean } = $props();
+    billable = false,
+    maxBudgetUsd
+  }: {
+    run: ProductionRun | null;
+    phases: ProductionPhase[];
+    billable?: boolean;
+    maxBudgetUsd?: number;
+  } = $props();
   const agents: Record<string, string> = {
     director: 'Director',
     motion: 'Motion',
@@ -65,6 +71,7 @@
             name="budgetUsd"
             type="number"
             min={run.budgetMicroUsd / 1e6}
+            max={maxBudgetUsd}
             step="0.01"
             value={run.budgetMicroUsd / 1e6}
             class="field"

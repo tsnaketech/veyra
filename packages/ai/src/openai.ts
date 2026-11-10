@@ -3,12 +3,15 @@ import { z } from "zod";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import type { BilledUsage } from "@veyra/schemas";
-import type { AnthropicLimits, CallOptions } from "./index";
+import { settleSafely, type AnthropicLimits, type CallOptions } from "./index";
 import { StructuredProvider, type AskImage } from "./structured";
 
-/** Same rules as anthropicClient: explicit key (never process.env), no SDK retry. */
-export const openaiClient = (apiKey: string) =>
-  new OpenAI({ apiKey, maxRetries: 0 });
+export const OPENAI_BASE_URL = "https://api.openai.com/v1";
+/** Same rules as anthropicClient: explicit key and endpoint (never process.env), no SDK retry. */
+export const openaiClient = (
+  apiKey: string,
+  baseURL: string = OPENAI_BASE_URL,
+) => new OpenAI({ apiKey, baseURL, maxRetries: 0 });
 
 /** SDK failures as plain messages: status class only, never request or response content. */
 export function openAiErrorMessage(error: unknown): string {
@@ -144,7 +147,7 @@ export class OpenAiProvider extends StructuredProvider {
         throw new Error(openAiErrorMessage(error), { cause: error });
       throw error;
     } finally {
-      meter.after(usage);
+      settleSafely(meter, usage);
     }
   }
 }

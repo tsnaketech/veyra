@@ -311,6 +311,22 @@ export const configSchemas = {
     // Output ceiling sent with, and reserved for, every billable call.
     maxTokens: z.number().int().positive().max(128000).default(16000),
     callTimeoutMs: z.number().int().positive().max(600000).default(120000),
+    // Ceiling of one production's spend envelope (D022): the UI and raiseBudget refuse above it.
+    maxBudgetUsd: z.number().positive().max(1000).default(20),
+    // API endpoints (HTTPS only), set here and never from ANTHROPIC_BASE_URL/OPENAI_BASE_URL.
+    baseUrls: z
+      .object({
+        anthropic: z
+          .url({ protocol: /^https$/ })
+          .default("https://api.anthropic.com"),
+        openai: z
+          .url({ protocol: /^https$/ })
+          .default("https://api.openai.com/v1"),
+      })
+      .default({
+        anthropic: "https://api.anthropic.com",
+        openai: "https://api.openai.com/v1",
+      }),
     // Name of the variable holding the key: the secret itself never enters config.
     apiKeyEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
     // openai-api (T140): no model by default; it also needs a sourced entry in `pricing`.

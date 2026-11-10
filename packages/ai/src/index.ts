@@ -130,6 +130,22 @@ export interface CallMeter {
   /** Exactly once after a reserved call: billed usage, or null when unknown (error, abort). */
   after(result: { model: string; usage: BilledUsage } | null): void;
 }
+/**
+ * Settles a reserved call without ever replacing its outcome: a failing settlement must
+ * not mask the original error or a valid answer. Logged without any request content.
+ */
+export function settleSafely(
+  meter: CallMeter,
+  result: Parameters<CallMeter["after"]>[0],
+) {
+  try {
+    meter.after(result);
+  } catch {
+    console.error(
+      "Règlement de l'appel IA impossible : réservation laissée en l'état (D022)",
+    );
+  }
+}
 export interface CallOptions {
   signal?: AbortSignal;
   meter?: CallMeter;
@@ -460,9 +476,15 @@ export class FakeAiProvider implements AiProvider {
 }
 
 export type AnthropicLimits = { maxTokens: number; timeoutMs: number };
-/** The key is passed explicitly (never read from process.env); no SDK retry may bill twice. */
-export const anthropicClient = (apiKey: string) =>
-  new Anthropic({ apiKey, maxRetries: 0 });
+export const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+/**
+ * Key and endpoint are passed explicitly: the SDK never reads ANTHROPIC_BASE_URL from
+ * process.env, which could otherwise send the key elsewhere. No SDK retry may bill twice.
+ */
+export const anthropicClient = (
+  apiKey: string,
+  baseURL: string = ANTHROPIC_BASE_URL,
+) => new Anthropic({ apiKey, baseURL, maxRetries: 0 });
 
 /** SDK failures as plain messages: status class only, never request or response content. */
 export function apiErrorMessage(error: unknown): string {
@@ -546,7 +568,7 @@ export class AnthropicProvider implements AiProvider {
         throw new Error(apiErrorMessage(error), { cause: error });
       throw error;
     } finally {
-      if (reserved) meter.after(usage);
+      if (reserved) settleSafely(meter, usage);
     }
   }
   generateStoryboard(
@@ -663,6 +685,8 @@ export interface ProviderSettings {
   priced?: (model: string) => boolean;
   /** Codex settings once the user enabled codex-chatgpt in /settings; null otherwise. */
   codex?: CodexOptions | null;
+  /** API endpoints from config/models.json only, never from the environment. */
+  baseUrls?: { anthropic: string; openai: string };
 }
 /**
  * Builds exactly the provider that was selected. An unavailable provider is an
@@ -699,7 +723,7 @@ export function createProvider(
       );
     return new OpenAiProvider(
       more.openaiModel,
-      openaiClient(env.OPENAI_API_KEY),
+      openaiClient(env.OPENAI_API_KEY, more.baseUrls?.openai),
       limits,
     );
   }
@@ -709,7 +733,7 @@ export function createProvider(
     );
   return new AnthropicProvider(
     model,
-    anthropicClient(env.ANTHROPIC_API_KEY),
+    anthropicClient(env.ANTHROPIC_API_KEY, more.baseUrls?.anthropic),
     limits,
   );
 }

@@ -79,8 +79,12 @@ Aucun appel facturable n'est fait sans enveloppe (0 par défaut).
    entrée `pricing["<modèle>"]` relevée sur la page de tarifs d'OpenAI (`source`,
    `checkedAt`). Sans tarif, le fournisseur reste indisponible.
 3. `/settings` → « Vérifier la disponibilité », choisir `openai-api`. Enveloppe :
-   comme pour `anthropic-api` ci-dessus. Les images (frames annotées, revue) sont
-   refusées tant qu'aucune borne de jetons d'image n'est sourcée (T140).
+   comme pour `anthropic-api` ci-dessus (plafond `maxBudgetUsd`, 20 $ par défaut).
+   Aucune image n'est envoyée tant qu'aucune borne de jetons d'image n'est sourcée
+   (T140, T145) : la revue qualitative est « non effectuée », le plan de correction
+   et l'expertise QA sont faits en texte seul et le signalent.
+4. Points d'accès : `baseUrls` de `config/models.json` (HTTPS) ;
+   `ANTHROPIC_BASE_URL` et `OPENAI_BASE_URL` sont ignorés.
 
 ### Activer Codex avec l'abonnement ChatGPT (`codex-chatgpt`, D023)
 
@@ -88,12 +92,19 @@ Statut contractuel ambigu, accepté par l'utilisateur ; tout est fait par lui.
 
 1. Installer Codex CLI (dépôt officiel `openai/codex`) puis `codex login` avec son
    compte ChatGPT. Ne pas définir `OPENAI_API_KEY` ni `CODEX_API_KEY` pour Codex.
+   Recommandé : un `CODEX_HOME` dédié, ne contenant que l'authentification (pas
+   d'`AGENTS.md` global ni de configuration personnelle) :
+   `CODEX_HOME=/chemin/absolu/veyra-codex codex login`. Une connexion par clé API
+   n'est pas acceptée (« Connexion ChatGPT non confirmée »).
 2. Dans `config/models.json` : `"codexChatgpt": { "command": "/chemin/absolu/codex" }`
    (option : `"codexHome"` absolu si la connexion a été faite avec un `CODEX_HOME`
    dédié ; `"timeoutMs"`, 300000 par défaut).
 3. `/settings` → « Activer Codex », puis « Vérifier la disponibilité » (lance
    seulement `codex --version` et `codex login status`) et choisir `codex-chatgpt`.
    « Désactiver Codex » le rend de nouveau indisponible.
+4. Le prompt est passé en argument de `codex exec` : il est visible localement via
+   `ps` par les autres utilisateurs de la machine. Ne pas utiliser ce fournisseur sur
+   une machine partagée avec des contenus confidentiels.
 
 ## Skills externes HyperFrames (après un clone)
 

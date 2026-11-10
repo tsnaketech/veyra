@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  readSync,
   rmSync,
   writeFileSync
 } from 'node:fs';
@@ -275,8 +276,14 @@ export class Studio {
     private settings: StudioSettings,
     private storage: ProjectStorage
   ) {
-    this.orchestrator = new Orchestrator(repo, (projectId, text) =>
-      this.say(projectId, 'system', text)
+    this.orchestrator = new Orchestrator(
+      repo,
+      (projectId, text) => this.say(projectId, 'system', text),
+      (runId) => {
+        // Finished runs never call the AI again: drop their abort controller.
+        if (['completed', 'failed', 'stopped'].includes(this.repo.getRun(runId).status))
+          this.controllers.delete(runId);
+      }
     );
   }
 
@@ -378,12 +385,15 @@ export class Studio {
         run.budgetMicroUsd,
         floor
       );
-    let reserved = 0;
+    // One reservation at a time: a reused call is refused until the previous one is settled.
+    let reserved: number | null = null;
     let model = '';
     const call: CallOptions & { model?: string } = {
       signal: this.signalFor(runId),
       meter: {
         before: (request) => {
+          if (reserved !== null)
+            throw new Error('Appel facturable refusé : la réservation précédente n’est pas réglée');
           model = request.model;
           const amount = worstCaseMicroUsd(
             this.price(model),
@@ -394,10 +404,13 @@ export class Studio {
           reserved = amount;
         },
         after: (result) => {
+          if (reserved === null) return;
+          const amount = reserved;
+          reserved = null;
           call.model = result?.model;
           this.repo.settleBudget(
             runId,
-            reserved,
+            amount,
             result ? usageMicroUsd(this.price(model), result.usage) : null
           );
         }
@@ -420,9 +433,17 @@ export class Studio {
       microUsd: worstCaseMicroUsd(this.price(ai.model), inputTokens, this.settings.models.maxTokens)
     };
   }
-  /** Explicit increase of a run's envelope, in USD (never lowered). */
+  /** Explicit increase of a run's envelope, in USD (never lowered, never above the ceiling). */
   raiseBudget(runId: string, usd: number) {
+    this.assertBudgetCeiling(usd);
     return this.repo.raiseBudget(runId, usdToMicroUsd(usd));
+  }
+  private assertBudgetCeiling(usd: number) {
+    const max = this.settings.models.maxBudgetUsd;
+    if (usd > max)
+      throw new Error(
+        `Enveloppe refusée : ${usd} $ dépasse le plafond de ${max} $ par production (maxBudgetUsd de config/models.json)`
+      );
   }
   private requireAi() {
     if (!this.ai)
@@ -449,6 +470,7 @@ export class Studio {
     if (!text) throw new Error('Message vide');
     if (!this.repo.getProject(projectId)) throw new Error('Projet introuvable');
     const ai = this.requireAi();
+    this.assertBudgetCeiling(budgetUsd);
     const parent = this.repo.listRevisions(projectId).at(-1) ?? null;
     if (ai.mode !== 'assisted') this.busy(projectId, 'generating');
     this.say(projectId, 'user', text);
@@ -1342,6 +1364,7 @@ export class Studio {
   stopProduction(runId: string) {
     this.orchestrator.stop(runId);
     this.controllers.get(runId)?.abort();
+    this.controllers.delete(runId);
   }
 
   resumeProduction(runId: string) {
@@ -1570,14 +1593,28 @@ export class Studio {
   async review(revision: RevisionRow, videoPath: string): Promise<ReviewFinding[]> {
     const findings: ReviewFinding[] = [];
     if (this.ai?.mode === 'direct') {
-      const call = this.callFor(this.ai, this.runOf(revision));
-      // Frames at each scene's midpoint: what the qualitative reviewer actually receives.
-      const times = revision.storyboard.scenes.map((s) => Math.round(s.start + s.duration / 2));
-      const frames = (await extractFrames(videoPath, times)).map((path, index) => ({
-        path,
-        timestampMs: times[index]
-      }));
-      findings.push(...(await this.ai.reviewFrames(revision.storyboard, frames, call)));
+      // The AI review is optional: a refused or failed call never loses the render (T145).
+      try {
+        const call = this.callFor(this.ai, this.runOf(revision));
+        // Frames at each scene's midpoint: what the qualitative reviewer actually receives.
+        const times = revision.storyboard.scenes.map((s) => Math.round(s.start + s.duration / 2));
+        const frames = (await extractFrames(videoPath, times)).map((path, index) => ({
+          path,
+          timestampMs: times[index]
+        }));
+        findings.push(...(await this.ai.reviewFrames(revision.storyboard, frames, call)));
+      } catch (error) {
+        findings.push({
+          name: 'Revue qualitative',
+          passed: false,
+          severity: 'info',
+          timestampMs: 0,
+          sceneId: null,
+          evidence: `Revue IA non effectuée : ${message(error)}`,
+          recommendation: 'Vérifier visuellement le rendu avant validation.',
+          analysisMode: 'not-performed'
+        });
+      }
     }
     findings.push(...(await this.verifyCorrections(revision, videoPath)));
     return findings;
@@ -2490,6 +2527,7 @@ export class Studio {
   }
 }
 
+const RESULT_MAX_BYTES = 1024 * 1024;
 /** Reads result.json without following links: a regular file of at most 1 MB only. */
 function readResult(dir: string) {
   // O_NONBLOCK: opening a FIFO planted in place of the file must not hang the server.
@@ -2498,10 +2536,17 @@ function readResult(dir: string) {
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK
   );
   try {
-    const info = fstatSync(fd);
-    if (!info.isFile()) throw new Error('result.json n’est pas un fichier régulier');
-    if (info.size > 1024 * 1024) throw new Error('result.json dépasse 1 Mo');
-    return readFileSync(fd, 'utf8');
+    if (!fstatSync(fd).isFile()) throw new Error('result.json n’est pas un fichier régulier');
+    // Bounded read: the file may grow after fstat, so the size is never trusted.
+    const buffer = Buffer.alloc(RESULT_MAX_BYTES + 1);
+    let length = 0;
+    let n = -1;
+    while (n !== 0 && length < buffer.length) {
+      n = readSync(fd, buffer, length, buffer.length - length, null);
+      length += n;
+    }
+    if (length > RESULT_MAX_BYTES) throw new Error('result.json dépasse 1 Mo');
+    return buffer.toString('utf8', 0, length);
   } finally {
     closeSync(fd);
   }

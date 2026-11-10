@@ -83,7 +83,9 @@ export class Orchestrator {
   private driving = new Map<string, Promise<ProductionRun>>();
   constructor(
     private repo: Repository,
-    private log: (projectId: string, text: string) => void
+    private log: (projectId: string, text: string) => void,
+    /** Called whenever a drive of this run stops, whatever its status. */
+    private ended: (runId: string) => void = () => {}
   ) {}
 
   create(input: {
@@ -177,7 +179,10 @@ export class Orchestrator {
   drive(runId: string, runners: Runners): Promise<ProductionRun> {
     const active = this.driving.get(runId);
     if (active) return active;
-    const work = this.drivePhases(runId, runners).finally(() => this.driving.delete(runId));
+    const work = this.drivePhases(runId, runners).finally(() => {
+      this.driving.delete(runId);
+      this.ended(runId);
+    });
     this.driving.set(runId, work);
     return work;
   }

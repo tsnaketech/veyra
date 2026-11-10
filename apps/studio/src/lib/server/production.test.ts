@@ -515,6 +515,10 @@ it('refuses a result.json that is a symbolic link or not a regular file', async 
   rmSync(file);
   mkdirSync(file);
   expect(() => app.importTask(task.id)).toThrow(/fichier régulier/);
+  rmSync(file, { recursive: true });
+  // Bounded read (T145): one byte over 1 MB is refused without trusting fstat.
+  writeFileSync(file, Buffer.alloc(1024 * 1024 + 1, 0x20));
+  expect(() => app.importTask(task.id)).toThrow(/dépasse 1 Mo/);
   expect(repo.getTask(task.id).status).toBe('awaiting_import');
   expect(repo.listRevisions(projectId)).toHaveLength(0);
 });
@@ -876,6 +880,9 @@ it('reserves the worst case before the call, settles the billed cost, and resume
   expect(mock.countTokens).toHaveBeenCalledTimes(1);
   expect(mock.parse).not.toHaveBeenCalled();
   expect(repo.getRun(run.id)).toMatchObject({ spentMicroUsd: 0, reservedMicroUsd: 0 });
+  const controllers = () => (app as unknown as { controllers: Map<string, unknown> }).controllers;
+  // A finished run keeps no abort controller (T145).
+  expect(controllers().size).toBe(0);
 
   expect(() => app.raiseBudget(run.id, 0.1)).toThrow(/augmenter/);
   app.raiseBudget(run.id, 1);
@@ -942,6 +949,7 @@ it('aborts the call in flight when the production is stopped, keeping its reserv
     reservedMicroUsd: 0
   });
   expect(phaseOf(run.id, 'script').error).toMatch(/Appel IA annulé/);
+  expect((app as unknown as { controllers: Map<string, unknown> }).controllers.size).toBe(0);
   state.parse = answer;
   await app.resumeProduction(run.id);
   expect(repo.getRun(run.id)).toMatchObject({
@@ -953,10 +961,97 @@ it('aborts the call in flight when the production is stopped, keeping its reserv
 it('refuses a billable call about a revision that no run produced', async () => {
   const { ai, mock } = billed();
   app = studio(ai);
-  await expect(
-    app.review({ id: 'rev_orphan', projectId, resolvedConfig: {} } as never, '/nonexistent')
-  ).rejects.toThrow(/aucune production/);
+  // The refusal is reported as an unperformed review, never as a lost render (T145).
+  const [finding] = await app.review(
+    { id: 'rev_orphan', projectId, resolvedConfig: {} } as never,
+    '/nonexistent'
+  );
+  expect(finding).toMatchObject({
+    passed: false,
+    analysisMode: 'not-performed',
+    evidence: expect.stringMatching(/non effectuée.*aucune production/)
+  });
   expect(mock.countTokens).not.toHaveBeenCalled();
+});
+
+it('keeps the render when the envelope cannot pay the qualitative review (T145)', async () => {
+  const { ai, mock } = billed();
+  app = studio(ai, true);
+  await app.sendPrompt(projectId, prompt, 0.33);
+  const [run] = repo.listRuns(projectId);
+  // Storyboard paid; the review is refused before counting tokens.
+  expect(mock.parse).toHaveBeenCalledTimes(1);
+  expect(run.status).toBe('waiting');
+  expect(repo.getRun(run.id)).toMatchObject({ spentMicroUsd: callCost, reservedMicroUsd: 0 });
+  const [revision] = repo.listRevisions(projectId);
+  expect(revision.status).toBe('awaiting_approval');
+  expect(revision.videoPath).toEqual(expect.any(String));
+  expect(renders).toBe(1);
+  const report = repo.reportsFor([revision.id])[0];
+  expect(report.checks).toContainEqual(
+    expect.objectContaining({
+      name: 'Revue qualitative',
+      analysisMode: 'not-performed',
+      evidence: expect.stringMatching(/non effectuée : Budget insuffisant/)
+    })
+  );
+  expect(report.checks.some((c) => c.analysisMode === 'deterministic')).toBe(true);
+});
+
+it('refuses a second reservation on one call until the first is settled (T145)', async () => {
+  const { ai } = billed();
+  app = studio(ai);
+  await app.sendPrompt(projectId, prompt, 2);
+  const [run] = repo.listRuns(projectId);
+  const call = (
+    app as unknown as {
+      callFor(ai: Provider, runId: string): { meter: import('@veyra/ai').CallMeter };
+    }
+  ).callFor(ai, run.id);
+  const request = { model: 'claude-opus-5-5', inputTokens: 10, maxTokens: 100 };
+  call.meter.before(request);
+  expect(() => call.meter.before(request)).toThrow(/pas réglée/);
+  call.meter.after(null);
+  call.meter.after(null); // a second settlement is a no-op
+  call.meter.before(request);
+  call.meter.after(null);
+  expect(repo.getRun(run.id).reservedMicroUsd).toBe(0);
+});
+
+it('caps the envelope at maxBudgetUsd (T145)', async () => {
+  const { ai } = billed();
+  app = studio(ai);
+  expect(() => app.sendPrompt(projectId, prompt, 20.01)).toThrow(/plafond de 20 \$/);
+  expect(repo.listRuns(projectId)).toHaveLength(0);
+  await app.sendPrompt(projectId, prompt, 1);
+  const [run] = repo.listRuns(projectId);
+  expect(() => app.raiseBudget(run.id, 21)).toThrow(/plafond/);
+  expect(repo.getRun(run.id).budgetMicroUsd).toBe(1_000_000);
+  app.raiseBudget(run.id, 20);
+});
+
+it('reviews nothing, but keeps the render, when openai-api cannot take images (T145)', async () => {
+  const create = vi.fn(async (body: { model: string }) => ({
+    model: body.model,
+    status: 'completed',
+    output: [],
+    output_text: JSON.stringify(draft),
+    usage: { input_tokens: 900, output_tokens: 1200 }
+  }));
+  const ai = new OpenAiProvider('gpt-test', { responses: { create } } as never);
+  app = studio(ai, true, { 'gpt-test': { ...pricing, source: 'test', checkedAt: '2026-11-10' } });
+  await app.sendPrompt(projectId, prompt, 5);
+  const [run] = repo.listRuns(projectId);
+  expect(run.status).toBe('waiting');
+  expect(create).toHaveBeenCalledTimes(1);
+  const [revision] = repo.listRevisions(projectId);
+  expect(revision.status).toBe('awaiting_approval');
+  expect(repo.reportsFor([revision.id])[0].checks).toContainEqual(
+    expect.objectContaining({
+      analysisMode: 'not-performed',
+      evidence: expect.stringMatching(/n'analyse pas d'images/)
+    })
+  );
 });
 
 it('bills openai-api through the same envelope, and gives codex-chatgpt only the stop signal (T140, T141)', async () => {

@@ -26,6 +26,10 @@ const BILLING_SWITCH_VARS = ["OPENAI_API_KEY", "CODEX_API_KEY"];
 // Linux limits one argv string to 128 KiB (MAX_ARG_STRLEN); stay below it.
 const MAX_PROMPT_BYTES = 120_000;
 
+/**
+ * Early, explicit refusal only. The actual protection is runProcess's childEnv: it never
+ * inherits the server environment and rejects any OPENAI_* or *_KEY variable anyway.
+ */
 function assertSafe(options: Pick<CodexOptions, "command" | "env">) {
   if (!isAbsolute(options.command))
     throw new Error(
@@ -154,7 +158,8 @@ export interface CodexStatus {
 /**
  * Availability of codex-chatgpt. Nothing runs unless the user enabled the provider
  * and configured the binary; then only `codex --version` and `codex login status`
- * (exit code only: no account detail is read or kept, no credential file is opened).
+ * (exit code and whether it mentions ChatGPT: no account detail is kept, no credential
+ * file is opened).
  */
 export async function checkCodexChatgpt(options: {
   enabled: boolean;
@@ -193,14 +198,19 @@ export async function checkCodexChatgpt(options: {
   } catch {
     return off(`Codex introuvable ou inutilisable (${command}).`);
   }
+  let chatgpt: boolean;
   try {
-    await probe(["login", "status"]);
+    const { stdout, stderr } = await probe(["login", "status"]);
+    // Only this boolean is kept, never the output (it may name the account or a key).
+    chatgpt = /chatgpt/i.test(`${stdout}\n${stderr}`);
   } catch {
     return {
       ...off("Codex n'est pas connecté : lancer `codex login`."),
       version,
     };
   }
+  // An API-key login would be signed out by forced_login_method: never use it.
+  if (!chatgpt) return { ...off("Connexion ChatGPT non confirmée."), version };
   return {
     available: true,
     reason:

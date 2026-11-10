@@ -44,14 +44,14 @@ function build(id: ProviderId | null): Provider | null {
   providerError = null;
   if (!id) return null;
   try {
-    const { models, maxTokens, callTimeoutMs, openai } = settings.models;
+    const { models, maxTokens, callTimeoutMs, openai, baseUrls } = settings.models;
     // Keys come from $app/env/private only and go straight to the SDK clients.
     return createProvider(
       id,
       { ANTHROPIC_API_KEY, OPENAI_API_KEY },
       models[0],
       { maxTokens, timeoutMs: callTimeoutMs },
-      { openaiModel: openai.model, priced, codex: codexOptions() }
+      { openaiModel: openai.model, priced, codex: codexOptions(), baseUrls }
     );
   } catch (error) {
     // Unavailable stays unavailable: no other provider is substituted.

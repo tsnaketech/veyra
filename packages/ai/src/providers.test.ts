@@ -17,6 +17,7 @@ import {
   checkCodexChatgpt,
   createProvider,
   providerCapabilities,
+  reviewSchema,
   storyboardDraftSchema,
   type CallMeter,
 } from "./index";
@@ -134,14 +135,67 @@ describe("OpenAiProvider (simulated client, no network)", () => {
     );
     const { m, log } = meter();
     await expect(
-      ai.reviewFrames(
-        { width: 10, height: 10, fps: 30, scenes: [] } as never,
-        [{ timestampMs: 0, path: "/nonexistent.png" }],
+      ai.ask(
+        reviewSchema,
+        "s",
+        "t",
+        [{ label: "f", path: "/nonexistent.png" }],
         { meter: m },
       ),
     ).rejects.toThrow(/images refusées/);
     expect(create).not.toHaveBeenCalled();
     expect(log.before).toEqual([]);
+  });
+  it("never sends images without the declared capability, and says so (T145)", async () => {
+    const { client, create } = openai(() =>
+      completed(
+        JSON.stringify({
+          summary: "plan",
+          changes: [],
+          conflicts: [],
+          audioChanges: [],
+        }),
+      ),
+    );
+    const { m, log } = meter();
+    const ai = new OpenAiProvider("m-1", client);
+    const storyboard = { width: 10, height: 10, fps: 30, scenes: [] } as never;
+    const [finding] = await ai.reviewFrames(
+      storyboard,
+      [{ timestampMs: 0, path: "/nonexistent.png" }],
+      { meter: m },
+    );
+    expect(finding).toMatchObject({
+      passed: false,
+      analysisMode: "not-performed",
+      evidence: expect.stringMatching(/non effectuée/),
+    });
+    expect(create).not.toHaveBeenCalled();
+    const plan = await ai.planRevision(
+      storyboard,
+      [
+        {
+          id: "fb_1",
+          text: "x",
+          timestampMs: 0,
+          sceneId: null,
+          capturePath: "/nonexistent.png",
+        },
+      ],
+      null,
+      { meter: m },
+    );
+    expect(plan.summary).toMatch(/texte seul/);
+    const body = (
+      create.mock.calls[0] as unknown as [
+        { input: { content: { type: string; text?: string }[] }[] },
+      ]
+    )[0];
+    expect(body.input[0].content.map((part) => part.type)).toEqual([
+      "input_text",
+    ]);
+    expect(body.input[0].content[0].text).toContain('"hasImage":false');
+    expect(log.after).toHaveLength(1);
   });
   it("sends images as input_image and counts them with the configured bound", async () => {
     const dir = mkdtempSync(join(tmpdir(), "veyra-oai-"));
@@ -153,11 +207,9 @@ describe("OpenAiProvider (simulated client, no network)", () => {
       );
       const { m, log } = meter();
       const ai = new OpenAiProvider("m-1", client, undefined, 5000);
-      await ai.reviewFrames(
-        { width: 10, height: 10, fps: 30, scenes: [] } as never,
-        [{ timestampMs: 0, path: png }],
-        { meter: m },
-      );
+      await ai.ask(reviewSchema, "s", "t", [{ label: "f", path: png }], {
+        meter: m,
+      });
       const body = (
         create.mock.calls[0] as unknown as [
           { input: { content: { type: string }[] }[] },
@@ -198,7 +250,9 @@ describe("OpenAiProvider (simulated client, no network)", () => {
 
 describe("CodexExecProvider (fake codex binary, nothing real is launched)", () => {
   // A real executable standing in for `codex`: behaviour chosen by a file in CODEX_HOME.
-  function fakeCodex(mode: "valid" | "invalid" | "sleep" | "logged-out") {
+  function fakeCodex(
+    mode: "valid" | "invalid" | "sleep" | "logged-out" | "api-key",
+  ) {
     const dir = mkdtempSync(join(tmpdir(), "veyra-codex-test-"));
     const bin = join(dir, "codex");
     writeFileSync(join(dir, "mode"), mode);
@@ -212,7 +266,11 @@ const args = process.argv.slice(2);
 fs.writeFileSync(home + "/call.json", JSON.stringify({ args, env: process.env, cwd: process.cwd(), cwdFiles: fs.readdirSync(process.cwd()) }));
 fs.writeFileSync(home + "/pid", String(process.pid));
 if (args[0] === "--version") { process.stdout.write("codex-cli 0.0.0-fake\\n"); process.exit(0); }
-if (args[0] === "login") process.exit(mode === "logged-out" ? 1 : 0);
+if (args[0] === "login") {
+  if (mode === "logged-out") process.exit(1);
+  process.stderr.write(mode === "api-key" ? "Logged in using an API key - sk-dummy\\n" : "Logged in using ChatGPT\\n");
+  process.exit(0);
+}
 if (mode === "sleep") setTimeout(() => {}, 60000);
 else {
   const out = args[args.indexOf("--output-last-message") + 1];
@@ -349,6 +407,18 @@ else {
       expect(out.call().args).toEqual(["login", "status"]);
     } finally {
       out.cleanup();
+    }
+    // Signed in with a key: forced_login_method would sign it out, so not available.
+    const key = fakeCodex("api-key");
+    try {
+      const status = await checkCodexChatgpt({ enabled: true, ...key.options });
+      expect(status).toMatchObject({
+        available: false,
+        reason: "Connexion ChatGPT non confirmée.",
+      });
+      expect(JSON.stringify(status)).not.toContain("sk-dummy");
+    } finally {
+      key.cleanup();
     }
     const ok = fakeCodex("valid");
     try {

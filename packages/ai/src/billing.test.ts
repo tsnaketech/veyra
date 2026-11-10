@@ -84,6 +84,75 @@ it("builds the client from the explicit key only, without SDK retries", () => {
   expect(ai.model).toBe("claude-test");
 });
 
+it("ignores ANTHROPIC_BASE_URL and OPENAI_BASE_URL from the environment (T145)", () => {
+  vi.stubEnv("ANTHROPIC_BASE_URL", "https://attacker.example");
+  vi.stubEnv("OPENAI_BASE_URL", "https://attacker.example/v1");
+  const client = (ai: unknown) =>
+    (ai as { client: { baseURL: string } }).client.baseURL;
+  expect(
+    client(createProvider("anthropic-api", { ANTHROPIC_API_KEY: "k" }, "m")),
+  ).toBe("https://api.anthropic.com");
+  const more = { openaiModel: "m", priced: () => true };
+  expect(
+    client(
+      createProvider(
+        "openai-api",
+        { OPENAI_API_KEY: "k" },
+        "m",
+        undefined,
+        more,
+      ),
+    ),
+  ).toBe("https://api.openai.com/v1");
+  const baseUrls = {
+    anthropic: "https://proxy.example",
+    openai: "https://proxy.example/v1",
+  };
+  expect(
+    client(
+      createProvider(
+        "anthropic-api",
+        { ANTHROPIC_API_KEY: "k" },
+        "m",
+        undefined,
+        {
+          baseUrls,
+        },
+      ),
+    ),
+  ).toBe(baseUrls.anthropic);
+});
+
+it("keeps the original error or answer when the settlement itself fails (T145)", async () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  const failing: CallMeter = {
+    before: () => {},
+    after: () => {
+      throw new Error("Réservation inconnue");
+    },
+  };
+  const ok = new AnthropicProvider("claude-test", fakeClient().client, limits);
+  await expect(story(ok, { meter: failing })).resolves.toMatchObject({
+    title: "T",
+  });
+  const refused = new AnthropicProvider(
+    "claude-test",
+    fakeClient(async () => ({
+      model: "claude-test",
+      usage,
+      stop_reason: "refusal",
+      parsed_output: null,
+    })).client,
+    limits,
+  );
+  await expect(story(refused, { meter: failing })).rejects.toThrow(/refusé/);
+  expect(error).toHaveBeenCalledTimes(2);
+  expect(JSON.stringify(error.mock.calls)).not.toMatch(
+    /Réservation inconnue|"p"/,
+  );
+  error.mockRestore();
+});
+
 it("refuses a billable call without a meter and sends nothing", async () => {
   const { client, mock } = fakeClient();
   const ai = new AnthropicProvider("claude-test", client, limits);

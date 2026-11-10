@@ -349,7 +349,8 @@ export class RenderJobRunner {
           analysisMode: finding.analysisMode
         });
       const issues = findings
-        .filter((finding) => !finding.passed)
+        // An unperformed review is reported as a check, not as a defect of the video.
+        .filter((finding) => !finding.passed && finding.analysisMode !== 'not-performed')
         .map((finding) => ({
           id: newId('qis'),
           sceneId: revision.storyboard.scenes.some((scene) => scene.id === finding.sceneId)

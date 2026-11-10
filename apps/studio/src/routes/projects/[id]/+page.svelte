@@ -250,6 +250,7 @@
             name="budgetUsd"
             type="number"
             min="0"
+            max={data.maxBudgetUsd}
             step="0.01"
             value="0"
             class="field"
@@ -259,7 +260,7 @@
             {#if data.estimate}Pire cas d'un appel storyboard ({data.estimate.model}) : {formatUsd(
                 data.estimate.microUsd
               )} $, calculé depuis la grille tarifaire locale.{:else}Modèle sans tarif local :
-              appels refusés.{/if} 0 = aucun appel facturable.
+              appels refusés.{/if} 0 = aucun appel facturable ; plafond : {data.maxBudgetUsd} $.
           </p>
         {/if}
         <button class="btn btn-primary w-full" disabled={!!data.activity || data.aiKind === null}
@@ -408,6 +409,7 @@
       run={data.runs.at(-1) ?? null}
       phases={data.phases}
       billable={data.aiKind === 'anthropic-api' || data.aiKind === 'openai-api'}
+      maxBudgetUsd={data.maxBudgetUsd}
     />
     <AudioPanel
       assets={data.assets}

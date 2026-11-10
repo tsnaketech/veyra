@@ -6,7 +6,12 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = ({ params }) => {
   const snapshot = studio.snapshot(params.id);
   if (!snapshot) error(404, 'Projet introuvable');
-  return { ...snapshot, aiKind: studio.aiKind, estimate: studio.storyboardEstimate() };
+  return {
+    ...snapshot,
+    aiKind: studio.aiKind,
+    estimate: studio.storyboardEstimate(),
+    maxBudgetUsd: settings.models.maxBudgetUsd
+  };
 };
 
 const str = (data: FormData, key: string) => String(data.get(key) ?? '');

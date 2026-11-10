@@ -361,9 +361,16 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   `revisionId` est cette révision) ; sans run, il est refusé explicitement.
   Dépassement : phase en échec avec le message de `BudgetExceededError`, sans nouvel
   essai ; « Reprendre » fonctionne après augmentation (`raiseBudget`, jamais à la
-  baisse). « Arrêter » annule l'appel en cours (un `AbortController` par run).
-  Client SDK : clé passée explicitement depuis `$app/env/private` (le SDK ne lit pas
-  `process.env`), `maxRetries: 0` (un nouvel essai automatique pourrait facturer deux
+  baisse, jamais au-delà de `maxBudgetUsd` de `config/models.json`, 20 $ par défaut).
+  Exception (T145) : la revue qualitative d'un rendu est optionnelle ; un refus de
+  l'enveloppe ou toute erreur de son appel la marque « Revue IA non effectuée :
+  <raison> » (`not-performed`), sans faire échouer le rendu : MP4 et QA déterministe
+  conservés, révision en attente de validation humaine.
+  « Arrêter » annule l'appel en cours (un `AbortController` par run, retiré quand le
+  run est terminé, en échec ou arrêté).
+  Client SDK : clé et `baseURL` passés explicitement (clé depuis `$app/env/private`,
+  point d'accès depuis `baseUrls` de `config/models.json` ; le SDK ne lit ni la clé ni
+  `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` dans `process.env`), `maxRetries: 0` (un nouvel essai automatique pourrait facturer deux
   fois), délai par appel `callTimeoutMs` (120 s). Le repli serveur
   (`server-side-fallback`) est retiré : la réservation est calculée pour le modèle
   demandé seulement ; aucun repli de fournisseur non plus (D011).
@@ -373,7 +380,9 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
 - Conséquences et limites : le coût n'est exact que si la grille locale
   (`pricing` de `config/models.json`, source et date de vérification affichées dans
   `/settings`) suit la page Pricing d'Anthropic ; un modèle sans tarif est refusé.
-  Une réservation en cours lors d'un arrêt brutal reste réservée. Le pire cas du
+  Une réservation en cours lors d'un arrêt brutal reste réservée, de même qu'une
+  réservation dont le règlement échoue (journalisé sans contenu, l'erreur ou la
+  réponse d'origine est conservée). Le pire cas du
   formulaire de prompt est une estimation locale (un jeton par octet, prompt ≤ 4 Ko).
   Remplace, pour les appels du fournisseur, la confirmation « de cette action » de
   [DIRECTOR-TOOL-LOOP § 4](ai/DIRECTOR-TOOL-LOOP.md#4-bornes-et-garde-fous) : l'enveloppe

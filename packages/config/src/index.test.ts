@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { readFileSync } from "node:fs";
 import { ConfigLoader, ConfigConflictError, configSchemas } from "./index";
 const schema = z.object({
   schemaVersion: z.literal(1),
@@ -146,4 +147,26 @@ it.each(configs)("loads repository config %s", (key, filename) => {
   expect(JSON.stringify(loaded.redacted())).not.toContain(
     "test-only-placeholder",
   );
+});
+
+it("bounds the spend envelope and accepts only HTTPS API endpoints (T145)", () => {
+  const models = JSON.parse(
+    readFileSync(
+      new URL("../../../config/models.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const parse = (extra: object) =>
+    configSchemas.models.safeParse({ ...models, ...extra }).success;
+  expect(configSchemas.models.parse(models)).toMatchObject({
+    maxBudgetUsd: 20,
+    baseUrls: { anthropic: "https://api.anthropic.com" },
+  });
+  expect(parse({ maxBudgetUsd: 0 })).toBe(false);
+  expect(parse({ maxBudgetUsd: 1e6 })).toBe(false);
+  expect(
+    parse({
+      baseUrls: { ...models.baseUrls, openai: "http://proxy.local/v1" },
+    }),
+  ).toBe(false);
 });
