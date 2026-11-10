@@ -89,3 +89,13 @@ indépendante faites, défauts confirmés corrigés. Architecture de la boucle d
 et des compositions : docs/ai/DIRECTOR-TOOL-LOOP.md, CREATIVE-COMPOSITION.md, D021
 proposée. Prochaine étape : T128 (EditOperation), puis T129a (moteur de pas sans IA).
 
+
+2026-11-10 — Intégration des fournisseurs IA (T137–T145, commits 958e29f..2cab916) :
+mode assisté à import automatique (D010 inchangée), enveloppe budgétaire stricte par
+production pour anthropic-api et openai-api (D022), couche de capacités et /settings en
+cartes, openai-api préparé (indisponible sans tarif sourcé), codex-chatgpt préparé et
+désactivé (ambiguïté contractuelle acceptée par l'utilisateur, D023). Recherches :
+docs/research/AI-PROVIDER-INTEGRATIONS.md, OPENAI-CODEX-INTEGRATIONS.md,
+LOCAL-AI-AND-CHATGPT-APPS.md. Revues : docs/reviews/2026-11-10-provider-integration.md.
+À revérifier : tarifs (grille locale), comportement réel de `codex exec` et de
+`codex login status` à l'installation. Prochaine étape : T128 puis T129a.
