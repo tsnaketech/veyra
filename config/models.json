@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "defaultProvider": null,
   "models": ["claude-opus-5-5", "claude-sonnet-5-5"],
+  "pricing": {
+    "claude-opus-5-5": {
+      "inputUsdPerMTok": 4.0,
+      "outputUsdPerMTok": 20.0,
+      "source": "skill claude-api (liste cachée du 2026-10-06), à revérifier sur la page Pricing d'Anthropic",
+      "checkedAt": "2026-11-04"
+    },
+    "claude-sonnet-5-5": {
+      "inputUsdPerMTok": 2.0,
+      "outputUsdPerMTok": 10.0,
+      "source": "skill claude-api (liste cachée du 2026-10-06), à revérifier sur la page Pricing d'Anthropic",
+      "checkedAt": "2026-11-04"
+    }
+  },
+  "maxTokens": 16000,
+  "callTimeoutMs": 120000,
   "apiKeyEnv": "ANTHROPIC_API_KEY",
   "claudeSubscribe": { "mode": "assisted", "command": "claude" },
   "fake": { "provider": "fake", "usage": "test-only" }

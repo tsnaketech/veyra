@@ -290,6 +290,21 @@ export const configSchemas = {
       .nullable()
       .default(null),
     models: z.array(z.string()).min(1),
+    // Local price list (D022): a model without an entry is refused before any call.
+    pricing: z
+      .record(
+        z.string(),
+        z.object({
+          inputUsdPerMTok: z.number().positive(),
+          outputUsdPerMTok: z.number().positive(),
+          source: z.string().min(1),
+          checkedAt: z.iso.date(),
+        }),
+      )
+      .default({}),
+    // Output ceiling sent with, and reserved for, every billable call.
+    maxTokens: z.number().int().positive().max(128000).default(16000),
+    callTimeoutMs: z.number().int().positive().max(600000).default(120000),
     // Name of the variable holding the key: the secret itself never enters config.
     apiKeyEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
     // Assisted only: Veyra exports requests, the user runs Claude Code, Veyra imports results.

@@ -53,11 +53,17 @@ import {
   type CaptionWord,
   type Storyboard,
   storyboardSchema,
-  voiceResultSchema
+  voiceResultSchema,
+  BudgetExceededError,
+  usageMicroUsd,
+  usdToMicroUsd,
+  worstCaseMicroUsd
 } from '@veyra/schemas';
 import { captionBandRect, captionMetrics } from '@veyra/hyperframes-adapter';
 import {
+  type CallOptions,
   AssistedProvider,
+  instructions,
   ProviderUnavailableError,
   applyProposal,
   sanitizeReview,
@@ -107,7 +113,7 @@ const message = (error: unknown) => (error instanceof Error ? error.message : 'e
 const endOf = (revision: Pick<VideoRevision, 'storyboard'>) =>
   revision.storyboard.scenes.reduce((max, s) => Math.max(max, s.start + s.duration), 0);
 const originOf = (revision: Pick<RevisionRow, 'resolvedConfig'>) =>
-  (revision.resolvedConfig.origin ?? {}) as { planId?: string; batchId?: string };
+  (revision.resolvedConfig.origin ?? {}) as { planId?: string; batchId?: string; runId?: string };
 const verdictLabels: Record<CorrectionVerdict, string> = {
   applied: 'appliquée',
   partially_applied: 'partiellement appliquée',
@@ -312,10 +318,105 @@ export class Studio {
     });
     this.repo.touchProject(projectId);
   }
-  private label(text: string, kind = this.ai?.kind) {
+  private label(text: string, kind = this.ai?.kind, model?: string | null) {
     if (kind === 'fake') return `[Simulé] ${text}`;
     if (kind === 'claude-subscribe') return `[Claude Code — mode assisté] ${text}`;
+    if (kind === 'anthropic-api' && model) return `[API Anthropic — ${model}] ${text}`;
     return text;
+  }
+
+  // --- Spend envelope (D022): every billable call goes through a run and its envelope.
+
+  private controllers = new Map<string, AbortController>();
+  /** Abort signal of a run's AI calls; « Arrêter » aborts the call in flight. */
+  private signalFor(runId: string) {
+    let controller = this.controllers.get(runId);
+    if (!controller || controller.signal.aborted) {
+      controller = new AbortController();
+      this.controllers.set(runId, controller);
+    }
+    return controller.signal;
+  }
+  /** Run that produced a revision: its envelope pays the calls made about it. */
+  private runOf(revision: Pick<RevisionRow, 'id' | 'projectId' | 'resolvedConfig'>) {
+    return (
+      originOf(revision).runId ??
+      this.repo.listRuns(revision.projectId).find((r) => r.revisionId === revision.id)?.id ??
+      null
+    );
+  }
+  private price(model: string) {
+    const row = this.settings.models.pricing[model];
+    if (!row) throw new Error(`Appel facturable refusé : modèle ${model} sans tarif local`);
+    return row;
+  }
+  /**
+   * Options of one AI call. A billable provider needs a run: the worst case is reserved
+   * on its envelope before the request and settled with the billed usage after it.
+   * Simulated providers cost nothing and get no meter.
+   */
+  private callFor(ai: Provider, runId: string | null): CallOptions & { model?: string } {
+    if (ai.kind !== 'anthropic-api') return {};
+    if (!runId)
+      throw new Error(
+        'Appel facturable refusé : aucune production (et donc aucune enveloppe) ne couvre cette révision'
+      );
+    // Cheapest possible call (output ceiling only): refused here, before even counting tokens.
+    const run = this.repo.getRun(runId);
+    const floor = worstCaseMicroUsd(this.price(ai.model ?? ''), 0, this.settings.models.maxTokens);
+    if (run.spentMicroUsd + run.reservedMicroUsd + floor > run.budgetMicroUsd)
+      throw new BudgetExceededError(
+        run.spentMicroUsd,
+        run.reservedMicroUsd,
+        run.budgetMicroUsd,
+        floor
+      );
+    let reserved = 0;
+    let model = '';
+    const call: CallOptions & { model?: string } = {
+      signal: this.signalFor(runId),
+      meter: {
+        before: (request) => {
+          model = request.model;
+          const amount = worstCaseMicroUsd(
+            this.price(model),
+            request.inputTokens,
+            request.maxTokens
+          );
+          this.repo.reserveBudget(runId, amount);
+          reserved = amount;
+        },
+        after: (result) => {
+          call.model = result?.model;
+          this.repo.settleBudget(
+            runId,
+            reserved,
+            result ? usageMicroUsd(this.price(model), result.usage) : null
+          );
+        }
+      }
+    };
+    return call;
+  }
+  /** Worst case of one storyboard call, for the prompt form; null without a billable provider. */
+  storyboardEstimate() {
+    const ai = this.ai;
+    if (ai?.kind !== 'anthropic-api' || !ai.model || !this.settings.models.pricing[ai.model])
+      return null;
+    const system = instructions.storyboard({
+      targetDurationMs: 20000,
+      styleInstructions: this.settings.style.instructions
+    });
+    // Upper bound without a network call: at most one token per byte, prompt up to 4 kB.
+    const inputTokens = Buffer.byteLength(system) + 4096;
+    return {
+      model: ai.model,
+      microUsd: worstCaseMicroUsd(this.price(ai.model), inputTokens, this.settings.models.maxTokens)
+    };
+  }
+  /** Explicit increase of a run's envelope, in USD (never lowered). */
+  raiseBudget(runId: string, usd: number) {
+    return this.repo.raiseBudget(runId, usdToMicroUsd(usd));
   }
   private requireAi() {
     if (!this.ai)
@@ -337,7 +438,7 @@ export class Studio {
       .finally(() => this.activity.delete(projectId));
   }
 
-  sendPrompt(projectId: string, prompt: string) {
+  sendPrompt(projectId: string, prompt: string, budgetUsd = 0) {
     const text = prompt.trim();
     if (!text) throw new Error('Message vide');
     if (!this.repo.getProject(projectId)) throw new Error('Projet introuvable');
@@ -355,6 +456,7 @@ export class Studio {
       sourceRevisionId: parent?.id ?? null,
       done: { plan: { kind: 'done', payload: plan, provider: 'rules' } }
     });
+    if (budgetUsd > 0) this.repo.raiseBudget(run.id, usdToMicroUsd(budgetUsd));
     return this.background(projectId, async () => {
       await this.orchestrator.drive(run.id, this.productionRunners(run));
     });
@@ -490,9 +592,10 @@ export class Studio {
         }))
       };
     };
-    const scriptProvider = () =>
-      this.orchestrator.phases(run.id).find((p) => p.phase === 'script')?.result
-        ?.provider as Provider['kind'];
+    const scriptResult = () =>
+      this.orchestrator.phases(run.id).find((p) => p.phase === 'script')?.result as
+        { provider: Provider['kind']; provenance?: { model?: string | null } } | undefined;
+    const scriptProvider = () => scriptResult()?.provider as Provider['kind'];
     return {
       ...this.renderRunners(run),
       script: {
@@ -519,10 +622,12 @@ export class Studio {
             this.say(projectId, 'assistant', this.assistedInstructions(task.dir, 'storyboard'));
             return { kind: 'waiting' };
           }
+          const call = this.callFor(ai, run.id);
           return {
             kind: 'done',
-            payload: await ai.generateStoryboard(brief.prompt, options),
-            provider: ai.kind
+            payload: await ai.generateStoryboard(brief.prompt, options, call),
+            provider: ai.kind,
+            model: call.model ?? null
           };
         }
       },
@@ -550,7 +655,8 @@ export class Studio {
                 (kind === 'fake' && storyboard.scenes.some((s) => s.component)
                   ? "\nParamètres d'exemple (fonctionnalités, chiffres) à remplacer par les vôtres."
                   : ''),
-              kind
+              kind,
+              scriptResult()?.provenance?.model
             )
           );
           return { kind: 'done', payload: { storyboard, registryVersion }, provider: 'rules' };
@@ -929,20 +1035,33 @@ export class Studio {
       }
       return Promise.resolve();
     }
+    // Outside any run: the envelope of the run that produced the source revision pays.
+    let call: ReturnType<Studio['callFor']>;
+    try {
+      call = this.callFor(ai, this.runOf(revision));
+    } catch (error) {
+      fail(error);
+      return Promise.resolve();
+    }
     this.busy(revision.projectId, 'planning');
     this.repo.updateBatch(batchId, { status: 'submitted' });
     this.markItems(batch, 'submitted');
     this.say(revision.projectId, 'system', 'Analyse du lot en cours…');
     return ai
-      .planRevision(revision.storyboard, inputs, revision.audio)
+      .planRevision(revision.storyboard, inputs, revision.audio, call)
       .then((proposal) => {
-        this.savePlan(batchId, proposal, ai.kind);
+        this.savePlan(batchId, proposal, ai.kind, call.model);
       })
       .catch(fail)
       .finally(() => this.activity.delete(revision.projectId));
   }
 
-  private savePlan(batchId: string, proposal: RevisionProposal, kind: Provider['kind']) {
+  private savePlan(
+    batchId: string,
+    proposal: RevisionProposal,
+    kind: Provider['kind'],
+    model?: string
+  ) {
     const batch = this.repo.getBatch(batchId);
     const revision = this.repo.getRevision(batch.sourceRevisionId);
     const known = new Set(batch.feedbackIds);
@@ -986,7 +1105,8 @@ export class Studio {
             ? `\nConflits à arbitrer :\n${plan.conflicts.map((c) => `- ${c.description}`).join('\n')}`
             : '') +
           '\nVérifiez puis appliquez ou rejetez le plan.',
-        kind
+        kind,
+        model
       )
     );
     return plan;
@@ -1147,13 +1267,16 @@ export class Studio {
                   ?.storyboard ??
                 source.storyboard,
               source.id,
-              plan
-                ? batch
-                  ? { planId: plan.id, batchId: batch.id }
-                  : { planId: plan.id }
-                : edit
-                  ? { edit: edit.edit }
-                  : { audioRevision: 'manual' },
+              {
+                ...(plan
+                  ? batch
+                    ? { planId: plan.id, batchId: batch.id }
+                    : { planId: plan.id }
+                  : edit
+                    ? { edit: edit.edit }
+                    : { audioRevision: 'manual' }),
+                runId: run.id
+              },
               batch?.provider ?? String(source.resolvedConfig.aiProvider ?? 'none'),
               edit ? edit.audio : ((inputs.audio as AudioComposition) ?? source.audio),
               edit ? edit.captions : source.captions,
@@ -1212,6 +1335,7 @@ export class Studio {
 
   stopProduction(runId: string) {
     this.orchestrator.stop(runId);
+    this.controllers.get(runId)?.abort();
   }
 
   resumeProduction(runId: string) {
@@ -1440,13 +1564,14 @@ export class Studio {
   async review(revision: RevisionRow, videoPath: string): Promise<ReviewFinding[]> {
     const findings: ReviewFinding[] = [];
     if (this.ai?.mode === 'direct') {
+      const call = this.callFor(this.ai, this.runOf(revision));
       // Frames at each scene's midpoint: what the qualitative reviewer actually receives.
       const times = revision.storyboard.scenes.map((s) => Math.round(s.start + s.duration / 2));
       const frames = (await extractFrames(videoPath, times)).map((path, index) => ({
         path,
         timestampMs: times[index]
       }));
-      findings.push(...(await this.ai.reviewFrames(revision.storyboard, frames)));
+      findings.push(...(await this.ai.reviewFrames(revision.storyboard, frames, call)));
     }
     findings.push(...(await this.verifyCorrections(revision, videoPath)));
     return findings;
@@ -1726,8 +1851,15 @@ export class Studio {
       return this.repo.getEvaluation(row.id);
     }
     try {
-      const { review, analysisMode } = await ai.qualityEvaluator().evaluate(pack);
-      return this.completeEvaluation(row.id, sanitizeReview(review, pack), analysisMode);
+      // Outside the run's phases: the envelope of the run that produced the revision pays.
+      const call = this.callFor(ai, this.runOf(revision));
+      const { review, analysisMode } = await ai.qualityEvaluator(call).evaluate(pack);
+      return this.completeEvaluation(
+        row.id,
+        sanitizeReview(review, pack),
+        analysisMode,
+        call.model
+      );
     } catch (error) {
       return this.endEvaluation(
         row.id,
@@ -1747,7 +1879,12 @@ export class Studio {
     return row;
   }
 
-  private completeEvaluation(id: string, review: ExpertReview, mode: EvaluationMode) {
+  private completeEvaluation(
+    id: string,
+    review: ExpertReview,
+    mode: EvaluationMode,
+    model?: string
+  ) {
     const row = this.repo.updateEvaluation(id, {
       status: 'completed',
       analysisMode: mode,
@@ -1770,7 +1907,8 @@ export class Studio {
             .join(', ') +
           (regressions ? ` ; ${regressions} régression(s) signalée(s)` : '') +
           '. Avis consultatif : la validation reste la vôtre.',
-        row.evaluator ?? undefined
+        row.evaluator ?? undefined,
+        model
       )
     );
     return row;

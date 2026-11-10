@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { providerIds, type ProviderId } from '@veyra/ai';
 import {
+  apiKeyConfigured,
   chooseProvider,
   claudeSubscribeStatus,
   providerError,
@@ -21,7 +22,9 @@ export const load: PageServerLoad = async () => ({
     models: settings.models.models,
     // Only presence is exposed, never the value.
     apiKeyEnv: settings.models.apiKeyEnv,
-    apiKeyConfigured: Boolean(process.env[settings.models.apiKeyEnv]),
+    apiKeyConfigured,
+    // Local price list used for the spend envelope (D022).
+    pricing: settings.models.pricing,
     // Local read-only check through Claude Code itself; no identity is returned.
     claude: await claudeSubscribeStatus()
   },

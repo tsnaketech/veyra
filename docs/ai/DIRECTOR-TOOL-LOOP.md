@@ -76,7 +76,7 @@ le raisonnement complet du modèle.
 | Temps mural | 30 min par run ; délai propre à chaque outil | `timeout`, observation renvoyée |
 | CPU, mémoire, sorties | limites de l'exécuteur (prlimit, bwrap) | `failed` |
 | Échecs consécutifs | 3 ; appel identique en échec répété 2 fois | `stop` avec diagnostic |
-| Coût en dollars | **0 par défaut** | toute action `billable` demande une confirmation **de cette action** |
+| Coût en dollars | **0 par défaut** ; enveloppe par run (D022, T138) | appel IA : refus **avant** l'appel au-delà de l'enveloppe ; autre action `billable` : confirmation **de cette action** |
 
 Permissions par classe (TOOL-REGISTRY § 4) : `read-only` et `local-compute` exécutés
 directement ; `writes-revision-artefacts` uniquement dans la révision brouillon du run ;

@@ -38,6 +38,21 @@ des politiques pnpm a été refaite par un `pnpm install` normal le 2026-10-28.
 Sans `VEYRA_AI_PROVIDER` ni choix enregistré, le Studio démarre avec « IA non
 configurée ». Une clé seule n'active plus l'API : choisir `anthropic-api` (D011).
 
+### Autoriser une enveloppe de dépense (`anthropic-api`, D022)
+
+Aucun appel facturable n'est fait sans enveloppe (0 par défaut).
+
+1. Vérifier dans `/settings` le modèle utilisé, son tarif et la date de vérification
+   de la grille (`pricing` de `config/models.json`, à comparer à la page Pricing
+   d'Anthropic avant usage).
+2. Dans la page projet, saisir « Enveloppe autorisée (USD) » avec le prompt ; le
+   formulaire indique le pire cas estimé d'un appel storyboard.
+3. Le panneau Production affiche autorisé / dépensé / réservé. En cas de « Budget
+   insuffisant », saisir une enveloppe plus grande (« Augmenter »), puis
+   « Reprendre ». Plans de correction, revue et expertise QA d'une révision sont
+   imputés au run qui l'a produite. « Arrêter » annule l'appel en cours (sa
+   réservation reste comptée comme dépensée).
+
 ### Utiliser l'abonnement Claude (`claude-subscribe`, mode assisté)
 
 1. Installer Claude Code et s'y connecter avec son compte Claude : `claude auth login`.

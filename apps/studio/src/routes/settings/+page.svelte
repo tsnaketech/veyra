@@ -91,7 +91,18 @@
       {data.engine.cliVersion} · qualité {data.engine.quality} · {data.engine.fps} i/s
     </dd>
     <dt class="text-muted">Modèles (anthropic-api)</dt>
-    <dd>{data.ai.models.join(', ')}</dd>
+    <dd>
+      <p>Modèle utilisé : {data.ai.models[0]} (configurés : {data.ai.models.join(', ')})</p>
+      {#each data.ai.models as model (model)}
+        {@const price = data.ai.pricing[model]}
+        <p class="text-xs text-muted">
+          {model} :
+          {#if price}{price.inputUsdPerMTok} $ / Mjetons en entrée, {price.outputUsdPerMTok} $ / Mjetons
+            en sortie — source : {price.source}, vérifié le {price.checkedAt}
+          {:else}<span class="text-bad">aucun tarif local : appels refusés</span>{/if}
+        </p>
+      {/each}
+    </dd>
     <dt class="text-muted">Clé API</dt>
     <dd>
       {data.ai.apiKeyEnv} : {data.ai.apiKeyConfigured ? 'définie (valeur masquée)' : 'non définie'}

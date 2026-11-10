@@ -29,7 +29,12 @@ function build(id: ProviderId | null): Provider | null {
   providerError = null;
   if (!id) return null;
   try {
-    return createProvider(id, { ANTHROPIC_API_KEY }, settings.models.models[0]);
+    const { models, maxTokens, callTimeoutMs } = settings.models;
+    // The key comes from $app/env/private only and goes straight to the SDK client.
+    return createProvider(id, { ANTHROPIC_API_KEY }, models[0], {
+      maxTokens,
+      timeoutMs: callTimeoutMs
+    });
   } catch (error) {
     // Unavailable stays unavailable: no other provider is substituted.
     providerError = error instanceof Error ? error.message : String(error);
@@ -37,6 +42,8 @@ function build(id: ProviderId | null): Provider | null {
   }
 }
 export const selectedProviderId = () => selectedProvider();
+/** Presence only, from the same source as the provider; never the value. */
+export const apiKeyConfigured = Boolean(ANTHROPIC_API_KEY);
 
 // One runner and one Studio per server process; nothing renders until an action enqueues.
 export const renderJobRunner = createRenderJobRunner(repo, settings, (revision, path) =>

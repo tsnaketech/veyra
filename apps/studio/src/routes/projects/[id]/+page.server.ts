@@ -6,7 +6,7 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = ({ params }) => {
   const snapshot = studio.snapshot(params.id);
   if (!snapshot) error(404, 'Projet introuvable');
-  return { ...snapshot, aiKind: studio.aiKind };
+  return { ...snapshot, aiKind: studio.aiKind, estimate: studio.storyboardEstimate() };
 };
 
 const str = (data: FormData, key: string) => String(data.get(key) ?? '');
@@ -29,6 +29,13 @@ const parseEnd = (value: string) => {
   if (parts.length === 2 && parts[1] >= 60) throw new Error('Secondes limitées à 59 dans mm:ss');
   return Math.round((parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0]) * 1000);
 };
+// Decimal USD amount from a form field; validated again as micro-dollars by the repository.
+const usd = (value: string) => {
+  const amount = Number(value.replace(',', '.'));
+  if (!value.trim() || !Number.isFinite(amount) || amount < 0)
+    throw new Error('Enveloppe : montant en USD positif attendu');
+  return amount;
+};
 const ownedRun = (projectId: string, runId: string) => {
   if (!studio.snapshot(projectId)?.runs.some((r) => r.id === runId))
     throw new Error('Production introuvable');
@@ -42,6 +49,12 @@ export const actions: Actions = {
   resumeProduction: async ({ params, request }) => {
     const data = await request.formData();
     return attempt(() => studio.resumeProduction(ownedRun(params.id, str(data, 'runId'))));
+  },
+  raiseBudget: async ({ params, request }) => {
+    const data = await request.formData();
+    return attempt(() =>
+      studio.raiseBudget(ownedRun(params.id, str(data, 'runId')), usd(str(data, 'budgetUsd')))
+    );
   },
   importAudio: async ({ params, request }) => {
     try {
@@ -70,7 +83,9 @@ export const actions: Actions = {
   },
   prompt: async ({ params, request }) => {
     const data = await request.formData();
-    return attempt(() => studio.sendPrompt(params.id, str(data, 'prompt')));
+    return attempt(() =>
+      studio.sendPrompt(params.id, str(data, 'prompt'), usd(str(data, 'budgetUsd') || '0'))
+    );
   },
   upload: async ({ params, request }) => {
     const file = (await request.formData()).get('file');

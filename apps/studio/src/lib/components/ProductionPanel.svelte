@@ -1,8 +1,12 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import type { ProductionRun, ProductionPhase } from '@veyra/schemas';
+  import { formatUsd, type ProductionRun, type ProductionPhase } from '@veyra/schemas';
   import StatusBadge from './StatusBadge.svelte';
-  let { run, phases }: { run: ProductionRun | null; phases: ProductionPhase[] } = $props();
+  let {
+    run,
+    phases,
+    billable = false
+  }: { run: ProductionRun | null; phases: ProductionPhase[]; billable?: boolean } = $props();
   const agents: Record<string, string> = {
     director: 'Director',
     motion: 'Motion',
@@ -42,7 +46,33 @@
           <strong>{agents[current.agent]}</strong>
         </p>{/if}
       {#if run.error}<p class="text-bad">{run.error}</p>{/if}
+      {#if billable || run.budgetMicroUsd > 0}<p class="text-xs" data-testid="run-budget">
+          Enveloppe : {formatUsd(run.budgetMicroUsd)} $ autorisés · {formatUsd(run.spentMicroUsd)} $ dépensés
+          · {formatUsd(run.reservedMicroUsd)} $ réservés
+          <span class="text-muted">(calculé depuis la grille tarifaire locale)</span>
+        </p>{/if}
     </div>
+    {#if billable}<form
+        method="POST"
+        action="?/raiseBudget"
+        use:enhance
+        class="flex items-end gap-2 text-xs"
+      >
+        <input type="hidden" name="runId" value={run.id} />
+        <label class="flex-1"
+          >Nouvelle enveloppe (USD)
+          <input
+            name="budgetUsd"
+            type="number"
+            min={run.budgetMicroUsd / 1e6}
+            step="0.01"
+            value={run.budgetMicroUsd / 1e6}
+            class="field"
+            required
+          />
+        </label>
+        <button class="btn">Augmenter</button>
+      </form>{/if}
     {#if canStop || run.status === 'failed' || run.status === 'stopped'}
       <!-- One form whose action flips, so the button keeps keyboard focus across stop/resume. -->
       <form method="POST" action={canStop ? '?/stopProduction' : '?/resumeProduction'} use:enhance>

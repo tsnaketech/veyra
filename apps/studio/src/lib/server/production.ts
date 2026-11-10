@@ -8,6 +8,7 @@ import {
   motionCompositionSchema,
   storyboardSchema,
   newId,
+  BudgetExceededError,
   type Phase,
   type ProductionPhase,
   type ProductionPlan,
@@ -267,6 +268,8 @@ export class Orchestrator {
           error: message(error).slice(0, 2000),
           finishedAt: Date.now()
         });
+        // Retrying cannot help: the user raises the envelope, then resumes.
+        if (error instanceof BudgetExceededError) return;
         if (attempts < spec.maxAttempts) {
           this.log(
             run.projectId,

@@ -7,8 +7,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ProjectStorage } from '@veyra/storage';
 import { runProcess } from '@veyra/video';
-import { AssistedProvider, FakeAiProvider, planProduction } from '@veyra/ai';
-import { newId, type Phase, type ProductionPlan } from '@veyra/schemas';
+import Anthropic from '@anthropic-ai/sdk';
+import {
+  AnthropicProvider,
+  AssistedProvider,
+  FakeAiProvider,
+  planProduction,
+  type Provider
+} from '@veyra/ai';
+import {
+  newId,
+  usageMicroUsd,
+  worstCaseMicroUsd,
+  type Phase,
+  type ProductionPlan
+} from '@veyra/schemas';
 import { createRepository } from './db/repo';
 import * as schema from './db/schema';
 import { defaultConfigDir, loadRenderSettings, RenderJobRunner } from './jobs/runner';
@@ -29,7 +42,7 @@ let renders: number;
 let failRender: boolean;
 let onRender: (() => void) | null;
 
-function studio(ai = new FakeAiProvider() as FakeAiProvider | AssistedProvider, review = false) {
+function studio(ai: Provider = new FakeAiProvider(), review = false) {
   const settings = loadStudioSettings(loadRenderSettings(), defaultConfigDir());
   const storage = new ProjectStorage(root);
   const engine = colorEngine((id) => repo.getRevision(id).storyboard);
@@ -790,4 +803,151 @@ it('reports audio anchors that no longer resolve before rendering', async () => 
     validation: 'needs-human',
     warnings: [expect.stringMatching(/Événement absent/)]
   });
+});
+
+// --- Spend envelope (D022), with a simulated SDK client: no network, no key.
+
+const pricing = { inputUsdPerMTok: 4, outputUsdPerMTok: 20 };
+const billedUsage = { input_tokens: 900, output_tokens: 1200 };
+const callCost = usageMicroUsd(pricing, billedUsage);
+type ParseFn = (
+  params: { system: string; model: string },
+  options: { signal: AbortSignal }
+) => Promise<unknown>;
+/** Real AnthropicProvider over a fake client answering each kind of request. */
+function billed(inputTokens = 1000) {
+  const answer: ParseFn = async (params) => ({
+    model: params.model,
+    usage: billedUsage,
+    stop_reason: 'end_turn',
+    parsed_output: params.system.startsWith('Tu conçois')
+      ? draft
+      : params.system.startsWith('Tu es le contrôle')
+        ? { findings: [] }
+        : { summary: 'plan', changes: [], conflicts: [], audioChanges: [] }
+  });
+  const state = { parse: answer, reservedDuringCall: [] as number[] };
+  const mock = {
+    countTokens: vi.fn(async () => ({ input_tokens: inputTokens, context_management: null })),
+    parse: vi.fn((params: Parameters<ParseFn>[0], options: Parameters<ParseFn>[1]) => {
+      const run = repo.listRuns(projectId).at(-1);
+      if (run) state.reservedDuringCall.push(run.reservedMicroUsd);
+      return state.parse(params, options);
+    })
+  };
+  const ai = new AnthropicProvider('claude-opus-5-5', { beta: { messages: mock } } as never);
+  return { ai, mock, state, answer };
+}
+const phaseOf = (runId: string, name: Phase) =>
+  repo.phasesFor([runId]).find((p) => p.phase === name)!;
+const messages = () => repo.listMessages(repo.conversationFor(projectId)!.id).map((m) => m.text);
+
+it('refuses a billable call without an envelope, before counting tokens, with no fallback', async () => {
+  const { ai, mock } = billed();
+  app = studio(ai);
+  await app.sendPrompt(projectId, prompt);
+  const [run] = repo.listRuns(projectId);
+  expect(run).toMatchObject({ status: 'failed', budgetMicroUsd: 0, spentMicroUsd: 0 });
+  expect(run.error).toMatch(/Budget insuffisant/);
+  // Not retried: only a raised envelope can change the outcome.
+  expect(phaseOf(run.id, 'script').attempts).toBe(1);
+  expect(mock.countTokens).not.toHaveBeenCalled();
+  expect(mock.parse).not.toHaveBeenCalled();
+  expect(repo.listRevisions(projectId)).toHaveLength(0);
+});
+
+it('reserves the worst case before the call, settles the billed cost, and resumes after a raise', async () => {
+  const { ai, mock, state } = billed(5000);
+  app = studio(ai);
+  const worst = worstCaseMicroUsd(pricing, 5000, 16000);
+  // Enough for the output ceiling alone, not for the counted input: refused after counting.
+  await app.sendPrompt(projectId, prompt, 0.33);
+  const [run] = repo.listRuns(projectId);
+  expect(worst).toBeGreaterThan(330000);
+  expect(run.status).toBe('failed');
+  expect(phaseOf(run.id, 'script').error).toMatch(/Budget insuffisant.*0\.3300 \$ autorisés/);
+  expect(mock.countTokens).toHaveBeenCalledTimes(1);
+  expect(mock.parse).not.toHaveBeenCalled();
+  expect(repo.getRun(run.id)).toMatchObject({ spentMicroUsd: 0, reservedMicroUsd: 0 });
+
+  expect(() => app.raiseBudget(run.id, 0.1)).toThrow(/augmenter/);
+  app.raiseBudget(run.id, 1);
+  await app.resumeProduction(run.id);
+  expect(state.reservedDuringCall).toEqual([worst]);
+  const [params, options] = mock.parse.mock.calls[0];
+  expect((params as unknown as { max_tokens: number }).max_tokens).toBe(16000);
+  expect(options.signal).toBeInstanceOf(AbortSignal);
+  expect(repo.getRun(run.id)).toMatchObject({
+    budgetMicroUsd: 1_000_000,
+    spentMicroUsd: callCost,
+    reservedMicroUsd: 0,
+    status: 'waiting'
+  });
+  expect(phaseOf(run.id, 'script').result).toMatchObject({
+    provider: 'anthropic-api',
+    provenance: { model: 'claude-opus-5-5' }
+  });
+  expect(messages().some((m) => m.startsWith('[API Anthropic — claude-opus-5-5] Storyboard'))).toBe(
+    true
+  );
+});
+
+it('charges several calls to one envelope, including the batch plan of its revision', async () => {
+  const { ai, mock } = billed();
+  app = studio(ai, true);
+  await app.sendPrompt(projectId, prompt, 2);
+  const [run] = repo.listRuns(projectId);
+  // Storyboard and qualitative review of the render.
+  expect(mock.parse).toHaveBeenCalledTimes(2);
+  expect(repo.getRun(run.id)).toMatchObject({ spentMicroUsd: 2 * callCost, reservedMicroUsd: 0 });
+  const [v1] = repo.listRevisions(projectId);
+  const note = await app.addAnnotation({
+    revisionId: v1.id,
+    frameIndex: 0,
+    text: 'x',
+    author: 'u'
+  });
+  const batch = app.submitBatch({
+    revisionId: v1.id,
+    feedbackIds: [note.id],
+    submissionKey: 'key-billed'
+  });
+  await until(() => repo.getBatch(batch.id).status === 'planned');
+  expect(repo.getRun(run.id)).toMatchObject({ spentMicroUsd: 3 * callCost, reservedMicroUsd: 0 });
+});
+
+it('aborts the call in flight when the production is stopped, keeping its reservation as spent', async () => {
+  const { ai, mock, state, answer } = billed();
+  app = studio(ai);
+  state.parse = (_params, options) =>
+    new Promise((_, reject) =>
+      options.signal.addEventListener('abort', () => reject(new Anthropic.APIUserAbortError()))
+    );
+  const work = app.sendPrompt(projectId, prompt, 1);
+  await until(() => mock.parse.mock.calls.length === 1);
+  const [run] = repo.listRuns(projectId);
+  app.stopProduction(run.id);
+  await work;
+  const reservation = worstCaseMicroUsd(pricing, 1000, 16000);
+  expect(repo.getRun(run.id)).toMatchObject({
+    status: 'stopped',
+    spentMicroUsd: reservation,
+    reservedMicroUsd: 0
+  });
+  expect(phaseOf(run.id, 'script').error).toMatch(/Appel IA annulé/);
+  state.parse = answer;
+  await app.resumeProduction(run.id);
+  expect(repo.getRun(run.id)).toMatchObject({
+    status: 'waiting',
+    spentMicroUsd: reservation + callCost
+  });
+});
+
+it('refuses a billable call about a revision that no run produced', async () => {
+  const { ai, mock } = billed();
+  app = studio(ai);
+  await expect(
+    app.review({ id: 'rev_orphan', projectId, resolvedConfig: {} } as never, '/nonexistent')
+  ).rejects.toThrow(/aucune production/);
+  expect(mock.countTokens).not.toHaveBeenCalled();
 });

@@ -234,6 +234,19 @@ portent l’ID du job et ne sont pas écrasées. Le dépôt métier protège les
 approuvées/publiées. Ne jamais persister ni journaliser la vue de configuration
 contenant les secrets ; le runner ne conserve que la vue redacted().
 
+## Facturation de l'API Anthropic (D022)
+
+- Clé : lue une seule fois depuis `$app/env/private` et passée explicitement au client
+  SDK (`new Anthropic({ apiKey, maxRetries: 0 })`) ; le SDK ne lit donc pas
+  `process.env` pour l'identifiant. `/settings` n'expose que sa présence, depuis la
+  même source. Jamais dans un log, un message ou une page.
+- Aucun appel facturable sans enveloppe : 0 par défaut ; réservation du pire cas avant
+  l'appel, transactionnelle (`reserveBudget`) ; aucun nouvel essai automatique du SDK.
+- Erreurs du SDK (limite de débit, clé refusée, connexion, délai, annulation, autre
+  statut) traduites en messages sans contenu de requête ni de réponse.
+- Limite : coût calculé depuis la grille tarifaire locale, à revérifier sur la page
+  Pricing d'Anthropic ; l'enveloppe ne protège pas contre une grille fausse.
+
 ## Vérifications et limites
 
 Tests rapides : tentatives de traversée/symlink, originaux exclusifs, HTML/CSS/JS

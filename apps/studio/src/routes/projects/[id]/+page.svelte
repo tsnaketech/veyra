@@ -2,7 +2,7 @@
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import { frameTimestampMs, sceneAt } from '@veyra/schemas';
+  import { formatUsd, frameTimestampMs, sceneAt } from '@veyra/schemas';
   import AudioPanel from '#lib/components/AudioPanel.svelte';
   import ProductionPanel from '#lib/components/ProductionPanel.svelte';
   import FramePlayer from '#lib/components/FramePlayer.svelte';
@@ -243,6 +243,25 @@
           placeholder="Décrivez votre vidéo…"
           required
           disabled={!!data.activity || data.aiKind === null}></textarea>
+        {#if data.aiKind === 'anthropic-api'}
+          <label for="budgetUsd" class="block text-xs text-muted">Enveloppe autorisée (USD)</label>
+          <input
+            id="budgetUsd"
+            name="budgetUsd"
+            type="number"
+            min="0"
+            step="0.01"
+            value="0"
+            class="field"
+            aria-describedby="budget-help"
+          />
+          <p id="budget-help" class="text-xs text-muted">
+            {#if data.estimate}Pire cas d'un appel storyboard ({data.estimate.model}) : {formatUsd(
+                data.estimate.microUsd
+              )} $, calculé depuis la grille tarifaire locale.{:else}Modèle sans tarif local :
+              appels refusés.{/if} 0 = aucun appel facturable.
+          </p>
+        {/if}
         <button class="btn btn-primary w-full" disabled={!!data.activity || data.aiKind === null}
           >Envoyer</button
         >
@@ -385,7 +404,11 @@
     aria-label="Revue"
     class="panel min-h-0 min-w-0 flex-col gap-4 overflow-y-auto p-3 text-sm {show('review')}"
   >
-    <ProductionPanel run={data.runs.at(-1) ?? null} phases={data.phases} />
+    <ProductionPanel
+      run={data.runs.at(-1) ?? null}
+      phases={data.phases}
+      billable={data.aiKind === 'anthropic-api'}
+    />
     <AudioPanel
       assets={data.assets}
       {revision}

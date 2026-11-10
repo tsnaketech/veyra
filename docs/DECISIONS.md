@@ -337,3 +337,44 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   QA Expert hors de la boucle ; validation humaine finale ; code généré (niveau 2 de
   [CREATIVE-COMPOSITION](ai/CREATIVE-COMPOSITION.md)) refusé jusqu'à une décision dédiée
   après durcissement de la sandbox.
+
+## D022 — Enveloppe budgétaire stricte par production
+
+- Date : 2026-11-10
+- Statut : acceptée (T138)
+- Contexte : avec `anthropic-api`, chaque appel est facturé sur la clé de
+  l'utilisateur. Le compteur `maxAiCalls` (D019) borne le nombre d'appels, pas leur
+  coût ; T133 demandait un budget unique, décompté avant l'appel, y compris hors run.
+- Décision : tout appel facturable (storyboard, plan de correction, revue qualitative,
+  expertise QA) passe par un run et son enveloppe en micro-dollars entiers
+  (`budgetMicroUsd`, 0 par défaut = aucun appel). Avant l'appel, l'entrée est comptée
+  par `messages.countTokens` (même modèle, consigne et messages ; appel réseau non
+  facturé), puis le pire cas est réservé par `reserveBudget`, seul point de contrôle,
+  transactionnel : entrée × 1,25 × prix d'entrée + `max_tokens` × prix de sortie
+  (`max_tokens` envoyé = celui de la réservation, `maxTokens` de `config/models.json`).
+  Après l'appel, `settleBudget` remplace la réservation par le coût de
+  `response.usage` ; en erreur ou annulation (coût inconnu), la réservation est
+  gardée comme dépensée. `countTokens` n'est appelé que si l'enveloppe couvre au moins
+  `max_tokens` × prix de sortie : une enveloppe à 0 ne déclenche aucun appel réseau.
+  Un appel hors des phases d'un run (plan d'un lot, revue d'un rendu, expertise QA)
+  est imputé au run qui a produit la révision (`origin.runId`, ou le run dont
+  `revisionId` est cette révision) ; sans run, il est refusé explicitement.
+  Dépassement : phase en échec avec le message de `BudgetExceededError`, sans nouvel
+  essai ; « Reprendre » fonctionne après augmentation (`raiseBudget`, jamais à la
+  baisse). « Arrêter » annule l'appel en cours (un `AbortController` par run).
+  Client SDK : clé passée explicitement depuis `$app/env/private` (le SDK ne lit pas
+  `process.env`), `maxRetries: 0` (un nouvel essai automatique pourrait facturer deux
+  fois), délai par appel `callTimeoutMs` (120 s). Le repli serveur
+  (`server-side-fallback`) est retiré : la réservation est calculée pour le modèle
+  demandé seulement ; aucun repli de fournisseur non plus (D011).
+- Justification : la réservation du pire cas rend le dépassement impossible par
+  construction, même avec plusieurs appels dans un run ; les entiers évitent les
+  erreurs d'arrondi cumulées.
+- Conséquences et limites : le coût n'est exact que si la grille locale
+  (`pricing` de `config/models.json`, source et date de vérification affichées dans
+  `/settings`) suit la page Pricing d'Anthropic ; un modèle sans tarif est refusé.
+  Une réservation en cours lors d'un arrêt brutal reste réservée. Le pire cas du
+  formulaire de prompt est une estimation locale (un jeton par octet, prompt ≤ 4 Ko).
+  Remplace, pour les appels du fournisseur, la confirmation « de cette action » de
+  [DIRECTOR-TOOL-LOOP § 4](ai/DIRECTOR-TOOL-LOOP.md#4-bornes-et-garde-fous) : l'enveloppe
+  saisie par l'utilisateur pour la production vaut autorisation, dans sa limite.

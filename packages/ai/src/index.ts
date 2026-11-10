@@ -5,6 +5,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import {
   newId,
   sceneAt,
+  type BilledUsage,
   scenePatchSchema,
   storyboardSchema,
   type AnalysisMode,
@@ -117,25 +118,44 @@ export const providerIds = [
   "claude-subscribe",
 ] as const;
 export type ProviderId = (typeof providerIds)[number];
+/**
+ * Spend hooks of one billable call (D022), supplied by the caller: the budget logic
+ * stays outside this package.
+ */
+export interface CallMeter {
+  /** Before the request, with the counted input; throws to refuse the call. */
+  before(call: { model: string; inputTokens: number; maxTokens: number }): void;
+  /** Exactly once after a reserved call: billed usage, or null when unknown (error, abort). */
+  after(result: { model: string; usage: BilledUsage } | null): void;
+}
+export interface CallOptions {
+  signal?: AbortSignal;
+  meter?: CallMeter;
+}
 /** Providers Veyra calls itself. "fake" must be surfaced to users as simulated output. */
 export interface AiProvider {
   readonly kind: "fake" | "anthropic-api";
   readonly mode: "direct";
+  /** Model sent with billable calls; absent for the simulator. */
+  readonly model?: string;
   generateStoryboard(
     prompt: string,
     options: { targetDurationMs: number; styleInstructions: string },
+    call?: CallOptions,
   ): Promise<StoryboardDraft>;
   planRevision(
     storyboard: Storyboard,
     feedback: FeedbackInput[],
     audio?: AudioComposition | null,
+    call?: CallOptions,
   ): Promise<RevisionProposal>;
   reviewFrames(
     storyboard: Storyboard,
     frames: Frame[],
+    call?: CallOptions,
   ): Promise<ReviewFinding[]>;
   /** Expert QA of corrections, with this provider's real capabilities. */
-  qualityEvaluator(): QualityEvaluator;
+  qualityEvaluator(call?: CallOptions): QualityEvaluator;
 }
 
 export function toStoryboard(
@@ -299,6 +319,7 @@ export class FakeAiProvider implements AiProvider {
   async generateStoryboard(
     prompt: string,
     options: { targetDurationMs: number; styleInstructions: string },
+    _call?: CallOptions,
   ): Promise<StoryboardDraft> {
     const seconds = /(\d{1,2})\s*(?:s\b|sec|secondes?|seconds?)/i.exec(prompt);
     const total = clamp(
@@ -343,6 +364,7 @@ export class FakeAiProvider implements AiProvider {
     storyboard: Storyboard,
     feedback: FeedbackInput[],
     audio: AudioComposition | null = null,
+    _call?: CallOptions,
   ): Promise<RevisionProposal> {
     const audioChanges = feedback
       .filter((item) => isAudioFeedback(item))
@@ -417,6 +439,7 @@ export class FakeAiProvider implements AiProvider {
   async reviewFrames(
     storyboard: Storyboard,
     frames: Frame[],
+    _call?: CallOptions,
   ): Promise<ReviewFinding[]> {
     return [
       {
@@ -434,50 +457,113 @@ export class FakeAiProvider implements AiProvider {
   }
 }
 
+export type AnthropicLimits = { maxTokens: number; timeoutMs: number };
+/** The key is passed explicitly (never read from process.env); no SDK retry may bill twice. */
+export const anthropicClient = (apiKey: string) =>
+  new Anthropic({ apiKey, maxRetries: 0 });
+
+/** SDK failures as plain messages: status class only, never request or response content. */
+export function apiErrorMessage(error: unknown): string {
+  if (error instanceof Anthropic.APIUserAbortError)
+    return "Appel IA annulé (production arrêtée)";
+  if (error instanceof Anthropic.APIConnectionTimeoutError)
+    return "Délai dépassé pour l'appel à l'API Anthropic";
+  if (error instanceof Anthropic.APIConnectionError)
+    return "Connexion à l'API Anthropic impossible";
+  if (error instanceof Anthropic.RateLimitError)
+    return "API Anthropic : limite de débit atteinte (429), réessayer plus tard";
+  if (error instanceof Anthropic.AuthenticationError)
+    return "API Anthropic : clé refusée (401)";
+  if (error instanceof Anthropic.APIError)
+    return `API Anthropic : erreur ${error.status ?? "inconnue"}`;
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** Real provider. Unverified: no ANTHROPIC_API_KEY was available when it was written. */
 export class AnthropicProvider implements AiProvider {
   readonly kind = "anthropic-api" as const;
   readonly mode = "direct" as const;
-  qualityEvaluator() {
+  qualityEvaluator(call?: CallOptions) {
     return new AnthropicQualityEvaluator((schema, system, content) =>
-      this.parse(schema, system, content),
+      this.parse(schema, system, content, call),
     );
   }
   constructor(
-    private readonly model: string,
-    private readonly client = new Anthropic(),
+    readonly model: string,
+    private readonly client: Anthropic,
+    private readonly limits: AnthropicLimits = {
+      maxTokens: 16000,
+      timeoutMs: 120000,
+    },
   ) {}
   private async parse<T extends z.ZodType>(
     schema: T,
     system: string,
     content: Anthropic.Beta.BetaContentBlockParam[],
+    call?: CallOptions,
   ): Promise<z.infer<T>> {
-    const response = await this.client.beta.messages.parse({
+    const meter = call?.meter;
+    if (!meter)
+      throw new Error("Appel facturable refusé : aucune enveloppe budgétaire");
+    // No server-side fallback: the reservation is priced for this model only (D022).
+    const request = {
       model: this.model,
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "medium", format: zodOutputFormat(schema) },
+      output_config: {
+        effort: "medium" as const,
+        format: zodOutputFormat(schema),
+      },
       system,
-      messages: [{ role: "user", content }],
-    });
-    if (response.stop_reason === "refusal")
-      throw new Error("Le modèle a refusé la demande");
-    // Revalidate: the output format cannot express every bound in the schema.
-    return schema.parse(response.parsed_output);
+      messages: [{ role: "user" as const, content }],
+    };
+    const options = { signal: call.signal, timeout: this.limits.timeoutMs };
+    let usage: { model: string; usage: BilledUsage } | null = null;
+    let reserved = false;
+    try {
+      // Free call: the exact input of this request, so the reservation is a true bound.
+      const { input_tokens } = await this.client.beta.messages.countTokens(
+        request,
+        options,
+      );
+      meter.before({
+        model: this.model,
+        inputTokens: input_tokens,
+        maxTokens: this.limits.maxTokens,
+      });
+      reserved = true;
+      const response = await this.client.beta.messages.parse(
+        { ...request, max_tokens: this.limits.maxTokens },
+        options,
+      );
+      usage = { model: response.model, usage: response.usage };
+      if (response.stop_reason === "refusal")
+        throw new Error("Le modèle a refusé la demande");
+      // Revalidate: the output format cannot express every bound in the schema.
+      return schema.parse(response.parsed_output);
+    } catch (error) {
+      if (error instanceof Anthropic.AnthropicError)
+        throw new Error(apiErrorMessage(error), { cause: error });
+      throw error;
+    } finally {
+      if (reserved) meter.after(usage);
+    }
   }
   generateStoryboard(
     prompt: string,
     options: { targetDurationMs: number; styleInstructions: string },
+    call?: CallOptions,
   ) {
-    return this.parse(storyboardDraftSchema, instructions.storyboard(options), [
-      { type: "text", text: prompt },
-    ]);
+    return this.parse(
+      storyboardDraftSchema,
+      instructions.storyboard(options),
+      [{ type: "text", text: prompt }],
+      call,
+    );
   }
   planRevision(
     storyboard: Storyboard,
     feedback: FeedbackInput[],
     audio: AudioComposition | null = null,
+    call?: CallOptions,
   ) {
     const content: Anthropic.Beta.BetaContentBlockParam[] = [
       {
@@ -499,11 +585,12 @@ export class AnthropicProvider implements AiProvider {
             },
           },
         );
-    return this.parse(revisionProposalSchema, instructions.plan, content);
+    return this.parse(revisionProposalSchema, instructions.plan, content, call);
   }
   async reviewFrames(
     storyboard: Storyboard,
     frames: Frame[],
+    call?: CallOptions,
   ): Promise<ReviewFinding[]> {
     const content: Anthropic.Beta.BetaContentBlockParam[] = [];
     for (const frame of frames)
@@ -523,6 +610,7 @@ export class AnthropicProvider implements AiProvider {
       reviewSchema,
       "Tu es le contrôle qualité vidéo de Veyra. Évalue lisibilité, cohérence graphique, respect du storyboard et des contraintes de marque à partir des images fournies uniquement. Cite le timestamp de l'image comme preuve.",
       content,
+      call,
     );
     // Only frames actually sent make the analysis multimodal.
     const mode: AnalysisMode = frames.length ? "multimodal" : "text-only";
@@ -573,6 +661,7 @@ export function createProvider(
   id: ProviderId,
   env: Record<string, string | undefined>,
   model: string,
+  limits?: AnthropicLimits,
 ): Provider {
   if (id === "fake") return new FakeAiProvider();
   if (id === "claude-subscribe") return new AssistedProvider();
@@ -580,7 +669,11 @@ export function createProvider(
     throw new ProviderUnavailableError(
       "anthropic-api indisponible : ANTHROPIC_API_KEY n'est pas définie.",
     );
-  return new AnthropicProvider(model);
+  return new AnthropicProvider(
+    model,
+    anthropicClient(env.ANTHROPIC_API_KEY),
+    limits,
+  );
 }
 export * from "./assisted";
 export * from "./evaluation";
