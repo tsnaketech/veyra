@@ -24,6 +24,10 @@
     "openai": "https://api.openai.com/v1"
   },
   "apiKeyEnv": "ANTHROPIC_API_KEY",
+  "codexChatgpt": {
+    "command": "/home/user/.local/share/veyra/codex-cli/node_modules/.bin/codex",
+    "codexHome": "/home/user/.local/share/veyra/codex-home"
+  },
   "claudeSubscribe": { "mode": "assisted", "command": "claude" },
   "fake": { "provider": "fake", "usage": "test-only" }
 }

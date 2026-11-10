@@ -91,20 +91,48 @@ Aucun appel facturable n'est fait sans enveloppe (0 par défaut).
 ### Activer Codex avec l'abonnement ChatGPT (`codex-chatgpt`, D023)
 
 Statut contractuel ambigu, accepté par l'utilisateur ; tout est fait par lui.
+Version épinglée : **Codex 0.167.0** (npm, provenance SLSA vérifiable ;
+[étude § 10.5](research/OPENAI-CODEX-INTEGRATIONS.md)).
 
-1. Installer Codex CLI (dépôt officiel `openai/codex`) puis `codex login` avec son
-   compte ChatGPT. Ne pas définir `OPENAI_API_KEY` ni `CODEX_API_KEY` pour Codex.
-   Recommandé : un `CODEX_HOME` dédié, ne contenant que l'authentification (pas
-   d'`AGENTS.md` global ni de configuration personnelle) :
-   `CODEX_HOME=/chemin/absolu/veyra-codex codex login`. Une connexion par clé API
-   n'est pas acceptée (« Connexion ChatGPT non confirmée »).
-2. Dans `config/models.json` : `"codexChatgpt": { "command": "/chemin/absolu/codex" }`
-   (option : `"codexHome"` absolu si la connexion a été faite avec un `CODEX_HOME`
-   dédié ; `"timeoutMs"`, 300000 par défaut).
-3. `/settings` → « Activer Codex », puis « Vérifier la disponibilité » (lance
-   seulement `codex --version` et `codex login status`) et choisir `codex-chatgpt`.
+1. Installation, hors dépôt, sans sudo :
+
+   ```sh
+   mkdir -p /home/user/.local/share/veyra/codex-cli
+   npm install --prefix /home/user/.local/share/veyra/codex-cli --ignore-scripts --save-exact @openai/codex@0.167.0
+   npm audit signatures --prefix /home/user/.local/share/veyra/codex-cli
+   ```
+
+   Binaire : `/home/user/.local/share/veyra/codex-cli/node_modules/.bin/codex`.
+2. `CODEX_HOME` dédié, ne contenant que l'authentification (pas d'`AGENTS.md` global
+   ni de configuration personnelle) : `mkdir -p -m 700 /home/user/.local/share/veyra/codex-home`.
+3. Connexion, lancée par l'utilisateur avec son compte ChatGPT (code à saisir dans un
+   navigateur), identifiants dans `auth.json` du `CODEX_HOME` dédié (jamais le
+   trousseau) :
+
+   ```sh
+   CODEX_HOME=/home/user/.local/share/veyra/codex-home \
+     /home/user/.local/share/veyra/codex-cli/node_modules/.bin/codex \
+     -c 'cli_auth_credentials_store="file"' login --device-auth
+   ```
+
+   Ne pas définir `OPENAI_API_KEY` ni `CODEX_API_KEY` pour Codex. Une connexion par
+   clé API n'est pas acceptée (« Connexion ChatGPT non confirmée »). Déconnexion :
+   même `CODEX_HOME`, `codex logout`.
+4. `config/models.json` : `codexChatgpt.command` et `codexChatgpt.codexHome` sont
+   renseignés avec les deux chemins ci-dessus (`timeoutMs`, 300000 par défaut). Le
+   fournisseur reste désactivé tant que l'utilisateur ne l'active pas.
+5. `/settings` → « Activer Codex », puis « Vérifier la disponibilité » (lance
+   seulement `codex --version` et `codex -c cli_auth_credentials_store="file" login
+   status` : code 0 et « ChatGPT » sur stderr) et choisir `codex-chatgpt`.
    « Désactiver Codex » le rend de nouveau indisponible.
-4. Le prompt est passé en argument de `codex exec` : il est visible localement via
+6. Démonstration réelle (T147), à lancer seulement après la connexion ; consomme le
+   quota du plan : `VEYRA_CODEX_REAL=1 pnpm --filter @veyra/ai exec vitest run src/codex.real.test.ts`.
+   Sans la variable, ce fichier est ignoré (y compris par `pnpm test`). Il vérifie la
+   sonde, un storyboard validé, le refus d'un brief demandant une commande shell et
+   l'écriture de `pwned.txt`, l'annulation après 2 s (groupe de processus tué) et
+   l'absence de clé API dans l'environnement de Codex ; il affiche la durée de
+   chaque appel.
+7. Le prompt est passé en argument de `codex exec` : il est visible localement via
    `ps` par les autres utilisateurs de la machine. Ne pas utiliser ce fournisseur sur
    une machine partagée avec des contenus confidentiels.
 

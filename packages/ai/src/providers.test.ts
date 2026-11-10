@@ -251,7 +251,13 @@ describe("OpenAiProvider (simulated client, no network)", () => {
 describe("CodexExecProvider (fake codex binary, nothing real is launched)", () => {
   // A real executable standing in for `codex`: behaviour chosen by a file in CODEX_HOME.
   function fakeCodex(
-    mode: "valid" | "invalid" | "sleep" | "logged-out" | "api-key",
+    mode:
+      | "valid"
+      | "invalid"
+      | "sleep"
+      | "logged-out"
+      | "api-key"
+      | "chatgpt-exit-1",
   ) {
     const dir = mkdtempSync(join(tmpdir(), "veyra-codex-test-"));
     const bin = join(dir, "codex");
@@ -266,10 +272,11 @@ const args = process.argv.slice(2);
 fs.writeFileSync(home + "/call.json", JSON.stringify({ args, env: process.env, cwd: process.cwd(), cwdFiles: fs.readdirSync(process.cwd()) }));
 fs.writeFileSync(home + "/pid", String(process.pid));
 if (args[0] === "--version") { process.stdout.write("codex-cli 0.0.0-fake\\n"); process.exit(0); }
-if (args[0] === "login") {
-  if (mode === "logged-out") process.exit(1);
+if (args.includes("login")) {
+  // Like 0.167.0: the status goes to stderr only.
+  if (mode === "logged-out") { process.stderr.write("Not logged in\\n"); process.exit(1); }
   process.stderr.write(mode === "api-key" ? "Logged in using an API key - sk-dummy\\n" : "Logged in using ChatGPT\\n");
-  process.exit(0);
+  process.exit(mode === "chatgpt-exit-1" ? 1 : 0);
 }
 if (mode === "sleep") setTimeout(() => {}, 60000);
 else {
@@ -315,11 +322,14 @@ else {
         'approval_policy="never"',
         "features.shell_tool=false",
         "tools.web_search=false",
+        'web_search="disabled"',
         "features.view_image=false",
         'forced_login_method="chatgpt"',
+        'cli_auth_credentials_store="file"',
       ])
         expect(args).toContain(flag);
       expect(args[args.indexOf("--sandbox") + 1]).toBe("read-only");
+      expect(args.at(-2)).toBe("--");
       expect(cwdFiles).toEqual([]);
       expect(Object.keys(env).sort()).toEqual([
         "CODEX_HOME",
@@ -337,6 +347,22 @@ else {
       await expect(
         new CodexExecProvider(fake.options).generateStoryboard("x", style),
       ).rejects.toThrow(/non conforme/);
+    } finally {
+      fake.cleanup();
+    }
+  });
+  it("refuses an image path containing a comma (Codex splits --image on commas)", async () => {
+    const fake = fakeCodex("valid");
+    try {
+      await expect(
+        new CodexExecProvider(fake.options).ask(
+          storyboardDraftSchema,
+          "s",
+          "t",
+          [{ label: "frame", path: "/tmp/a,b.png" }],
+        ),
+      ).rejects.toThrow(/virgule/);
+      expect(existsSync(join(fake.dir, "call.json"))).toBe(false);
     } finally {
       fake.cleanup();
     }
@@ -404,9 +430,23 @@ else {
         version: "codex-cli 0.0.0-fake",
       });
       expect(status.reason).toMatch(/codex login/);
-      expect(out.call().args).toEqual(["login", "status"]);
+      expect(out.call().args).toEqual([
+        "-c",
+        'cli_auth_credentials_store="file"',
+        "login",
+        "status",
+      ]);
     } finally {
       out.cleanup();
+    }
+    // "ChatGPT" on stderr is not enough: the exit code must be 0 too.
+    const failed = fakeCodex("chatgpt-exit-1");
+    try {
+      expect(
+        await checkCodexChatgpt({ enabled: true, ...failed.options }),
+      ).toMatchObject({ available: false });
+    } finally {
+      failed.cleanup();
     }
     // Signed in with a key: forced_login_method would sign it out, so not available.
     const key = fakeCodex("api-key");

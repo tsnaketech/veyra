@@ -25,6 +25,8 @@ export interface CodexOptions {
 const BILLING_SWITCH_VARS = ["OPENAI_API_KEY", "CODEX_API_KEY"];
 // Linux limits one argv string to 128 KiB (MAX_ARG_STRLEN); stay below it.
 const MAX_PROMPT_BYTES = 120_000;
+// Keeps the login in auth.json under the dedicated CODEX_HOME, as at login (never the keyring).
+const AUTH_STORE = 'cli_auth_credentials_store="file"';
 
 /**
  * Early, explicit refusal only. The actual protection is runProcess's childEnv: it never
@@ -75,6 +77,11 @@ export class CodexExecProvider extends StructuredProvider {
     call?: CallOptions,
   ): Promise<z.infer<T>> {
     assertSafe(this.options);
+    // Codex splits `--image` values on commas: such a path would become two other paths.
+    if (images.some((image) => image.path.includes(",")))
+      throw new Error(
+        "codex-chatgpt : chemin d'image contenant une virgule refusé",
+      );
     const prompt = [
       system,
       images.length
@@ -116,10 +123,15 @@ export class CodexExecProvider extends StructuredProvider {
         "-c",
         "tools.web_search=false",
         "-c",
+        'web_search="disabled"',
+        "-c",
         "features.view_image=false",
         "-c",
         'forced_login_method="chatgpt"',
+        "-c",
+        AUTH_STORE,
         ...images.flatMap((image) => ["--image", image.path]),
+        // Undocumented for exec (research § 10.7): ends a multi-value --image before the prompt.
         "--",
         prompt,
       ];
@@ -158,8 +170,8 @@ export interface CodexStatus {
 /**
  * Availability of codex-chatgpt. Nothing runs unless the user enabled the provider
  * and configured the binary; then only `codex --version` and `codex login status`
- * (exit code and whether it mentions ChatGPT: no account detail is kept, no credential
- * file is opened).
+ * (exit code 0 and whether stderr mentions ChatGPT: no account detail is kept, no
+ * credential file is opened).
  */
 export async function checkCodexChatgpt(options: {
   enabled: boolean;
@@ -200,9 +212,10 @@ export async function checkCodexChatgpt(options: {
   }
   let chatgpt: boolean;
   try {
-    const { stdout, stderr } = await probe(["login", "status"]);
+    // 0.167.0 writes the status to stderr; a non-zero exit (not logged in) throws.
+    const { stderr } = await probe(["-c", AUTH_STORE, "login", "status"]);
     // Only this boolean is kept, never the output (it may name the account or a key).
-    chatgpt = /chatgpt/i.test(`${stdout}\n${stderr}`);
+    chatgpt = /chatgpt/i.test(stderr);
   } catch {
     return {
       ...off("Codex n'est pas connecté : lancer `codex login`."),
