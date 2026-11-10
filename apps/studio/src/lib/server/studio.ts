@@ -1,10 +1,14 @@
 import {
+  closeSync,
+  constants,
   copyFileSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1258,7 +1262,7 @@ export class Studio {
   }
   private assistedInstructions(dir: string, kind: 'storyboard' | 'plan' | 'evaluation') {
     return this.label(
-      `Demande ${kind === 'plan' ? 'de plan de correction' : kind === 'evaluation' ? "d'expertise QA" : 'de storyboard'} exportée. Veyra n'appelle pas Claude : dans Claude Code (connecté à votre abonnement), à la racine du dépôt Veyra, lancez « /veyra-assisted-task ${dir} », puis cliquez sur « Importer le résultat ».`,
+      `Demande ${kind === 'plan' ? 'de plan de correction' : kind === 'evaluation' ? "d'expertise QA" : 'de storyboard'} exportée. Veyra n'appelle pas Claude : dans Claude Code (connecté à votre abonnement), à la racine du dépôt Veyra, lancez « /veyra-assisted-task ${dir} », le résultat est importé automatiquement dès que Claude Code l'a écrit (« Importer le résultat » reste disponible en repli).`,
       'claude-subscribe'
     );
   }
@@ -1270,14 +1274,25 @@ export class Studio {
     const assisted = new AssistedProvider();
     let raw: unknown;
     try {
-      const path = safePath(task.dir, 'result.json');
-      if (statSync(path).size > 1024 * 1024) throw new Error('result.json dépasse 1 Mo');
-      raw = JSON.parse(readFileSync(path, 'utf8'));
+      const text = readResult(task.dir);
+      try {
+        raw = JSON.parse(text);
+      } catch {
+        // JSON.parse quotes the file in its message: never surface raw content.
+        throw new Error('JSON invalide');
+      }
     } catch (error) {
       const text = `Résultat illisible : ${message(error)}`;
       this.repo.updateTask(taskId, { error: text });
       throw new Error(text, { cause: error });
     }
+    // The effect and the 'imported' status commit together: a failure leaves the task importable.
+    const commit = <T>(effect: () => T) =>
+      this.repo.transaction(() => {
+        const result = effect();
+        this.repo.updateTask(taskId, { status: 'imported', error: null });
+        return result;
+      });
     if (task.kind === 'evaluation') {
       let review: ExpertReview;
       try {
@@ -1291,13 +1306,13 @@ export class Studio {
       const pack = this.loadPack(evaluation);
       const clean = sanitizeReview(review, pack);
       // Multimodal only if Claude Code says it looked at images that were really in the pack.
-      const done = this.completeEvaluation(
-        evaluationId,
-        clean,
-        clean.imagesExamined.length ? 'multimodal' : 'text-only'
+      return commit(() =>
+        this.completeEvaluation(
+          evaluationId,
+          clean,
+          clean.imagesExamined.length ? 'multimodal' : 'text-only'
+        )
       );
-      this.repo.updateTask(taskId, { status: 'imported', error: null });
-      return done;
     }
     if (task.kind === 'plan') {
       let proposal: RevisionProposal;
@@ -1307,9 +1322,7 @@ export class Studio {
         this.repo.updateTask(taskId, { error: `Résultat non conforme : ${message(error)}` });
         throw new Error('Résultat non conforme au schéma attendu', { cause: error });
       }
-      const plan = this.savePlan(task.batchId!, proposal, 'claude-subscribe');
-      this.repo.updateTask(taskId, { status: 'imported', error: null });
-      return plan;
+      return commit(() => this.savePlan(task.batchId!, proposal, 'claude-subscribe'));
     }
     let draft: StoryboardDraft;
     try {
@@ -1319,19 +1332,78 @@ export class Studio {
       throw new Error('Résultat non conforme au schéma attendu', { cause: error });
     }
     const input = task.input as { prompt: string; parentRevisionId: string | null; runId?: string };
+    // Ids come from a row the export wrote; still check they belong to this project.
+    const owner = (read: () => { projectId: string }) => {
+      try {
+        return read().projectId;
+      } catch {
+        return null;
+      }
+    };
+    if (
+      (input.runId && owner(() => this.repo.getRun(input.runId!)) !== task.projectId) ||
+      (input.parentRevisionId &&
+        owner(() => this.repo.getRevision(input.parentRevisionId!)) !== task.projectId)
+    ) {
+      const text = 'Tâche refusée : production ou révision étrangère au projet';
+      this.repo.updateTask(taskId, { error: text });
+      throw new Error(text);
+    }
     this.busy(task.projectId, 'generating');
     let run: ProductionRun;
     try {
-      run = this.acceptStoryboard(task.projectId, input, draft);
+      run = commit(() => this.acceptStoryboard(task.projectId, input, draft));
     } catch (error) {
       // A refused import releases the project and leaves the task importable.
       this.activity.delete(task.projectId);
       throw error;
     }
-    this.repo.updateTask(taskId, { status: 'imported', error: null });
+    // complete() respects a voluntary stop: the script is kept, nothing restarts.
+    if (run.status === 'stopped')
+      this.say(
+        task.projectId,
+        'system',
+        'Storyboard importé ; la production est arrêtée : cliquez sur « Reprendre » pour la poursuivre.'
+      );
     return this.background(task.projectId, async () => {
       await this.orchestrator.drive(run.id, this.productionRunners(run));
     });
+  }
+
+  private watched = new Map<string, { version: string; failed?: string }>();
+  /**
+   * One pass of the assisted-mode watcher: each result.json whose size and mtime held
+   * still since the previous pass goes through importTask, once per file version.
+   */
+  watchAssistedTasks() {
+    const awaiting = this.repo.listAwaitingTasks();
+    for (const id of this.watched.keys())
+      if (!awaiting.some((t) => t.id === id)) this.watched.delete(id);
+    for (const task of awaiting) {
+      let version: string;
+      try {
+        const info = lstatSync(join(task.dir, 'result.json'));
+        version = `${info.size}:${info.mtimeMs}`;
+      } catch {
+        this.watched.delete(task.id);
+        continue;
+      }
+      const seen = this.watched.get(task.id);
+      this.watched.set(task.id, { version, failed: seen?.failed });
+      if (seen?.version !== version || seen.failed === version) continue;
+      // Busy project: retry on a later pass, the file version is not marked failed.
+      if (this.activity.has(task.projectId)) continue;
+      try {
+        void this.importTask(task.id);
+      } catch (error) {
+        this.watched.set(task.id, { version, failed: version });
+        try {
+          this.say(task.projectId, 'system', `Import automatique impossible : ${message(error)}`);
+        } catch {
+          // The task row keeps its error; a missing conversation must not stop the watcher.
+        }
+      }
+    }
   }
 
   private acceptStoryboard(
@@ -2271,5 +2343,22 @@ export class Studio {
       })),
       activity: this.activityFor(projectId)
     };
+  }
+}
+
+/** Reads result.json without following links: a regular file of at most 1 MB only. */
+function readResult(dir: string) {
+  // O_NONBLOCK: opening a FIFO planted in place of the file must not hang the server.
+  const fd = openSync(
+    safePath(dir, 'result.json'),
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK
+  );
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile()) throw new Error('result.json n’est pas un fichier régulier');
+    if (info.size > 1024 * 1024) throw new Error('result.json dépasse 1 Mo');
+    return readFileSync(fd, 'utf8');
+  } finally {
+    closeSync(fd);
   }
 }

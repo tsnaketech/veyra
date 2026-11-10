@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ProjectStorage } from '@veyra/storage';
@@ -408,6 +408,166 @@ it('imports assisted scripts into their run', async () => {
   expect(repo.phasesFor([run.id]).find((p) => p.phase === 'script')?.result?.provider).toBe(
     'claude-subscribe'
   );
+});
+
+// --- Assisted mode: automatic import of result.json (T137).
+async function assistedTask() {
+  app = studio(new AssistedProvider());
+  await app.sendPrompt(projectId, prompt);
+  const [task] = repo.listTasks(projectId);
+  const [run] = repo.listRuns(projectId);
+  const result = JSON.stringify(
+    await new FakeAiProvider().generateStoryboard(prompt, {
+      targetDurationMs: 20000,
+      styleInstructions: ''
+    })
+  );
+  return { task, run, result, file: join(task.dir, 'result.json') };
+}
+const systemTexts = () =>
+  repo
+    .listMessages(repo.conversationFor(projectId)!.id)
+    .filter((m) => m.role === 'system')
+    .map((m) => m.text);
+const settled = () =>
+  vi.waitFor(() => expect(app.activityFor(projectId)).toBeNull(), {
+    timeout: 120_000,
+    interval: 50
+  });
+
+it('imports a stable assisted storyboard automatically through importTask', async () => {
+  const { task, run, result, file } = await assistedTask();
+  const importTask = vi.spyOn(app, 'importTask');
+  app.watchAssistedTasks();
+  expect(importTask).not.toHaveBeenCalled();
+  writeFileSync(file, result);
+  app.watchAssistedTasks(); // first sight of this version: wait for it to hold still
+  expect(importTask).not.toHaveBeenCalled();
+  app.watchAssistedTasks();
+  expect(importTask).toHaveBeenCalledWith(task.id);
+  await settled();
+  expect(repo.getTask(task.id).status).toBe('imported');
+  expect(repo.getRun(run.id)).toMatchObject({ status: 'waiting', revisionId: expect.any(String) });
+  expect(renders).toBe(1);
+  app.watchAssistedTasks();
+  expect(importTask).toHaveBeenCalledTimes(1);
+});
+
+it('waits for a partially written result.json to stop changing', async () => {
+  const { task, result, file } = await assistedTask();
+  writeFileSync(file, result.slice(0, 20));
+  app.watchAssistedTasks();
+  writeFileSync(file, result);
+  app.watchAssistedTasks();
+  expect(repo.getTask(task.id)).toMatchObject({ status: 'awaiting_import', error: null });
+  app.watchAssistedTasks();
+  await settled();
+  expect(repo.getTask(task.id).status).toBe('imported');
+});
+
+it('does not retry an invalid result until the file changes, and never logs its content', async () => {
+  const { task, result, file } = await assistedTask();
+  const importTask = vi.spyOn(app, 'importTask');
+  writeFileSync(file, '{"secret-content": ');
+  for (let i = 0; i < 5; i++) app.watchAssistedTasks();
+  expect(importTask).toHaveBeenCalledTimes(1);
+  expect(repo.getTask(task.id)).toMatchObject({
+    status: 'awaiting_import',
+    error: 'Résultat illisible : JSON invalide'
+  });
+  const logged = systemTexts().filter((t) => t.startsWith('Import automatique impossible'));
+  expect(logged).toHaveLength(1);
+  expect(JSON.stringify(systemTexts())).not.toContain('secret-content');
+  writeFileSync(file, result);
+  app.watchAssistedTasks();
+  app.watchAssistedTasks();
+  expect(importTask).toHaveBeenCalledTimes(2);
+  await settled();
+  expect(repo.getTask(task.id)).toMatchObject({ status: 'imported', error: null });
+});
+
+it('refuses a result.json that is a symbolic link or not a regular file', async () => {
+  const { task, result, file } = await assistedTask();
+  const target = join(root, 'elsewhere.json');
+  writeFileSync(target, result);
+  symlinkSync(target, file);
+  expect(() => app.importTask(task.id)).toThrow(/illisible/);
+  rmSync(file);
+  mkdirSync(file);
+  expect(() => app.importTask(task.id)).toThrow(/fichier régulier/);
+  expect(repo.getTask(task.id).status).toBe('awaiting_import');
+  expect(repo.listRevisions(projectId)).toHaveLength(0);
+});
+
+it('refuses a storyboard task pointing at a run or revision of another project', async () => {
+  const { task: own, result } = await assistedTask();
+  const otherId = app.createProject('Autre').id;
+  await app.sendPrompt(otherId, prompt);
+  const [foreignRun] = repo.listRuns(otherId);
+  const storage = new ProjectStorage(root);
+  const forged = (id: string, input: Record<string, string | null>) => {
+    const task = repo.createTask({
+      ...own,
+      id,
+      input: { prompt, ...input },
+      dir: storage.taskDir(projectId, id),
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    writeFileSync(join(task.dir, 'result.json'), result);
+    return task;
+  };
+  const byRun = forged('tsk_forgedrun', { parentRevisionId: null, runId: foreignRun.id });
+  expect(() => app.importTask(byRun.id)).toThrow(/étrangère/);
+  const byRevision = forged('tsk_forgedrev', { parentRevisionId: 'rev_elsewhere' });
+  expect(() => app.importTask(byRevision.id)).toThrow(/étrangère/);
+  expect(repo.getRun(foreignRun.id).status).toBe('waiting');
+  expect(repo.phasesFor([foreignRun.id]).find((p) => p.phase === 'script')?.status).toBe('waiting');
+  expect(repo.getTask(byRun.id)).toMatchObject({ status: 'awaiting_import' });
+  expect(app.activityFor(projectId)).toBeNull();
+});
+
+it('imports once when the watcher and a manual click race', async () => {
+  const { task, run, result, file } = await assistedTask();
+  writeFileSync(file, result);
+  app.watchAssistedTasks();
+  app.watchAssistedTasks(); // watcher imports
+  expect(() => app.importTask(task.id)).toThrow('Tâche déjà importée');
+  await settled();
+  expect(() => app.importTask(task.id)).toThrow('Tâche déjà importée');
+  expect(repo.listRuns(projectId)).toHaveLength(1);
+  expect(repo.getRun(run.id).revisionId).toEqual(expect.any(String));
+  expect(repo.listRevisions(projectId)).toHaveLength(1);
+  expect(renders).toBe(1);
+});
+
+it('rolls back the import when marking the task fails', async () => {
+  const { task, run, result, file } = await assistedTask();
+  writeFileSync(file, result);
+  const update = vi.spyOn(repo, 'updateTask').mockImplementationOnce(() => {
+    throw new Error('disque plein');
+  });
+  expect(() => app.importTask(task.id)).toThrow('disque plein');
+  update.mockRestore();
+  expect(repo.phasesFor([run.id]).find((p) => p.phase === 'script')?.status).toBe('waiting');
+  expect(app.activityFor(projectId)).toBeNull();
+  await app.importTask(task.id);
+  expect(repo.getTask(task.id).status).toBe('imported');
+  expect(renders).toBe(1);
+});
+
+it('records an imported script on a stopped run without restarting it', async () => {
+  const { task, run, result, file } = await assistedTask();
+  app.stopProduction(run.id);
+  writeFileSync(file, result);
+  app.watchAssistedTasks();
+  app.watchAssistedTasks();
+  await settled();
+  expect(repo.getTask(task.id).status).toBe('imported');
+  expect(repo.getRun(run.id).status).toBe('stopped');
+  expect(repo.phasesFor([run.id]).find((p) => p.phase === 'script')?.status).toBe('done');
+  expect(renders).toBe(0);
+  expect(systemTexts().some((t) => t.includes('Reprendre'))).toBe(true);
 });
 
 it('rebuilds production runners from persisted script results after stopping', async () => {

@@ -18,6 +18,7 @@ Implémentations : `packages/schemas/src/index.ts` (validation et types),
 | CorrectionBatch | cbt_ | Projet, révision source (FK composite), submissionKey unique, état, fournisseur, feedbackIds, plan, révision produite, vérification JSON (verdict par commentaire), erreur, dates |
 | QualityEvaluation | qev_ | Projet, révision évaluée, révision de base, lot nullable, évaluateur nullable, analysisMode nullable, état, verdicts JSON (commentaire, verdict, catégorie, confiance, justification, preuves), constats JSON, images examinées, erreur, dates |
 | AiTask | tsk_ | Projet, type storyboard/plan/evaluation, fournisseur, état, lot nullable, entrée JSON, dossier d'échange, erreur, dates (mode assisté) |
+| ProductionRun | run_ | Projet, type production/revision, état, brief, plan Director (`maxAiCalls`, `maxRenders`), révisions source et produite, `aiCalls`, enveloppe de dépense D022 (`budgetMicroUsd`, `spentMicroUsd`, `reservedMicroUsd`, entiers en micro-dollars, 0 par défaut), erreur, dates |
 | AppSetting | — | Clé/valeur (`aiProvider` : fournisseur choisi dans /settings) |
 | QualityReport | qar_ | Révision, rapport JSON, date |
 | QualityCheck / QualityIssue | qck_ / qis_ | Constats imbriqués dans le rapport, pas de table séparée |
@@ -94,6 +95,10 @@ Dans `apps/studio/drizzle/` (snapshot et journal), appliquées au démarrage :
   (composition audio JSON, immuable avec la révision), `video_revisions.silent_video_path`,
   `assets.audio` (validation et métadonnées d'un fichier audio), `feedback.range_end_ms`
   (fin de plage, ≥ `timestamp_ms`, vérifiée par le dépôt) et `feedback.audio_track_id`.
+- `0006_budget_envelope` (D022) : colonnes ajoutées uniquement —
+  `production_runs.budget_micro_usd`, `spent_micro_usd`, `reserved_micro_usd`
+  (`integer NOT NULL DEFAULT 0`) ; runs existants conservés, enveloppe 0 (aucun appel
+  facturable tant qu'elle n'est pas augmentée). Test : `migration.test.ts` (0005 → 0006).
 - `0002_quality_evaluations` (D015) : table `quality_evaluations` ; reconstruction
   de `ai_tasks` (CHECK `kind` + `evaluation`), lignes copiées telles quelles.
 
@@ -102,6 +107,24 @@ où `PRAGMA foreign_keys=OFF` est sans effet. La reconstruction de `feedback`
 fonctionne parce qu'aucune table ne la référence ; une table référencée
 (`video_revisions`, `scenes`) ne peut pas être reconstruite ainsi. Préférer des
 changements additifs.
+
+## Enveloppe de dépense (D022)
+
+Un appel facturable n'est possible que dans un run et seulement via le dépôt :
+`reserveBudget(runId, pireCas)` vérifie `dépensé + réservé + pireCas ≤ autorisé` et
+enregistre la réservation dans la même transaction, **avant** l'appel (sinon
+`BudgetExceededError`, message « Budget insuffisant : X $ dépensés, Y $ autorisés,
+Z $ nécessaires ») ; `settleBudget(runId, réservation, coûtConstaté | null)` remplace
+la réservation par le coût de `response.usage`, ou la garde comme dépensée si le coût
+est inconnu (erreur, annulation) ; `raiseBudget` ne fait qu'augmenter l'enveloppe.
+`updateRun` n'écrit pas ces colonnes. Une réservation en cours lors d'un arrêt brutal
+reste réservée après redémarrage (prudent : elle continue de compter).
+Calcul (`packages/schemas/src/production.ts`) : un prix en USD par million de tokens
+vaut des micro-dollars par token ; pire cas = entrée × 1,25 × prix d'entrée (tarif
+d'écriture en cache, le plus cher) + `max_tokens` × prix de sortie ; coût constaté =
+(entrée + 1,25 × écriture cache + 0,1 × lecture cache) × prix d'entrée + sortie × prix
+de sortie ; arrondi au micro-dollar supérieur (bruit flottant ignoré). L'exactitude
+dépend de la grille tarifaire locale.
 
 ## File de rendu
 

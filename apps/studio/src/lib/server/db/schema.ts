@@ -361,6 +361,10 @@ export const productionRuns = sqliteTable(
     sourceRevisionId: text('source_revision_id').references(() => videoRevisions.id),
     revisionId: text('revision_id').references(() => videoRevisions.id),
     aiCalls: integer('ai_calls').notNull().default(0),
+    // D022 spend envelope in micro-dollars; written only by the repository budget methods.
+    budgetMicroUsd: integer('budget_micro_usd').notNull().default(0),
+    spentMicroUsd: integer('spent_micro_usd').notNull().default(0),
+    reservedMicroUsd: integer('reserved_micro_usd').notNull().default(0),
     error: text('error'),
     ...timestamps()
   },

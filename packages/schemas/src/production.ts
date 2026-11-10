@@ -102,6 +102,8 @@ export type AgentId = z.infer<typeof agentIdSchema>;
 export type ReviewPlan = z.infer<typeof reviewPlanSchema>;
 
 const time = z.number().int().nonnegative();
+export const microUsdSchema = z.number().int().nonnegative();
+const microUsd = microUsdSchema;
 export const productionRunStatusSchema = z.enum([
   "running",
   "waiting",
@@ -128,6 +130,10 @@ export const productionRunSchema = z.object({
   sourceRevisionId: idSchema("rev").nullable().default(null),
   revisionId: idSchema("rev").nullable().default(null),
   aiCalls: z.number().int().nonnegative().default(0),
+  // Spend envelope (D022), in integer micro-dollars; 0 authorizes no billable call.
+  budgetMicroUsd: microUsd.default(0),
+  spentMicroUsd: microUsd.default(0),
+  reservedMicroUsd: microUsd.default(0),
   error: z.string().nullable().default(null),
   createdAt: time,
   updatedAt: time,
@@ -150,3 +156,67 @@ export const productionPhaseSchema = z.object({
 });
 export type ProductionRun = z.infer<typeof productionRunSchema>;
 export type ProductionPhase = z.infer<typeof productionPhaseSchema>;
+
+/** Local price list of one model, in USD per million tokens (= micro-dollars per token). */
+export type ModelPricing = {
+  inputUsdPerMTok: number;
+  outputUsdPerMTok: number;
+};
+/** Subset of the Messages API `usage` object that is billed. */
+export type BilledUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
+};
+// Float noise (0.1 * 3 = 0.30000000000000004) must not add a micro-dollar; real fractions round up.
+const ceilMicro = (x: number) => Math.ceil(Math.round(x * 1000) / 1000);
+/**
+ * Upper bound of one call: every input token billed at the cache-write rate (x1.25, the
+ * dearest input tier) and the whole `max_tokens` billed as output (thinking included).
+ */
+export function worstCaseMicroUsd(
+  pricing: ModelPricing,
+  inputTokens: number,
+  maxTokens: number,
+) {
+  return ceilMicro(
+    inputTokens * 1.25 * pricing.inputUsdPerMTok +
+      maxTokens * pricing.outputUsdPerMTok,
+  );
+}
+/** Observed cost from `response.usage`: cache writes x1.25, cache reads x0.1. */
+export function usageMicroUsd(pricing: ModelPricing, usage: BilledUsage) {
+  const input =
+    usage.input_tokens +
+    1.25 * (usage.cache_creation_input_tokens ?? 0) +
+    0.1 * (usage.cache_read_input_tokens ?? 0);
+  return ceilMicro(
+    input * pricing.inputUsdPerMTok +
+      usage.output_tokens * pricing.outputUsdPerMTok,
+  );
+}
+export function usdToMicroUsd(usd: number) {
+  if (!Number.isFinite(usd) || usd < 0)
+    throw new Error("Montant en USD invalide");
+  return Math.round(usd * 1e6);
+}
+export const formatUsd = (micro: number) => (micro / 1e6).toFixed(4);
+/** Refusal raised before a billable call that would overrun the run's envelope. */
+export class BudgetExceededError extends Error {
+  constructor(
+    readonly spentMicroUsd: number,
+    readonly reservedMicroUsd: number,
+    readonly budgetMicroUsd: number,
+    readonly neededMicroUsd: number,
+  ) {
+    const held = reservedMicroUsd
+      ? ` (dont ${formatUsd(reservedMicroUsd)} $ réservés)`
+      : "";
+    super(
+      `Budget insuffisant : ${formatUsd(spentMicroUsd + reservedMicroUsd)} $ dépensés${held}, ` +
+        `${formatUsd(budgetMicroUsd)} $ autorisés, ${formatUsd(neededMicroUsd)} $ nécessaires`,
+    );
+    this.name = "BudgetExceededError";
+  }
+}

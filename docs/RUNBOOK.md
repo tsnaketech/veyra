@@ -48,7 +48,12 @@ configurée ». Une clé seule n'active plus l'API : choisir `anthropic-api` (D0
    afficher « Disponible ».
 3. Dans le Studio, envoyer un prompt ou un lot : un dossier `…/ai-tasks/tsk_…` est
    indiqué. Dans Claude Code, à la racine du dépôt : `/veyra-assisted-task <dossier>`.
-4. Revenir au Studio : « Importer le résultat ». Le plan importé attend votre décision.
+4. Revenir au Studio : le résultat est importé automatiquement quelques secondes
+   après son écriture (la page s'actualise seule). En cas d'erreur affichée sur la
+   tâche, corriger `result.json` (réimporté s'il change) ou cliquer sur « Importer
+   le résultat ». Si la production a été arrêtée entre-temps, le résultat est
+   enregistré sans relance : cliquer sur « Reprendre ». Le plan importé attend
+   votre décision.
 
 ## Skills externes HyperFrames (après un clone)
 

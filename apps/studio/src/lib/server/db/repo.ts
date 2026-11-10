@@ -16,6 +16,8 @@ import {
   qualityEvaluationSchema,
   productionRunSchema,
   productionPhaseSchema,
+  microUsdSchema,
+  BudgetExceededError,
   type ProductionRun,
   type ProductionPhase,
   type QualityEvaluation,
@@ -28,6 +30,12 @@ import {
 import * as tables from './schema';
 
 export function createRepository(db: BetterSQLite3Database<typeof tables>) {
+  type Budget = Pick<ProductionRun, 'budgetMicroUsd' | 'spentMicroUsd' | 'reservedMicroUsd'>;
+  const writeBudget = (run: ProductionRun, patch: Partial<Budget>) => {
+    const next = productionRunSchema.parse({ ...run, ...patch, updatedAt: Date.now() });
+    db.update(tables.productionRuns).set(next).where(eq(tables.productionRuns.id, run.id)).run();
+    return next;
+  };
   const revision = (id: string) => {
     const row = db
       .select()
@@ -447,6 +455,13 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
         .orderBy(asc(tables.aiTasks.createdAt))
         .all();
     },
+    listAwaitingTasks() {
+      return db
+        .select()
+        .from(tables.aiTasks)
+        .where(eq(tables.aiTasks.status, 'awaiting_import'))
+        .all();
+    },
     updateTask(id: string, patch: Partial<Pick<AiTask, 'status' | 'error'>>) {
       return db.transaction(() => {
         const row = task(id);
@@ -537,6 +552,45 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
         const next = productionRunSchema.parse({ ...row, ...patch, updatedAt: Date.now() });
         db.update(tables.productionRuns).set(next).where(eq(tables.productionRuns.id, id)).run();
         return next;
+      });
+    },
+    /**
+     * Single gate for billable AI calls (D022): checks and records the worst-case cost in
+     * one transaction, before the call. Throws BudgetExceededError when it would overrun.
+     */
+    reserveBudget(runId: string, amountMicroUsd: number) {
+      const amount = microUsdSchema.parse(amountMicroUsd);
+      return db.transaction(() => {
+        const run = this.getRun(runId);
+        const { spentMicroUsd: spent, reservedMicroUsd: reserved, budgetMicroUsd: budget } = run;
+        if (spent + reserved + amount > budget)
+          throw new BudgetExceededError(spent, reserved, budget, amount);
+        return writeBudget(run, { reservedMicroUsd: reserved + amount });
+      });
+    },
+    /**
+     * Replaces a reservation with the observed cost; `null` (error, abort: billing unknown)
+     * keeps the whole reservation as spent.
+     */
+    settleBudget(runId: string, reservedMicroUsd: number, actualMicroUsd: number | null) {
+      const reservation = microUsdSchema.parse(reservedMicroUsd);
+      const actual = actualMicroUsd === null ? reservation : microUsdSchema.parse(actualMicroUsd);
+      return db.transaction(() => {
+        const run = this.getRun(runId);
+        if (reservation > run.reservedMicroUsd) throw new Error('Réservation inconnue');
+        return writeBudget(run, {
+          reservedMicroUsd: run.reservedMicroUsd - reservation,
+          spentMicroUsd: run.spentMicroUsd + actual
+        });
+      });
+    },
+    /** Explicit user increase of the envelope; it never shrinks. */
+    raiseBudget(runId: string, budgetMicroUsd: number) {
+      const budget = microUsdSchema.parse(budgetMicroUsd);
+      return db.transaction(() => {
+        const run = this.getRun(runId);
+        if (budget < run.budgetMicroUsd) throw new Error("L'enveloppe ne peut qu'augmenter");
+        return writeBudget(run, { budgetMicroUsd: budget });
       });
     },
     createPhase(input: unknown) {

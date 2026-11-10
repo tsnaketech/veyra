@@ -3,12 +3,18 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import {
+  BudgetExceededError,
+  usageMicroUsd,
+  worstCaseMicroUsd,
   captionRulesSchema,
   captionStyleSchema,
   captionTrackSchema,
   groupCaptions,
   sceneFallbackWords
 } from '@veyra/schemas';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createRepository } from './repo';
 import * as schema from './schema';
 let client: Database.Database;
@@ -223,4 +229,102 @@ it('persists captions with the revision and cue targets on feedback, never patch
   const cueId = captions.cues[0].id;
   repo.createFeedback({ ...feedback, revisionId: 'rev_cap', captionCueId: cueId });
   expect(repo.getFeedback('fdb_one')?.captionCueId).toBe(cueId);
+});
+
+it('gates billable calls on the persisted spend envelope (D022)', () => {
+  const run = (id: string, budgetMicroUsd?: number) =>
+    repo.createRun({
+      id,
+      projectId: 'prj_one',
+      kind: 'production',
+      plan: { phases: [], budget: { maxAiCalls: 3, maxRenders: 2 }, reason: 'R' },
+      ...(budgetMicroUsd === undefined ? {} : { budgetMicroUsd }),
+      createdAt: 1,
+      updatedAt: 1
+    });
+  // Default envelope is zero: nothing billable, not even a one-micro-dollar call.
+  run('run_zero');
+  expect(() => repo.reserveBudget('run_zero', 1)).toThrow(BudgetExceededError);
+  expect(repo.getRun('run_zero')).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: 0 });
+
+  run('run_one', 1_000_000);
+  // Worst case of a 1000-token prompt with max_tokens 16000 on 4/20 $ per MTok.
+  const pricing = { inputUsdPerMTok: 4, outputUsdPerMTok: 20 };
+  const worst = worstCaseMicroUsd(pricing, 1000, 16000);
+  expect(worst).toBe(325_000);
+  repo.reserveBudget('run_one', worst);
+  repo.reserveBudget('run_one', worst);
+  repo.reserveBudget('run_one', worst);
+  // A fourth concurrent reservation would overrun 1 $: refused with the three amounts.
+  expect(() => repo.reserveBudget('run_one', worst)).toThrow(
+    'Budget insuffisant : 0.9750 $ dépensés (dont 0.9750 $ réservés), 1.0000 $ autorisés, 0.3250 $ nécessaires'
+  );
+  const cost = usageMicroUsd(pricing, {
+    input_tokens: 1000,
+    output_tokens: 2000,
+    cache_creation_input_tokens: 100,
+    cache_read_input_tokens: 1000
+  });
+  expect(cost).toBe(4000 + 500 + 400 + 40_000);
+  repo.settleBudget('run_one', worst, cost);
+  // Aborted call: billing unknown, the reservation stays spent.
+  repo.settleBudget('run_one', worst, null);
+  expect(repo.getRun('run_one')).toMatchObject({
+    spentMicroUsd: cost + worst,
+    reservedMicroUsd: worst
+  });
+  expect(() => repo.settleBudget('run_one', worst * 2, 0)).toThrow('Réservation inconnue');
+  repo.settleBudget('run_one', worst, cost);
+  repo.reserveBudget('run_one', worst);
+  expect(() => repo.reserveBudget('run_one', worst)).toThrow(BudgetExceededError);
+  expect(() => repo.raiseBudget('run_one', 999_999)).toThrow("L'enveloppe ne peut qu'augmenter");
+  repo.raiseBudget('run_one', 2_000_000);
+  repo.reserveBudget('run_one', worst);
+  // Unrelated run updates keep the envelope.
+  repo.updateRun('run_one', { status: 'waiting', aiCalls: 3 });
+
+  expect(() => repo.reserveBudget('run_one', -1)).toThrow();
+  expect(() => repo.reserveBudget('run_one', 0.5)).toThrow();
+});
+
+it('keeps the spend envelope across a restart on a database file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'veyra-budget-'));
+  const open = () => {
+    const file = new Database(join(dir, 'veyra.db'));
+    const fileDb = drizzle(file, { schema });
+    migrate(fileDb, { migrationsFolder: './drizzle' });
+    return { file, repo: createRepository(fileDb) };
+  };
+  try {
+    const first = open();
+    first.repo.createProject({
+      id: 'prj_one',
+      name: 'T',
+      resolvedConfig: {},
+      createdAt: 1,
+      updatedAt: 1
+    });
+    first.repo.createRun({
+      id: 'run_one',
+      projectId: 'prj_one',
+      kind: 'production',
+      plan: { phases: [], budget: { maxAiCalls: 3, maxRenders: 2 }, reason: 'R' },
+      budgetMicroUsd: 500_000,
+      createdAt: 1,
+      updatedAt: 1
+    });
+    first.repo.reserveBudget('run_one', 300_000);
+    first.file.close();
+    // The in-flight reservation survives the crash and still blocks an overrun.
+    const second = open();
+    expect(() => second.repo.reserveBudget('run_one', 300_000)).toThrow(BudgetExceededError);
+    expect(second.repo.getRun('run_one')).toMatchObject({
+      budgetMicroUsd: 500_000,
+      reservedMicroUsd: 300_000,
+      spentMicroUsd: 0
+    });
+    second.file.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

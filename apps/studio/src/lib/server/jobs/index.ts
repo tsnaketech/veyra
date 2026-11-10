@@ -58,3 +58,14 @@ export function chooseProvider(id: ProviderId) {
 }
 export const claudeSubscribeStatus = () =>
   checkClaudeSubscribe({ command: settings.models.claudeSubscribe.command });
+
+// Assisted mode: import result.json as soon as the user's Claude Code session wrote it.
+const assistedWatch = setInterval(() => {
+  try {
+    studio.watchAssistedTasks();
+  } catch (error) {
+    console.error('Surveillance du mode assisté :', error instanceof Error ? error.message : error);
+  }
+}, 2000);
+assistedWatch.unref();
+export const stopAssistedWatch = () => clearInterval(assistedWatch);

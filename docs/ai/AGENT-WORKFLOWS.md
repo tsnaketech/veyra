@@ -31,9 +31,12 @@ l'API et le mode assisté.
    et, pour un plan, `frames/<fdb>.png`.
 2. L'utilisateur, dans **sa** session Claude Code à la racine du dépôt, lance
    `/veyra-assisted-task <dossier>` ([skill](../../.agents/skills/veyra-assisted-task/SKILL.md)),
-   qui écrit `result.json`.
-3. « Importer le résultat » : taille ≤ 1 Mo, JSON, schéma Zod ; une erreur laisse la
-   tâche en attente avec son message. Le plan importé attend ensuite la décision humaine.
+   qui écrit seulement `result.json`, sans exécuter de commande.
+3. Import automatique (surveillance serveur toutes les 2 s, fichier stable entre deux
+   passages) ou « Importer le résultat » en repli, par le même `importTask` : fichier
+   régulier sans lien, taille ≤ 1 Mo, JSON, schéma Zod, production et révision du
+   même projet ; une erreur laisse la tâche en attente avec son message, retentée
+   seulement si le fichier change. Le plan importé attend ensuite la décision humaine.
 
 Disponibilité (`checkClaudeSubscribe`) : `claude --version`, puis
 `claude auth status --json` sans variables de clé API ; seuls `loggedIn`,

@@ -10,6 +10,10 @@ import {
   revisionPlanSchema,
   storyboardSchema,
   storyboardSpecification,
+  productionRunSchema,
+  usageMicroUsd,
+  usdToMicroUsd,
+  worstCaseMicroUsd,
 } from "./index";
 import { qualityReportSchema as contractReport } from "./production";
 import { inputHash } from "./hash";
@@ -142,4 +146,36 @@ it("validates brief and engine/human ownership", () => {
         phases: [{ ...phase, dependsOn: [] }],
       }).success,
     ).toBe(false);
+});
+
+it("prices calls in whole micro-dollars, rounding up real fractions only", () => {
+  const pricing = { inputUsdPerMTok: 0.3, outputUsdPerMTok: 1.5 };
+  // 0.1 x 3 x 10 is 3.0000000000000004 in floating point: 3 micro-dollars, not 4.
+  expect(
+    usageMicroUsd(
+      { inputUsdPerMTok: 10, outputUsdPerMTok: 0 },
+      { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 3 },
+    ),
+  ).toBe(3);
+  expect(usageMicroUsd(pricing, { input_tokens: 0, output_tokens: 1 })).toBe(2);
+  expect(
+    worstCaseMicroUsd({ inputUsdPerMTok: 4, outputUsdPerMTok: 20 }, 0, 16000),
+  ).toBe(320_000);
+  expect(usdToMicroUsd(0.35)).toBe(350_000);
+  expect(() => usdToMicroUsd(-1)).toThrow();
+  expect(() => usdToMicroUsd(Number.NaN)).toThrow();
+  expect(
+    productionRunSchema.parse({
+      id: "run_1",
+      projectId: "prj_1",
+      kind: "production",
+      plan: {
+        phases: [],
+        budget: { maxAiCalls: 1, maxRenders: 1 },
+        reason: "R",
+      },
+      createdAt: 1,
+      updatedAt: 1,
+    }),
+  ).toMatchObject({ budgetMicroUsd: 0, spentMicroUsd: 0, reservedMicroUsd: 0 });
 });

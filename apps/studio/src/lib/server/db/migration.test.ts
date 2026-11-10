@@ -236,3 +236,45 @@ it('upgrades 0004 data to 0005: rows are kept and the caption columns start empt
   expect(client.pragma('foreign_key_check')).toEqual([]);
   client.close();
 });
+
+it('upgrades 0005 data to 0006: runs are kept and their spend envelope starts at zero', () => {
+  dir = mkdtempSync(join(tmpdir(), 'veyra-mig-'));
+  cpSync('drizzle', dir, { recursive: true });
+  const journal = JSON.parse(readFileSync(join(dir, 'meta/_journal.json'), 'utf8'));
+  journal.entries = journal.entries.slice(0, 6);
+  writeFileSync(join(dir, 'meta/_journal.json'), JSON.stringify(journal));
+  const client = new Database(':memory:');
+  client.pragma('foreign_keys = ON');
+  migrate(drizzle(client), { migrationsFolder: dir });
+  const plan = JSON.stringify({
+    phases: [],
+    budget: { maxAiCalls: 3, maxRenders: 2 },
+    reason: 'R'
+  });
+  client.exec(`insert into projects values ('prj_1','P','{}',1,1)`);
+  client
+    .prepare(
+      `insert into production_runs (id,project_id,kind,status,plan,ai_calls,created_at,updated_at) values ('run_1','prj_1','production','waiting',?,2,1,1)`
+    )
+    .run(plan);
+  client.exec(
+    `insert into production_phases (id,run_id,phase,agent,status,attempts,created_at,updated_at) values ('phs_1','run_1','script','director','done',1,1,1)`
+  );
+  const before = {
+    runs: client.prepare('select * from production_runs').all(),
+    phases: client.prepare('select * from production_phases').all()
+  };
+
+  migrate(drizzle(client), { migrationsFolder: 'drizzle' });
+  expect(client.prepare('select * from production_runs').all()).toEqual(
+    (before.runs as object[]).map((r) => ({
+      ...r,
+      budget_micro_usd: 0,
+      spent_micro_usd: 0,
+      reserved_micro_usd: 0
+    }))
+  );
+  expect(client.prepare('select * from production_phases').all()).toEqual(before.phases);
+  expect(client.pragma('foreign_key_check')).toEqual([]);
+  client.close();
+});

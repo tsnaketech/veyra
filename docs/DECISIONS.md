@@ -116,9 +116,15 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   ne lit aucun fichier d'identifiants et n'en stocke aucun. La vérification de
   disponibilité exécute seulement `claude --version` et `claude auth status --json`
   et ne garde que `loggedIn`, `authMethod`, `subscriptionType`.
-- Conséquences : une étape manuelle par demande ; pas de revue qualitative
-  automatique dans ce mode (rien n'est envoyé). L'appel direct reste possible
-  plus tard uniquement par décision explicite et pour un usage personnel.
+- Conséquences : une étape manuelle par demande (lancer Claude Code) ; pas de
+  revue qualitative automatique dans ce mode (rien n'est envoyé). L'appel direct
+  reste possible plus tard uniquement par décision explicite et pour un usage
+  personnel. Depuis T137 (2026-11-04), l'import est automatique : le serveur
+  examine toutes les 2 s les tâches en attente et passe chaque `result.json`
+  stable (taille et date inchangées entre deux passages, fichier régulier, pas de
+  lien) par la même validation que le bouton « Importer le résultat », conservé
+  en repli ; une version invalide n'est retentée que si le fichier change. Le
+  lancement de Claude Code reste manuel.
 
 ## D011 — Fournisseur explicite, jamais de basculement
 

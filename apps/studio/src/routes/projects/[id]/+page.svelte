@@ -108,10 +108,15 @@
   const scene = $derived(revision ? sceneAt(revision.storyboard, nowMs) : undefined);
   const canCorrect = $derived(revision?.status === 'awaiting_approval' && data.aiKind !== null);
 
-  // Poll only while something is actually running server-side.
+  // Waiting on Claude Code or a human: slower refresh so an automatic import shows up.
+  const waiting = $derived(
+    pendingTasks.length > 0 || data.runs.some((r) => r.status === 'waiting')
+  );
+
+  // Poll only while something is actually running or awaited server-side.
   $effect(() => {
-    if (!working) return;
-    const timer = setInterval(() => invalidateAll(), 1000);
+    if (!working && !waiting) return;
+    const timer = setInterval(() => invalidateAll(), working ? 1000 : 2000);
     return () => clearInterval(timer);
   });
 
@@ -201,6 +206,9 @@
                 ? 'expertise QA'
                 : 'storyboard'}) :
             <code class="break-all">{task.dir}</code>
+          </p>
+          <p class="mb-1 text-cyan" role="status">
+            En attente du résultat de Claude Code — import automatique
           </p>
           {#if task.error}<p class="mb-1 text-bad">{task.error}</p>{/if}
           <form method="POST" action="?/importTask" use:enhance>
