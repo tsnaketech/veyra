@@ -105,3 +105,12 @@ contrats `packages/schemas/src/loop.ts`, moteur `apps/studio/src/lib/server/tool
 dans la phase `plan` d'un run, migration additive 0008 `loop_steps`, `Orchestrator.wake`.
 Preuves et prérequis exacts de T129b : [TASKS](../docs/TASKS.md) (T129a, T129b).
 Prochaine étape : revue indépendante de T129a, puis T129b.
+
+2026-11-11 — T146 (limites fournisseurs, fournisseur par projet D024), T147 (POC
+`codex-chatgpt` démontré réellement : Codex 0.167.0 npm épinglé, CODEX_HOME dédié,
+connexion ChatGPT de l'utilisateur, schéma strict), T128 (EditOperation,
+`revision.apply`, D025), T129a (boucle d'outils sans IA, D026), T148 (suites des revues
+du 2026-11-11, rapport dans docs/reviews/). Statut contractuel Codex toujours AMBIGU
+(accepté par l'utilisateur). Chemins Codex fournis par `VEYRA_CODEX_COMMAND` et
+`VEYRA_CODEX_HOME` (voir RUNBOOK). Prochaine étape : T129b (Director IA) selon ses
+prérequis dans TASKS, après décision sur D021.
