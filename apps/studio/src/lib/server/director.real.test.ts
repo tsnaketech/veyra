@@ -5,7 +5,7 @@
  *   VEYRA_CODEX_REAL=1 VEYRA_CODEX_COMMAND=/abs/codex VEYRA_CODEX_HOME=/abs/codex-home \
  *     pnpm --filter studio exec vitest run --project server src/lib/server/director.real.test.ts
  * Reference project: storyboard from the simulated provider (no quota spent), a simulated
- * voice-off on scene 1, renders by colorEngine (real ffmpeg H.264, not HyperFrames). Only the
+ * voice-off on scene 1, renders and checks by the real HyperFrames engine (bwrap). Only the
  * Director's decisions come from Codex. The journal (decisions, tools, artefacts) is
  * written to VEYRA_DIRECTOR_REAL_OUT (default: a kept temporary folder).
  */
@@ -14,15 +14,14 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CodexExecProvider, FakeAiProvider } from '@veyra/ai';
+import { HyperFramesEngine } from '@veyra/hyperframes-adapter';
 import { ProjectStorage } from '@veyra/storage';
 import { createRepository } from './db/repo';
 import * as schema from './db/schema';
 import { defaultConfigDir, loadRenderSettings, RenderJobRunner } from './jobs/runner';
 import { loadStudioSettings, Studio } from './studio';
-import { colorEngine } from './test-engines';
 
 const COMMAND = process.env.VEYRA_CODEX_COMMAND ?? '';
 const CODEX_HOME = process.env.VEYRA_CODEX_HOME ?? '';
@@ -36,7 +35,9 @@ it.skipIf(!REAL)(
   '[réel codex-chatgpt] Director in the Studio: model decisions, real tools, rendered child, QA',
   async () => {
     const out =
-      process.env.VEYRA_DIRECTOR_REAL_OUT ?? mkdtempSync(join(tmpdir(), 'veyra-director-real-'));
+      // bwrap hides /tmp: the default output stays under the user's lab folder.
+      process.env.VEYRA_DIRECTOR_REAL_OUT ??
+      mkdtempSync('/home/user/project/kajisho5-lab/veyra-director-real-');
     mkdirSync(out, { recursive: true });
     const client = new Database(join(out, 'demo.db'));
     client.pragma('foreign_keys = ON');
@@ -47,12 +48,7 @@ it.skipIf(!REAL)(
     const storage = new ProjectStorage(join(out, 'projects'));
     const app = new Studio(
       repo,
-      new RenderJobRunner(
-        repo,
-        storage,
-        colorEngine((id) => repo.getRevision(id).storyboard),
-        settings
-      ),
+      new RenderJobRunner(repo, storage, new HyperFramesEngine(settings.engine), settings),
       new FakeAiProvider(),
       settings,
       storage
@@ -133,7 +129,10 @@ it.skipIf(!REAL)(
     expect(
       journal.modelDecisions.filter((d) => d.tool && d.status === 'done').length
     ).toBeGreaterThanOrEqual(2);
+    // No simulated engine anywhere in the tools the model ran.
+    expect(JSON.stringify(journal.modelDecisions)).not.toContain('fake-test-only');
     expect(child?.status).toBe('awaiting_approval');
+    expect(child?.videoPath).toBeTruthy(); // rendered by the fixed render step
     child!.storyboard.scenes.forEach((scene, i) => {
       if (i !== 1) expect(scene).toEqual(parent.storyboard.scenes[i]);
       expect(scene.narration ?? null).toEqual(parent.storyboard.scenes[i].narration ?? null);

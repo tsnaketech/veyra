@@ -206,6 +206,14 @@ it("[simulé] prompt: tool results, project and goal are untrusted blocks that c
   );
 });
 
+it("[simulé] prompt: states the fixed render, QA and human approval after request_approval", () => {
+  const { system } = directorPrompt(view());
+  expect(system).toMatch(
+    /Après request_approval, Veyra effectue automatiquement, en étapes fixes, le rendu de cette révision, sa QA puis la validation humaine/,
+  );
+  expect(system).toMatch(/inspecte l'état .* avant de modifier/);
+});
+
 it("[simulé] simulated Director reacts to observations (not a script indexed by step)", () => {
   expect(simulatedDecision(view())).toMatchObject({ action: "revise_plan" });
   const first = simulatedDecision(view({ plan }));

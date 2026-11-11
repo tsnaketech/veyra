@@ -281,6 +281,15 @@ Le Director dans le Studio, sur l'orchestrateur unique, sans migration ni nouvea
   enchaîne `media.inspect` puis `revision.apply` (`scene.animation` ×0,6 et
   `scene.transition`) ; scène introuvable → `ask_user`. Le résumé du projet transmis au
   Director inclut texte, animation, composant et présence de narration de chaque scène.
+- **Suites de la démo réelle (2026-11-11)** : `composition.check` sur une révision sans
+  composition sur disque (enfant `draft` de `revision.apply`) compose la révision depuis son
+  storyboard (même compositeur que le rendu, sous-titres incrustés si le mode n'est pas
+  `clean`) dans le dossier propre de l'appel `<prj>/tool-calls/<tcl_…>/` (sous la racine de
+  stockage : bwrap masque `/tmp`), lance la vérification HyperFrames puis supprime ce dossier ;
+  rien n'est écrit dans le dossier de la révision. Moteur autre que HyperFrames : « Composition
+  absente », comme avant. Le prompt du Director indique qu'après `request_approval` le rendu, la
+  QA et la validation humaine sont automatiques (étapes fixes), et recommande d'inspecter
+  l'état avant de modifier quand c'est utile.
 - **Pas encore** : appel réel du Director non exécuté (démo préparée :
   `apps/studio/src/lib/server/director.real.test.ts`, RUNBOOK) ; `maxRenders` non vérifié
   avant un appel d'`audio.track.update` (décompté au rendu final seulement) ; pas de choix

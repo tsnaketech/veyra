@@ -1,16 +1,17 @@
-import { existsSync } from 'node:fs';
-import { relative } from 'node:path';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { applyProposal } from '@veyra/ai';
 import { voiceProvider } from '@veyra/audio';
-import { compositionCheckSchema } from '@veyra/hyperframes-adapter';
+import { compose, compositionCheckSchema, writeComposition } from '@veyra/hyperframes-adapter';
 import {
   audioCompositionSchema,
   audioMixPatchSchema,
   captionPrecisionSummary,
   captionTrackSchema,
   editOperationSchema,
+  frameCount,
   idSchema,
   invalidationPlanSchema,
   newId,
@@ -26,6 +27,7 @@ import {
 import { safePath } from '@veyra/storage';
 import { extractFrameByIndex, probe, probeSchema } from '@veyra/video';
 import { applyEdits, editState, invalidationPlan } from '../edits';
+import { captionDeliverySchema } from '../jobs/runner';
 import { buildFallbackCaptions } from '../studio';
 import { defineTool, ToolFailure, type CallContext } from './registry';
 
@@ -391,9 +393,44 @@ export const compositionCheck = defineTool({
   output: compositionCheckSchema,
   async run({ revisionId }, ctx) {
     const revision = ctx.revision(revisionId);
-    const dir = safePath(ctx.storage.revision(revision.projectId, revision.id), 'composition');
-    if (!existsSync(safePath(dir, 'index.html'))) throw new Error('Composition absente');
-    return ctx.engine.check(dir, ctx.signal);
+    const revisionDir = ctx.storage.revision(revision.projectId, revision.id);
+    // safePath realpaths its root: test existence first (an unrendered revision has no folder).
+    if (existsSync(join(revisionDir, 'composition', 'index.html')))
+      return ctx.engine.check(safePath(revisionDir, 'composition'), ctx.signal);
+    if (ctx.engine.kind !== 'hyperframes') throw new Error('Composition absente');
+    // Unrendered revision (e.g. a draft child of revision.apply): compose it like the render's
+    // main picture in this call's own folder under the storage root (bwrap masks /tmp), never
+    // in the immutable revision folder; the folder is removed afterwards.
+    const work = ctx.artefactPath(revision.projectId, 'composition');
+    try {
+      mkdirSync(work);
+      const board = revision.storyboard;
+      const captions = revision.captions;
+      const burned =
+        captions &&
+        captionDeliverySchema.parse(revision.resolvedConfig.captionDelivery) !== 'clean';
+      const rate = { num: ctx.settings.engine.fps, den: 1 };
+      const end = Math.max(...board.scenes.map((scene) => scene.start + scene.duration));
+      const files = compose(
+        board,
+        { width: board.width, height: board.height },
+        ctx.settings.style,
+        ...(burned
+          ? [
+              {
+                track: captions,
+                cues: quantizeCues(captions.cues, rate, frameCount(end, rate)),
+                rate
+              }
+            ]
+          : [])
+      );
+      ctx.signal.throwIfAborted();
+      writeComposition(work, files);
+      return await ctx.engine.check(work, ctx.signal);
+    } finally {
+      rmSync(dirname(work), { recursive: true, force: true });
+    }
   }
 });
 

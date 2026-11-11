@@ -518,3 +518,35 @@ it('revision.apply: a scene edit is planned as a new picture for that scene only
   expect(child.storyboard.scenes[0].animation).toMatchObject({ enter: 'scale' });
   expect(child.storyboard.scenes.slice(1)).toStrictEqual(parent.storyboard.scenes.slice(1));
 });
+
+it('composition.check: an unrendered draft child is composed (burned captions) in the call folder, never in the revision folder', async () => {
+  const child = repo
+    .listRevisions(projectId)
+    .filter((r) => r.status === 'draft' && r.captions)
+    .at(-1)!;
+  expect(child.videoPath).toBeNull();
+  const revisionDir = storage.revision(projectId, child.id);
+  const filesBefore = existsSync(revisionDir) ? tree(revisionDir) : null;
+  const callsDir = join(storage.root, projectId, 'tool-calls');
+  const callsBefore = readdirSync(callsDir);
+  let html = '';
+  // Stand-in for HyperFramesEngine.check (real check: tools.slow.test.ts).
+  const engine = {
+    kind: 'hyperframes',
+    async check(dir: string) {
+      html = readFileSync(join(dir, 'index.html'), 'utf8');
+      return { ok: true, engine: 'hyperframes', sections: {} };
+    }
+  } as never;
+  const settings = loadStudioSettings(loadRenderSettings(), defaultConfigDir());
+  const checking = studioToolRegistry({ repo, storage, settings, engine, studio: app, projectId });
+  const result = await checking.invoke(
+    'composition.check',
+    { revisionId: child.id },
+    { grants: ['local-compute'] }
+  );
+  expect(result).toMatchObject({ ok: true });
+  expect(html).toContain(child.captions!.cues[0].lines[0].split(' ')[0]);
+  expect(existsSync(revisionDir) ? tree(revisionDir) : null).toStrictEqual(filesBefore);
+  expect(readdirSync(callsDir)).toEqual(callsBefore);
+});
