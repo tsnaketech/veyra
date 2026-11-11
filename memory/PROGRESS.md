@@ -114,3 +114,11 @@ du 2026-11-11, rapport dans docs/reviews/). Statut contractuel Codex toujours AM
 (accepté par l'utilisateur). Chemins Codex fournis par `VEYRA_CODEX_COMMAND` et
 `VEYRA_CODEX_HOME` (voir RUNBOOK). Prochaine étape : T129b (Director IA) selon ses
 prérequis dans TASKS, après décision sur D021.
+
+2026-11-11 — T129b fait (9d750e8, e0b8179, 6febdcd, 49c29df) : D021 acceptée, Director IA
+branché sur la boucle T129a et le chat du Studio. Démo réelle codex-chatgpt + HyperFrames
+réussie (revision.apply scène 2, composition.check, proposition ; rendu, QA, attente de
+validation ; journal hors dépôt dans kajisho5-lab). Revues : docs/reviews/2026-11-11-t129b.md.
+Limites : le modèle n'a pas inspecté avant de modifier, n=1, voix off simulée. T131 non
+commencé. Prochaine étape : à définir avec l'utilisateur (T129c affichage avancé, T130 cache
+par scène, T131 DSL).
