@@ -207,6 +207,7 @@ type Schema = {
 };
 /** Tool chosen from the goal's words (a rule, not understanding). */
 const intents: [RegExp, string][] = [
+  [/dynamique|rythm|énergi|plus rapide|accélèr/i, "revision.apply"],
   [/musique|volume|gain|audio|piste/i, "audio.track.update"],
   [/frame|image|capture/i, "media.frame"],
   [/mesur|inspect|analys|durée|cadence/i, "media.inspect"],
@@ -229,6 +230,33 @@ function inputFor(toolId: string, view: DirectorView) {
     };
   if (toolId === "media.frame")
     return { revisionId, frameIndex: num(view.goal, /frame\s*(\d+)/i) ?? 0 };
+  if (toolId === "revision.apply") {
+    // "scène 2" → second scene of the summary: shorter entry animation, punchier transition.
+    const scenes =
+      (
+        view.project.summary as {
+          scenes?: { id: string; animation?: Record<string, unknown> }[];
+        } | null
+      )?.scenes ?? [];
+    const scene = scenes[(num(view.goal, /sc[eè]ne\s*(\d+)/i) ?? 1) - 1];
+    if (!scene) return null;
+    const current = Number(scene.animation?.durationMs ?? 600);
+    return {
+      revisionId,
+      operations: [
+        {
+          op: "scene.animation",
+          sceneId: scene.id,
+          animationMs: Math.max(100, Math.min(1500, Math.round(current * 0.6))),
+        },
+        {
+          op: "scene.transition",
+          sceneId: scene.id,
+          enter: scene.animation?.enter === "scale" ? "slide-up" : "scale",
+        },
+      ],
+    };
+  }
   return { revisionId };
 }
 /** Correction after `invalid-input`: numbers brought within the schema's bounds, missing ids filled. */
@@ -306,38 +334,53 @@ export function simulatedDecision(view: DirectorView): DirectorStep {
   }
   const target =
     intents.find(([re]) => re.test(view.goal))?.[1] ?? "media.inspect";
+  // An edit is preceded by an inspection of the current render.
+  const sequence =
+    target === "revision.apply" ? ["media.inspect", target] : [target];
   if (!view.plan)
     return step({
       action: "revise_plan",
       plan: {
         goal: view.goal.slice(0, 500) || "Objectif",
-        steps: [`Appeler ${target}`, "Demander la validation humaine"],
+        steps: [
+          ...sequence.map((id) => `Appeler ${id}`),
+          "Demander la validation humaine",
+        ],
       },
       justification: `${SIM} : plan initial (règle sur les mots de l'objectif)`,
     });
-  const done = view.history.find(
-    (h) =>
-      h.status === "done" &&
-      (h.request as { toolId?: string }).toolId === target,
-  );
-  if (done)
+  const doneWith = (id: string) =>
+    view.history.find(
+      (h) =>
+        h.status === "done" && (h.request as { toolId?: string }).toolId === id,
+    );
+  const next = sequence.find((id) => !doneWith(id));
+  if (!next)
     return step({
       action: "request_approval",
-      revisionId: revisionOf(done.output) ?? view.project.revisionId,
-      summary: `${SIM} : ${target} exécuté, révision proposée à la validation`,
+      revisionId:
+        revisionOf(doneWith(target)!.output) ?? view.project.revisionId,
+      summary: `${SIM} : ${sequence.join(" puis ")} exécuté, révision proposée à la validation`,
     });
-  const tool = view.tools.find((t) => t.id === target);
+  const tool = view.tools.find((t) => t.id === next);
   if (!tool?.available)
     return step({
       action: "ask_user",
-      question: `L'outil ${target} est indisponible (${tool?.reason ?? "non inscrit"}). Comment continuer ?`,
+      question: `L'outil ${next} est indisponible (${tool?.reason ?? "non inscrit"}). Comment continuer ?`,
       justification: `${SIM} : outil nécessaire indisponible`,
+    });
+  const input = inputFor(tool.id, view);
+  if (!input)
+    return step({
+      action: "ask_user",
+      question: "Quelle scène faut-il modifier ?",
+      justification: `${SIM} : scène visée introuvable dans le projet`,
     });
   return step({
     action: "tool_call",
     toolId: tool.id,
     toolVersion: tool.version,
-    input: inputFor(tool.id, view),
-    justification: `${SIM} : ${target} choisi d'après l'objectif`,
+    input,
+    justification: `${SIM} : ${next} choisi d'après l'objectif`,
   });
 }

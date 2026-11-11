@@ -260,6 +260,73 @@ it("[simulé] simulated Director reacts to observations (not a script indexed by
   ).toMatchObject({ action: "ask_user" });
 });
 
+it("[simulé] simulated Director: an edit request inspects, then applies typed operations to the named scene", () => {
+  const tool = (id: string) => ({ ...view().tools[0], id, input: {} });
+  const edit = (over: Partial<DirectorView>) =>
+    simulatedDecision(
+      view({
+        goal: "Rends la scène 2 plus dynamique, conserve les autres scènes ainsi que la voix off, puis vérifie le résultat",
+        project: {
+          revisionId: "rev_p1",
+          summary: {
+            scenes: [
+              { id: "scn_a", animation: { enter: "fade", durationMs: 500 } },
+              { id: "scn_b", animation: { enter: "scale", durationMs: 500 } },
+            ],
+          },
+        },
+        tools: [tool("media.inspect"), tool("revision.apply")],
+        ...over,
+      }),
+    );
+  expect(edit({})).toMatchObject({
+    action: "revise_plan",
+    plan: {
+      steps: [
+        "Appeler media.inspect",
+        "Appeler revision.apply",
+        "Demander la validation humaine",
+      ],
+    },
+  });
+  const inspect = edit({ plan });
+  expect(inspect).toMatchObject({
+    toolId: "media.inspect",
+    input: { revisionId: "rev_p1" },
+  });
+  const apply = edit({
+    plan,
+    history: [obs(1, inspect, "done", null, { durationMs: 1 })],
+  });
+  expect(apply).toMatchObject({
+    toolId: "revision.apply",
+    input: {
+      revisionId: "rev_p1",
+      operations: [
+        { op: "scene.animation", sceneId: "scn_b", animationMs: 300 },
+        { op: "scene.transition", sceneId: "scn_b", enter: "slide-up" },
+      ],
+    },
+  });
+  expect(
+    edit({
+      plan,
+      history: [
+        obs(1, inspect, "done", null, {}),
+        obs(2, apply, "done", null, { revisionId: "rev_child" }),
+      ],
+    }),
+  ).toMatchObject({ action: "request_approval", revisionId: "rev_child" });
+  // Unknown scene: a question, never a guessed target.
+  expect(
+    edit({
+      plan,
+      goal: "Rends la scène 9 plus dynamique",
+      history: [obs(1, inspect, "done", null, {})],
+    }),
+  ).toMatchObject({ action: "ask_user" });
+});
+
 it("[simulé] an injected tool result does not change the simulated decision", () => {
   const out = (comment: string) =>
     simulatedDecision(

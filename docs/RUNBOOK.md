@@ -144,6 +144,28 @@ Version épinglée : **Codex 0.167.0** (npm, provenance SLSA vérifiable ;
    `ps` par les autres utilisateurs de la machine. Ne pas utiliser ce fournisseur sur
    une machine partagée avec des contenus confidentiels.
 
+### Utiliser le Director (montage en langage naturel, T129b-2)
+
+1. Produire une première vidéo, puis, quand une révision attend la validation, écrire la
+   modification dans le chat du projet (ex. « Rends la scène 2 plus dynamique, conserve
+   les autres scènes ainsi que la voix off, puis vérifie le résultat »). Cocher
+   « Produire une nouvelle vidéo… » pour repartir de zéro.
+2. Fournisseur requis avec la capacité `director` : `fake` (simulé, étiqueté), `anthropic-api`,
+   `openai-api` (enveloppe D022 à autoriser dans le formulaire), `codex-chatgpt`. Avec
+   `claude-subscribe`, le message produit une nouvelle vidéo, comme auparavant.
+3. Panneau « Montage par le Director » (colonne Revue) : décisions du modèle, outils
+   exécutés, demandes d'autorisation (Autoriser/Refuser, cette action seulement),
+   questions (Répondre). « Arrêter »/« Reprendre » du panneau Production s'appliquent au
+   run. La révision produite est rendue, contrôlée puis attend « Valider cette révision ».
+4. Démonstration réelle avec Codex (consomme le quota ChatGPT ; **seulement après accord
+   de l'utilisateur**), mêmes variables que la démonstration T147 (section Codex ci-dessus) :
+   `VEYRA_CODEX_REAL=1 VEYRA_CODEX_COMMAND=… VEYRA_CODEX_HOME=… pnpm --filter studio exec vitest run --project server src/lib/server/director.real.test.ts`.
+   Projet de référence : storyboard simulé, voix off simulée sur la scène 1, rendus
+   `colorEngine` (ffmpeg réel, pas HyperFrames) ; seules les décisions du Director viennent
+   de Codex. Journal (décisions du modèle, arrêts imposés, étapes fixes, révision enfant,
+   vidéo, contrôles QA) dans `VEYRA_DIRECTOR_REAL_OUT/journal.json` (par défaut un dossier
+   temporaire conservé, chemin affiché). Sans les trois variables, le test est ignoré.
+
 ## Skills externes HyperFrames (après un clone)
 
 Les skills propres à Veyra sont versionnés dans `.agents/skills/` (lien

@@ -2,6 +2,7 @@ import {
   audioCompositionSchema,
   productionPlanSchema,
   type AudioComposition,
+  type PermissionClass,
   type AudioTrack,
   type ProductionPlan,
   type Storyboard,
@@ -105,6 +106,44 @@ export function planRevisionPhases(
     affectedPhases: result.phases.map((p) => p.phase),
     warnings,
   };
+}
+
+/**
+ * Director: a natural-language edit of a revision (T129b-2). The plan phase is the tool
+ * loop (model decisions); render, QA and human approval stay fixed orchestrator steps.
+ */
+export function planDirectorRevision(budget: {
+  maxAiCalls: number;
+  maxRenders: number;
+}): ProductionPlan {
+  return productionPlanSchema.parse({
+    phases: [
+      phase("plan", "director", []),
+      phase("render", "engine", ["plan"]),
+      phase("qa", "qa-expert", ["render"]),
+      phase("human-approval", "human", ["qa"]),
+    ],
+    budget,
+    reason:
+      "Montage par le Director : outils locaux (lecture, calcul local, révision brouillon) ; action payante ou réseau soumise à votre autorisation ; code généré jamais exécuté ; rendu, QA et validation humaine fixes.",
+  });
+}
+
+/**
+ * Classes granted to the Director's tool loop, derived from its validated plan: local
+ * reads and computations always; draft-revision writes only when the plan renders and
+ * waits for a human approval. Billable, network and generated code are never granted
+ * here: the loop pauses for a human decision on each such call (or refuses it).
+ */
+export function directorGrants(plan: ProductionPlan): PermissionClass[] {
+  const has = (p: Phase["phase"]) => plan.phases.some((x) => x.phase === p);
+  return [
+    "read-only",
+    "local-compute",
+    ...(has("render") && has("human-approval")
+      ? (["writes-revision-artefacts"] as const)
+      : []),
+  ];
 }
 
 const audioWords =

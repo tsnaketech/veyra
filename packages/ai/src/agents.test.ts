@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { audioCompositionSchema } from "@veyra/schemas";
 import {
+  directorGrants,
   FakeAiProvider,
   isAudioFeedback,
+  planDirectorRevision,
   planProduction,
   planRevisionPhases,
   proposeAudio,
@@ -238,4 +240,24 @@ describe("Audio Agent", () => {
     expect(composition.tracks).toEqual([]);
     expect(warnings[0]).toMatch(/sans catégorie/);
   });
+});
+
+it("Director edit plan: fixed render, QA and human approval after the loop; grants from the plan", () => {
+  const plan = planDirectorRevision(budget);
+  expect(plan.phases.map((p) => [p.phase, p.agent])).toEqual([
+    ["plan", "director"],
+    ["render", "engine"],
+    ["qa", "qa-expert"],
+    ["human-approval", "human"],
+  ]);
+  expect(directorGrants(plan)).toEqual([
+    "read-only",
+    "local-compute",
+    "writes-revision-artefacts",
+  ]);
+  // Without a human approval in the plan, no draft revision may be written.
+  expect(directorGrants({ ...plan, phases: plan.phases.slice(0, 1) })).toEqual([
+    "read-only",
+    "local-compute",
+  ]);
 });

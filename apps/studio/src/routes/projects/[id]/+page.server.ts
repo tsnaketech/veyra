@@ -116,7 +116,32 @@ export const actions: Actions = {
   prompt: async ({ params, request }) => {
     const data = await request.formData();
     return attempt(() =>
-      studio.sendPrompt(params.id, str(data, 'prompt'), usd(str(data, 'budgetUsd') || '0'))
+      studio.sendPrompt(params.id, str(data, 'prompt'), usd(str(data, 'budgetUsd') || '0'), {
+        fresh: data.get('fresh') === 'on'
+      })
+    );
+  },
+  // Director pauses (T129b-2): a decision on this very call, or an answer that grants nothing.
+  decideDirector: async ({ params, request }) => {
+    const data = await request.formData();
+    const granted = str(data, 'decision');
+    if (granted !== 'grant' && granted !== 'deny') return fail(400, { error: 'Décision inconnue' });
+    return attempt(() =>
+      studio.decideDirector(
+        ownedRun(params.id, str(data, 'runId')),
+        str(data, 'stepId'),
+        granted === 'grant'
+      )
+    );
+  },
+  answerDirector: async ({ params, request }) => {
+    const data = await request.formData();
+    return attempt(() =>
+      studio.answerDirector(
+        ownedRun(params.id, str(data, 'runId')),
+        str(data, 'stepId'),
+        str(data, 'answer')
+      )
     );
   },
   upload: async ({ params, request }) => {

@@ -91,6 +91,15 @@
       {#each runPhases as phase (phase.id)}
         <li class="rounded border border-line p-2 text-xs">
           <p>
+            <!-- Model decisions (Director tool loop) apart from the orchestrator's fixed steps. -->
+            <span
+              class="badge {phase.agent === 'director' && run.kind === 'revision'
+                ? 'bg-violet/30'
+                : 'bg-raised'}"
+              >{phase.agent === 'director' && run.kind === 'revision'
+                ? 'Décisions du modèle'
+                : 'Étape fixe'}</span
+            >
             {labels[phase.phase]} · {agents[phase.agent]} · <StatusBadge status={phase.status} />
           </p>
           <p>Tentatives : {phase.attempts}</p>

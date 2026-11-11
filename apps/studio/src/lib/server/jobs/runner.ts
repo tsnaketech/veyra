@@ -122,7 +122,7 @@ export class RenderJobRunner {
   constructor(
     private repo: Repository,
     private storage: ProjectStorage,
-    private engine: VideoEngine,
+    readonly engine: VideoEngine,
     private settings: RenderSettings,
     private reviewer?: Reviewer
   ) {}

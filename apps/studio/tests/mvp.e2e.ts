@@ -300,3 +300,48 @@ test('audio UI: import, production controls, tracks, range comment and picture r
   });
   await expect(page.getByTestId('audio-panel')).toContainText('-24 dB', quick);
 });
+
+test('Director (simulated): edit request in the chat → tools → rendered child → human approval', async ({
+  page
+}) => {
+  await page.goto('/');
+  await page.getByLabel('Nom du projet').fill('Director simulé');
+  await page.getByRole('button', { name: 'Nouveau projet' }).click();
+  await expect(page).toHaveURL(/\/projects\/prj_/);
+  await page.getByLabel('Message à Veyra').fill(prompt);
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+  await expect(page.locator('[data-status="awaiting_approval"]').first()).toBeVisible({
+    timeout: 240_000
+  });
+
+  // With a revision awaiting approval, a chat message is an edit request for the Director.
+  await page
+    .getByLabel('Message à Veyra')
+    .fill(
+      'Rends la scène 2 plus dynamique, conserve les autres scènes ainsi que la voix off, puis vérifie le résultat'
+    );
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+  await expect(page.getByText(/\[Simulé\] Demande de montage confiée au Director/)).toBeVisible({
+    timeout: 30_000
+  });
+  const panel = page.getByTestId('director-panel');
+  const steps = panel.locator('[data-testid="director-step"][data-action="tool_call"]');
+  await expect(steps.filter({ hasText: 'media.inspect' })).toHaveAttribute('data-status', 'done', {
+    timeout: 60_000
+  });
+  await expect(steps.filter({ hasText: 'revision.apply' })).toHaveAttribute('data-status', 'done', {
+    timeout: 60_000
+  });
+  const first = panel.getByTestId('director-step').first();
+  await expect(first).toContainText('Décision du modèle');
+  await expect(first).toContainText('[Simulé] Director');
+  // Fixed steps of the orchestrator, apart from the model's decisions.
+  const fixed = panel.getByTestId('director-fixed');
+  await expect(fixed).toContainText('Étape fixe');
+  await expect(fixed.getByText(/contrôle\(s\) en échec/)).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByRole('combobox', { name: 'Version' }).locator('option')).toHaveCount(2);
+  await expect(page.locator('[data-status="awaiting_approval"]').first()).toBeVisible();
+
+  await page.getByRole('button', { name: 'Valider cette révision' }).click();
+  await expect(page.locator('[data-status="approved"]').first()).toBeVisible({ timeout: 30_000 });
+});

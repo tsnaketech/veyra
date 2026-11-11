@@ -546,7 +546,8 @@ it('carries captions to correction children, checks cue comments, starts a new p
   expect(v2.captions).toEqual(captions);
   expect(raw()).toEqual(before);
 
-  await app.sendPrompt(project.id, prompt);
+  // v2 awaits approval: without « nouvelle vidéo » the message would go to the Director (T129b-2).
+  await app.sendPrompt(project.id, prompt, 0, { fresh: true });
   const fresh = repo.listRevisions(project.id).at(-1)!;
   expect(fresh.id).not.toBe(v2.id);
   expect(fresh.captions).toBeNull();

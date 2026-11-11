@@ -5,6 +5,7 @@
   import { formatUsd, frameTimestampMs, sceneAt } from '@veyra/schemas';
   import AudioPanel from '#lib/components/AudioPanel.svelte';
   import ProductionPanel from '#lib/components/ProductionPanel.svelte';
+  import DirectorPanel from '#lib/components/DirectorPanel.svelte';
   import FramePlayer from '#lib/components/FramePlayer.svelte';
   import Icon from '#lib/components/Icon.svelte';
   import { componentName, summarizeParams } from '#lib/motion.ts';
@@ -108,6 +109,8 @@
   );
   const nowMs = $derived(frameTimestampMs(frame, rate));
   const scene = $derived(revision ? sceneAt(revision.storyboard, nowMs) : undefined);
+  // A chat message edits this revision through the Director (T129b-2), unless « nouvelle vidéo ».
+  const editable = $derived(data.revisions.some((r) => r.status === 'awaiting_approval'));
   const canCorrect = $derived(revision?.status === 'awaiting_approval' && data.aiKind !== null);
 
   // Waiting on Claude Code or a human: slower refresh so an automatic import shows up.
@@ -273,9 +276,17 @@
           name="prompt"
           rows="3"
           class="field resize-none"
-          placeholder="Décrivez votre vidéo…"
+          placeholder={editable
+            ? 'Demandez une modification de la vidéo en attente de validation…'
+            : 'Décrivez votre vidéo…'}
           required
           disabled={!!data.activity || data.aiKind === null}></textarea>
+        {#if editable}
+          <label class="flex items-center gap-2 text-xs text-muted">
+            <input type="checkbox" name="fresh" class="accent-cyan" />
+            Produire une nouvelle vidéo au lieu de modifier la révision en attente
+          </label>
+        {/if}
         {#if data.aiKind === 'anthropic-api' || data.aiKind === 'openai-api'}
           <label for="budgetUsd" class="block text-xs text-muted">Enveloppe autorisée (USD)</label>
           <input
@@ -444,6 +455,7 @@
       billable={data.aiKind === 'anthropic-api' || data.aiKind === 'openai-api'}
       maxBudgetUsd={data.maxBudgetUsd}
     />
+    <DirectorPanel history={data.director} runs={data.runs} phases={data.phases} />
     <AudioPanel
       assets={data.assets}
       {revision}

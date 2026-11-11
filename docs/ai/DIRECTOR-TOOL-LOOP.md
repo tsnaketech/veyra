@@ -2,7 +2,8 @@
 
 Statut : architecture **acceptée le 2026-11-11** (D021) ; moteur de pas **sans IA
 implémenté le 2026-11-11** (T129a, § 9) ; **source de pas IA et Director simulé** (T129b-1,
-§ 10) ; point d'entrée Studio complet (T129b-2) et affichage (T129c) à faire. Décisions :
+§ 10) ; **Director dans le Studio** (T129b-2, § 11 : point d'entrée dans le chat, routes de
+décision, affichage des pas) ; affichage avancé (T129c) à faire. Décisions :
 D021 (acceptée) et [D026](../DECISIONS.md#d026--boucle-doutils-t129a--pas-persistés-et-pause-par-action)
 dans [DECISIONS](../DECISIONS.md). Outils : [TOOL-REGISTRY](TOOL-REGISTRY.md).
 Agents : [AGENT-ARCHITECTURE](AGENT-ARCHITECTURE.md).
@@ -228,3 +229,64 @@ Sécurité, annulation et source de pas IA, sans changer l'orchestrateur ni le r
 
 Preuves : `packages/ai/src/director.test.ts`, `apps/studio/src/lib/server/director-loop.test.ts`,
 `packages/schemas/src/loop.test.ts` ; détail dans [TASKS](../TASKS.md) (T129b-1).
+
+## 11. Implémentation T129b-2 (2026-11-11)
+
+Le Director dans le Studio, sur l'orchestrateur unique, sans migration ni nouveau chat.
+
+- **Point d'entrée** (`Studio.sendPrompt`) : dans le chat d'un projet qui a une révision
+  `awaiting_approval` (la plus récente), un message est une demande de montage si le
+  fournisseur effectif du projet a la capacité `director` (`fake` simulé, `anthropic-api`,
+  `openai-api`, `codex-chatgpt`). Sinon (`claude-subscribe`, `local`) : comportement
+  antérieur (nouvelle vidéo), annoncé par un message système ; aucune substitution de
+  fournisseur. La case « Produire une nouvelle vidéo » (`fresh`) force l'ancien
+  comportement. Un second montage est refusé tant que la boucle d'un Director du projet
+  n'est pas terminée (une attente de validation humaine seule ne bloque pas).
+- **Run** : `kind: 'revision'`, plan `planDirectorRevision` (`packages/ai/src/agents.ts`) :
+  `plan` (agent `director`, `toolLoopRunner` + `studio.directorSource(runId, brief.prompt)`)
+  → `render` → `qa` → `human-approval`, toutes trois étapes fixes. `maxAiCalls` = 20 (un
+  appel par pas), `maxRenders` = budget de production habituel. Le but est `brief.prompt`
+  (persisté : reprise possible). Les runners sont reconstruits à chaque exécution
+  (`directorRunners`) : fournisseur courant du projet, refus clair sans capacité.
+- **Grants** : `directorGrants(plan)` — `read-only`, `local-compute`, et
+  `writes-revision-artefacts` seulement si le plan rend et attend une validation humaine.
+  `billable`/`network-external` : pause par action ; code généré : jamais.
+- **Suite du run** : la révision désignée par `request_approval` (enfant `draft` de
+  `revision.apply`) est rendue par le runner de rendu existant (moteur configuré,
+  auto-correction technique, revue IA du runner si disponible), puis QA déterministe,
+  puis attente de la validation humaine. Une révision déjà rendue (révision source
+  inchangée, ou enfant de `audio.track.update` rendu par son propre run) est réutilisée
+  (`status: 'reused'`). `maxRenders` compte aussi les rendus des révisions produites par la
+  boucle (`loopRevisions`). L'expertise QA (`requestEvaluation`) exige un plan de
+  correction : elle n'est pas lancée pour un enfant du Director.
+- **Sort du parent** : même règle que l'application d'un plan de correction — quand
+  l'enfant rendu est `awaiting_approval` et le parent encore `awaiting_approval`, le parent
+  passe `changes_requested` et sa phase de validation se termine (`supersede`). Rendu en
+  échec : le parent reste validable (mais garde son enfant `failed`, ce qui fait refuser un
+  nouveau `revision.apply` sur lui).
+- **Décisions humaines** : `Studio.decideDirector(runId, stepId, accordé)` et
+  `Studio.answerDirector(runId, stepId, texte)` → `decidePermission`/`answerQuestion` puis
+  `Orchestrator.wake`. Run arrêté : la décision est gardée, « Reprendre » continue.
+  « Arrêter » : `stopProduction` (signal de la boucle, processus tués), reprise par
+  `resumeProduction`. Actions de page `?/decideDirector` (`decision=grant|deny`) et
+  `?/answerDirector`, run vérifié comme appartenant au projet ; CSRF : garde globale.
+- **Affichage** : `DirectorPanel.svelte` (page projet, colonne Revue) — par run : fournisseur
+  (« [Simulé] » pour `fake`), demande, chaque pas (badge « Décision du modèle » ou « Arrêt
+  imposé par la boucle »), justification, outil et arguments résumés, résultat ou erreur
+  (tronqués), boutons Autoriser/Refuser, champ de réponse ; puis les « Étapes fixes de
+  l'orchestrateur » (rendu, révision, échecs QA, validation). `ProductionPanel` distingue
+  aussi « Décisions du modèle » et « Étape fixe ». Messages du fil : demande confiée,
+  question ou autorisation demandée, vidéo prête.
+- **Director simulé** : une demande « plus dynamique / rythme » sur la « scène N »
+  enchaîne `media.inspect` puis `revision.apply` (`scene.animation` ×0,6 et
+  `scene.transition`) ; scène introuvable → `ask_user`. Le résumé du projet transmis au
+  Director inclut texte, animation, composant et présence de narration de chaque scène.
+- **Pas encore** : appel réel du Director non exécuté (démo préparée :
+  `apps/studio/src/lib/server/director.real.test.ts`, RUNBOOK) ; `maxRenders` non vérifié
+  avant un appel d'`audio.track.update` (décompté au rendu final seulement) ; pas de choix
+  de la révision à modifier (la plus récente en attente) ; T129c (historique filtrable,
+  coûts affichés, artefacts téléchargeables).
+
+Preuves : `apps/studio/src/lib/server/director-studio.test.ts`,
+`packages/ai/src/director.test.ts`, `packages/ai/src/agents.test.ts`,
+`apps/studio/tests/mvp.e2e.ts` ; détail dans [TASKS](../TASKS.md) (T129b-2).
