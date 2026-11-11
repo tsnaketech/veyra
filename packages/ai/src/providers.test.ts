@@ -494,9 +494,42 @@ describe("codex strict output schema (T147, real API constraint)", () => {
         { type: "null" },
       ],
     });
-    expect(dropNulls({ a: "x", b: null, c: [{ d: null, e: 1 }] })).toEqual({
-      a: "x",
-      c: [{ e: 1 }],
-    });
+    // Guided by the original schema: optional nulls go, required nullable ones stay.
+    const original = {
+      type: "object",
+      properties: {
+        a: { anyOf: [{ type: "string" }, { type: "null" }] },
+        b: { type: "string" },
+        c: { type: "array", items: { $ref: "#/$defs/item" } },
+        u: {
+          oneOf: [
+            {
+              type: "object",
+              properties: { kind: { const: "x" }, x: { type: "number" } },
+              required: ["kind"],
+            },
+            {
+              type: "object",
+              properties: { kind: { const: "y" }, y: { type: "number" } },
+              required: ["kind", "y"],
+            },
+          ],
+        },
+      },
+      required: ["a", "c", "u"],
+      $defs: {
+        item: {
+          type: "object",
+          properties: { d: { type: "number" }, e: { type: "number" } },
+          required: ["e"],
+        },
+      },
+    };
+    expect(
+      dropNulls(
+        { a: null, b: null, c: [{ d: null, e: 1 }], u: { kind: "x", x: null } },
+        original,
+      ),
+    ).toEqual({ a: null, c: [{ e: 1 }], u: { kind: "x" } });
   });
 });

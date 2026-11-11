@@ -70,14 +70,58 @@ export function strictSchema(node: unknown): unknown {
   }
   return out;
 }
-/** Removes null-valued object properties (strict-mode stand-ins for omitted fields). */
-export function dropNulls(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(dropNulls);
-  if (!value || typeof value !== "object") return value;
+/** Follows a local `$ref` (`#/$defs/…`) of the original schema. */
+function deref(node: unknown, root: unknown): JsonSchema | null {
+  let out = node as JsonSchema | null;
+  for (let i = 0; out && typeof out.$ref === "string" && i < 32; i++)
+    out = (out.$ref as string)
+      .slice(2)
+      .split("/")
+      .reduce<unknown>(
+        (at, key) => (at as JsonSchema | undefined)?.[key],
+        root,
+      ) as JsonSchema | null;
+  return out && typeof out === "object" ? out : null;
+}
+/** Whether an object answer fits one union branch: its `const` discriminants and its keys. */
+function fits(value: JsonSchema, branch: JsonSchema | null) {
+  const props = branch?.properties as JsonSchema | undefined;
+  if (!props) return false;
+  return Object.entries(value).every(([key, v]) => {
+    const prop = props[key] as JsonSchema | undefined;
+    return prop !== undefined && (!("const" in prop) || prop.const === v);
+  });
+}
+/**
+ * Removes only the nulls strictSchema stands in for omitted optional properties, guided by
+ * the ORIGINAL schema (before strictSchema): a required nullable field keeps its null.
+ */
+export function dropNulls(
+  value: unknown,
+  schema: unknown,
+  root: unknown = schema,
+): unknown {
+  const node = deref(schema, root);
+  if (!node || value === null || typeof value !== "object") return value;
+  const union = (node.anyOf ?? node.oneOf) as unknown[] | undefined;
+  if (union) {
+    const branches = union.map((branch) => deref(branch, root));
+    const branch = Array.isArray(value)
+      ? branches.find((b) => b?.type === "array")
+      : branches.find((b) => fits(value as JsonSchema, b));
+    return branch ? dropNulls(value, branch, root) : value;
+  }
+  if (Array.isArray(value))
+    return node.items
+      ? value.map((v) => dropNulls(v, node.items, root))
+      : value;
+  const props = node.properties as JsonSchema | undefined;
+  if (!props) return value;
+  const required = new Set((node.required as string[] | undefined) ?? []);
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([, v]) => v !== null)
-      .map(([k, v]) => [k, dropNulls(v)]),
+      .filter(([k, v]) => !(v === null && k in props && !required.has(k)))
+      .map(([k, v]) => [k, k in props ? dropNulls(v, props[k], root) : v]),
   );
 }
 
@@ -137,10 +181,8 @@ export class CodexExecProvider extends StructuredProvider {
       mkdirSync(work);
       const schemaFile = join(root, "schema.json");
       const lastMessage = join(root, "last-message.json");
-      writeFileSync(
-        schemaFile,
-        JSON.stringify(strictSchema(z.toJSONSchema(schema))),
-      );
+      const jsonSchema = z.toJSONSchema(schema);
+      writeFileSync(schemaFile, JSON.stringify(strictSchema(jsonSchema)));
       const args = [
         "exec",
         "--json",
@@ -192,7 +234,8 @@ export class CodexExecProvider extends StructuredProvider {
       }
       // Strict mode answers null for optional fields: retry without them if needed.
       let parsed = schema.safeParse(raw);
-      if (!parsed.success) parsed = schema.safeParse(dropNulls(raw));
+      if (!parsed.success)
+        parsed = schema.safeParse(dropNulls(raw, jsonSchema));
       if (!parsed.success)
         throw new Error("Codex : réponse non conforme au schéma Veyra");
       return parsed.data;

@@ -96,6 +96,8 @@ export class Sandbox {
     revisionDir: string,
     cwd: string,
     onLine?: (line: string) => void,
+    /** Aborting kills the sandboxed process group (runProcess). */
+    signal?: AbortSignal,
   ) {
     const root = realpathSync(revisionDir),
       working = realpathSync(cwd),
@@ -180,6 +182,7 @@ export class Sandbox {
           timeoutMs: this.options.wallTimeoutMs,
           onLine,
           monitor,
+          signal,
           label: [basename(args[0] ?? command), args[1]]
             .filter(Boolean)
             .join(" "),

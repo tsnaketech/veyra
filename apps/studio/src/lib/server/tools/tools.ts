@@ -368,7 +368,7 @@ export const compositionCheck = defineTool({
     const revision = ctx.revision(revisionId);
     const dir = safePath(ctx.storage.revision(revision.projectId, revision.id), 'composition');
     if (!existsSync(safePath(dir, 'index.html'))) throw new Error('Composition absente');
-    return ctx.engine.check(dir);
+    return ctx.engine.check(dir, ctx.signal);
   }
 });
 

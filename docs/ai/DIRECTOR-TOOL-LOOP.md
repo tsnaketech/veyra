@@ -152,15 +152,21 @@ dans les tests ; un Director la remplacera en T129b sans changer le moteur.
   `grants` de la phase. `decidePermission(repo, phaseId, stepId, accordé)` puis
   `Orchestrator.wake(runId, phase, runners)` (transition `waiting → pending`, tentatives
   remises à 0). Une action refusée (même outil, même `inputHash`) n'est **jamais** exécutée,
-  même redemandée. `generated-code-execution` n'est jamais accordable.
+  même redemandée. `generated-code-execution` n'est jamais accordable, ni par l'humain ni
+  par les `grants` de la phase (T148).
 - **Bornes** : pas, appels, échecs consécutifs, appel identique en échec répété deux fois →
   pas `stop` d'origine `engine`, phase en échec, état conservé. Délai par outil : le registre
   avorte `ctx.signal`, ce qui tue le groupe de processus (`runProcess`). Limites prlimit par
   outil : `limits.cpuSeconds`, `limits.memoryBytes` → `ctx.processLimits`.
 - **Annulation** : `signal` du runner propagé jusqu'au processus ; pas `cancelled`, phase en
-  échec. **Reprise** : au redémarrage, un pas `running` est rejoué seulement si l'outil est
-  `deterministic` et `sideEffects: none`, sinon `interrupted` et observation à la source ;
-  les pas terminés ne sont jamais rejoués.
+  échec. Un outil qui n'a pas rendu la main (signal ignoré) est signalé « effet
+  possiblement en cours » et tout nouvel appel du même outil est refusé tant qu'il tourne
+  (T148). Une annulation pendant `source.next` n'écrit aucun pas. **Reprise** : au
+  redémarrage, un pas `running` est rejoué seulement si l'outil est `deterministic`,
+  `sideEffects: none` et ni `billable` ni `network-external`, sinon `interrupted` et
+  observation à la source ; les pas terminés ne sont jamais rejoués.
+- **Approbation** : `request_approval` n'accepte que la révision source du run ou une
+  révision produite par la boucle (T148).
 - **Pas encore** : aucune route ni interface (T129c) ; aucune source IA (T129b) ; budget
   `maxAiCalls`/enveloppe D022 non débité par un outil `billable` (coût déclaré seulement) ;
   pas de délai mural global de 30 min ; `revise_plan`/`ask_user` non implémentés.

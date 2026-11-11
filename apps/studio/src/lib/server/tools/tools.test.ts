@@ -416,6 +416,24 @@ it('revision.apply: typed refusals, atomic child revision, byte-identical parent
     ok: false,
     error: { code: 'conflict', message: /même cible/ }
   });
+  // Audit: more than 50 operations, and a valid replacement asset of another project.
+  expect(
+    await call(
+      Array.from({ length: 51 }, (_, i) => ({
+        op: 'scene.update',
+        sceneId: first.id,
+        patch: { text: `Texte ${i}` }
+      }))
+    )
+  ).toMatchObject({ ok: false, error: { code: 'invalid-input' } });
+  const musicAsset = parent.audio!.tracks.find((t) => t.id === 'atr_music')!.assetId;
+  const foreignAsset = { ...repo.getAsset(musicAsset)!, id: newId('ast') };
+  foreignAsset.projectId = app.createProject('Média étranger').id;
+  repo.createAsset(foreignAsset);
+  expect(foreignAsset.audio?.status).toBe('valid');
+  expect(
+    await call([{ op: 'media.replace', assetId: musicAsset, withAssetId: foreignAsset.id }])
+  ).toMatchObject({ ok: false, error: { code: 'conflict', message: /remplacement/ } });
   expect(counts()).toEqual(before);
 
   const out = okOutput<{

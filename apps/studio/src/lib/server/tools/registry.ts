@@ -119,6 +119,9 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
   /** In-memory call log for tests and the future Director loop (persisted with T129). */
   const history: ToolResult[] = [];
   const meta = (id: string) => byId.get(id)?.meta;
+  /** Tool runs not settled yet, by tool id: a call that ended on cancel or timeout may still work. */
+  const unsettled = new Map<string, number>();
+  const busy = (id: string) => (unsettled.get(id) ?? 0) > 0;
 
   function list() {
     return tools.map((tool) => ({
@@ -250,8 +253,12 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
     try {
       // Timeout and caller abort both abort `call.signal`: a tool that passes it to
       // runProcess has its process group killed; the call itself ends at once either way.
+      unsettled.set(id, (unsettled.get(id) ?? 0) + 1);
+      const work = tool.run(parsed.data, call);
+      const settle = () => unsettled.set(id, unsettled.get(id)! - 1);
+      work.then(settle, settle);
       output = await Promise.race([
-        tool.run(parsed.data, call),
+        work,
         new Promise((_, reject) => {
           timer = setTimeout(() => controller.abort(new ToolTimeout()), limits.timeoutMs);
           controller.signal.addEventListener('abort', () => reject(controller.signal.reason), {
@@ -290,6 +297,6 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
     return done({ output: checked.data });
   }
 
-  return { list, invoke, history, meta };
+  return { list, invoke, history, meta, busy };
 }
 export type ToolRegistry = ReturnType<typeof createToolRegistry>;

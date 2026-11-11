@@ -131,7 +131,7 @@ export interface VideoEngine {
   ): Promise<RenderResult>;
   inspect(file: string): Promise<VideoProbe>;
   /** Static and in-browser checks of the composition before encoding. */
-  check(dir: string): Promise<CompositionCheck>;
+  check(dir: string, signal?: AbortSignal): Promise<CompositionCheck>;
 }
 export class HyperFramesEngine implements VideoEngine {
   readonly kind = "hyperframes" as const;
@@ -160,7 +160,7 @@ export class HyperFramesEngine implements VideoEngine {
       stderrTail: stderr,
     });
   }
-  async check(dir: string): Promise<CompositionCheck> {
+  async check(dir: string, signal?: AbortSignal): Promise<CompositionCheck> {
     let stdout: string;
     try {
       stdout = (
@@ -176,6 +176,8 @@ export class HyperFramesEngine implements VideoEngine {
           ],
           dirname(resolve(dir)),
           dir,
+          undefined,
+          signal,
         )
       ).stdout;
     } catch (error) {

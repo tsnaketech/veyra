@@ -66,7 +66,7 @@ export function loopState(
     step: rows.length,
     status: pending
       ? 'paused-awaiting-permission'
-      : last?.action === 'request_approval'
+      : last?.action === 'request_approval' && last.status === 'done'
         ? 'completed'
         : last?.action === 'stop'
           ? 'stopped'
@@ -86,15 +86,25 @@ export function loopState(
 }
 
 /** Keeps one persisted result under `max` bytes: output or error details are replaced by a preview. */
-function bounded(result: ToolResult, max: number): ToolResult {
-  const bytes = Buffer.byteLength(JSON.stringify(result));
+export function bounded(result: ToolResult, max: number): ToolResult {
+  const size = (r: ToolResult) => Buffer.byteLength(JSON.stringify(r));
+  const bytes = size(result);
   if (bytes <= max) return result;
-  const preview = String(
-    JSON.stringify(result.ok ? result.output : (result.error.details ?? null))
-  ).slice(0, Math.floor(max / 4));
-  return result.ok
-    ? { ...result, output: { truncated: true, bytes, preview } }
-    : { ...result, error: { ...result.error, details: { truncated: true, bytes } } };
+  const raw = String(JSON.stringify(result.ok ? result.output : (result.error.details ?? null)));
+  // Characters are not bytes (multi-byte UTF-8, escaping): halve the cut until it fits.
+  for (let n = Math.floor(max / 4); ; n = Math.floor(n / 2)) {
+    const cut: ToolResult = result.ok
+      ? { ...result, output: { truncated: true, bytes, preview: raw.slice(0, n) } }
+      : {
+          ...result,
+          error: {
+            ...result.error,
+            message: result.error.message.slice(0, Math.max(n, 80)),
+            details: { truncated: true, bytes }
+          }
+        };
+    if (n === 0 || size(cut) <= max) return cut;
+  }
 }
 
 /** Records a human decision on a paused call; the caller then wakes the phase (Orchestrator.wake). */
@@ -138,6 +148,8 @@ export function toolLoopRunner(options: {
   const { repo, registry, source, runId, signal } = options;
   const name = options.phase ?? 'plan';
   const limits = loopLimitsSchema.parse(options.limits ?? {});
+  // Generated code is never grantable (D021, D026), even when the phase lists it.
+  const grants = options.grants.filter((p) => p !== 'generated-code-execution');
 
   return {
     async run() {
@@ -169,10 +181,17 @@ export function toolLoopRunner(options: {
           signal
         });
         const cancelled = !result.ok && result.error.code === 'cancelled';
+        const stored = bounded(result, limits.maxObservationBytes);
+        // The call ended but the tool did not return yet (it ignores the signal): say so.
+        if (!stored.ok && registry.busy(call.toolId))
+          stored.error = {
+            ...stored.error,
+            message: `${cancelled ? 'Annulation demandée' : stored.error.message} ; effet possiblement en cours (l’outil n’a pas rendu la main)`
+          };
         repo.updateLoopStep(row.id, {
           status: result.ok ? 'done' : cancelled ? 'cancelled' : 'failed',
-          result: bounded(result, limits.maxObservationBytes),
-          error: result.ok ? null : result.error,
+          result: stored,
+          error: stored.ok ? null : stored.error,
           costMicroUsd: result.cost.microUsd,
           durationMs: result.durationMs,
           finishedAt: Date.now()
@@ -181,19 +200,22 @@ export function toolLoopRunner(options: {
       };
 
       // This runner only starts when no step of its phase executes in this process: a
-      // 'running' step was cut by a crash. Only a deterministic, side-effect-free call is
-      // replayed; any other is reported 'interrupted' and the source decides.
+      // 'running' step was cut by a crash. Only a deterministic, side-effect-free, free and
+      // offline call is replayed; any other is reported 'interrupted' and the source decides.
       for (const row of repo.loopSteps(phaseId).filter((r) => r.status === 'running')) {
         const meta = registry.meta(row.invocation!.toolId);
+        const confirm = meta?.permissions.some((p) => CONFIRM.includes(p));
         repo.updateLoopStep(
           row.id,
-          meta?.deterministic && meta.sideEffects === 'none'
+          meta?.deterministic && meta.sideEffects === 'none' && !confirm
             ? { status: 'authorized', startedAt: null }
             : {
                 status: 'interrupted',
                 error: error(
                   'interrupted',
-                  'Appel interrompu par un arrêt du Studio : effet inconnu, non rejoué'
+                  confirm
+                    ? 'Appel payant ou réseau interrompu par un arrêt du Studio : non rejoué, nouvelle autorisation requise'
+                    : 'Appel interrompu par un arrêt du Studio : effet inconnu, non rejoué'
                 ),
                 finishedAt: Date.now()
               }
@@ -214,7 +236,7 @@ export function toolLoopRunner(options: {
         const last = rows.at(-1);
         const state = loopState(repo, runId, phaseId, limits);
         if (last?.action === 'stop') throw new Error(`Boucle d’outils arrêtée : ${state.error}`);
-        if (last?.action === 'request_approval') {
+        if (last?.action === 'request_approval' && last.status === 'done') {
           const step = last.request as { revisionId: string | null; summary: string };
           return {
             kind: 'done',
@@ -254,6 +276,8 @@ export function toolLoopRunner(options: {
           tools: registry.list(),
           history: rows.slice(-HISTORY_IN_VIEW)
         });
+        // Cancelled while deciding: nothing is written, so no 'authorized' step survives.
+        if (signal?.aborted) throw new Error('Boucle d’outils annulée');
         const parsed = directorStepSchema.safeParse(raw);
         if (!parsed.success) {
           let preview: string;
@@ -276,6 +300,32 @@ export function toolLoopRunner(options: {
           continue;
         }
         const step = parsed.data;
+        if (step.action === 'request_approval' && step.revisionId) {
+          // The source is untrusted: only the run's source revision or one produced by this
+          // loop (hence of its project) may become the run's revision.
+          const id = step.revisionId;
+          const run = repo.getRun(runId);
+          const produced = rows.some(
+            (r) =>
+              r.status === 'done' &&
+              r.result?.ok &&
+              (r.result.output as { revisionId?: unknown } | null)?.revisionId === id
+          );
+          const own = id === run.sourceRevisionId || produced;
+          if (!own || repo.getRevision(id).projectId !== run.projectId) {
+            record({
+              action: step.action,
+              request: step,
+              status: 'failed',
+              error: error(
+                'permission-denied',
+                'Révision refusée : ni la révision source ni une révision produite par cette boucle'
+              ),
+              finishedAt: Date.now()
+            });
+            continue;
+          }
+        }
         if (step.action === 'request_approval' || step.action === 'stop') {
           record({ action: step.action, request: step, status: 'done' });
           continue;
@@ -325,8 +375,16 @@ export function toolLoopRunner(options: {
           toolVersion: step.toolVersion,
           input: step.input,
           inputHash: hash,
-          grants: confirm ? [...new Set([...options.grants, ...extra])] : options.grants
+          grants: [...new Set([...grants, ...(confirm ? extra : [])])]
         });
+        if (registry.busy(step.toolId)) {
+          refuse(
+            'conflict',
+            `Appel précédent de ${step.toolId} non terminé (annulation ou délai demandé, effet possiblement en cours) : non exécuté`,
+            invocation
+          );
+          continue;
+        }
         // A refused action is never run again, whatever the source asks.
         if (
           rows.some(

@@ -429,7 +429,9 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   `CODEX_HOME`) ; refus de démarrer si `OPENAI_API_KEY` ou `CODEX_API_KEY` y figure
   (ordre de priorité clé/abonnement non documenté) ; délai et « Arrêter » tuent le
   groupe de processus ; aucune lecture de `~/.codex` ni d'identifiants par Veyra ;
-  sonde limitée à `codex --version` et `codex login status` (code de sortie seul).
+  sonde limitée à `codex --version` et `codex login status` : disponible seulement si
+  le code de sortie est 0 **et** si stderr contient « ChatGPT » ; seul ce booléen est
+  conservé, jamais la sortie (corrigé le 2026-11-11, T148).
 - Conséquences et limites : aucun des deux fournisseurs n'a été appelé réellement
   (clients et binaire simulés). `codex login status` et le séparateur `--` avant le
   prompt ne sont pas documentés dans le rapport : à vérifier à l'installation. Les
@@ -443,6 +445,15 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   format strict exigé par l'API (toutes les clés requises, champs facultatifs
   nullables, `oneOf` → `anyOf`). `openai-api` reste non appelé réellement. Le statut
   contractuel reste AMBIGU (Terms of Use toujours en 403).
+- Mise à jour 2026-11-11 (T148, revue [2026-11-11](reviews/2026-11-11-t146-t129a.md)) :
+  les `null` de la réponse stricte ne sont retirés que pour les clés facultatives du
+  schéma d'origine (parcours guidé : propriétés, `items`, `anyOf`/`oneOf` avec
+  discriminant `const`, `$ref`) ; un champ requis nullable garde son `null`. Les chemins
+  propres à la machine ne sont plus versionnés : `codexChatgpt.command`/`codexHome`
+  valent `null` dans `config/models.json` et viennent de `VEYRA_CODEX_COMMAND` /
+  `VEYRA_CODEX_HOME` (chemins absolus, `apps/studio/.env` non versionné). Sans
+  `CODEX_HOME` dédié, `codex-chatgpt` est indisponible (« CODEX_HOME dédié non
+  configuré ») : aucun repli sur `~/.codex`.
 
 ## D024 — Fournisseur IA par projet
 
@@ -524,7 +535,22 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
 - Justification : réutilise la reprise et les enveloppes de D019 ; une ligne par pas rend
   la reprise vérifiable (aucun pas terminé rejoué) et l'historique borné (une ligne par
   pas, résultat tronqué à `maxObservationBytes`).
-- Conséquences : un outil qui ignore `ctx.signal` (`audio.track.update`, `composition.check`)
-  n'est pas tué au délai ; le coût d'un outil est déclaré, pas débité de l'enveloppe D022 ;
-  aucune route ni interface avant T129c. Détail :
+- Conséquences : un outil qui ignore `ctx.signal` (`audio.track.update`) n'est pas arrêté
+  au délai ni à l'annulation ; le coût d'un outil est déclaré, pas débité de l'enveloppe
+  D022 ; aucune route ni interface avant T129c.
+- Mise à jour 2026-11-11 (T148, revue [2026-11-11](reviews/2026-11-11-t146-t129a.md)) :
+  (1) `generated-code-execution` est retiré des autorisations transmises par la phase,
+  pas seulement de l'autorisation humaine ; (2) `request_approval` n'accepte que la
+  révision source du run ou une révision produite par la boucle (sinon pas `failed`,
+  `permission-denied`) ; (3) le registre suit les exécutions non revenues : après une
+  annulation ou un délai, l'enregistrement dit « annulation demandée ; effet possiblement
+  en cours » tant que l'outil n'a pas rendu la main, et tout nouvel appel du même outil
+  est refusé (`conflict`) jusque-là ; `composition.check` reçoit désormais `ctx.signal`
+  (Chrome tué via `runProcess`) ; (4) au redémarrage, un outil `billable` ou
+  `network-external` n'est jamais rejoué (`interrupted`, nouvelle autorisation requise) ;
+  (5) une annulation pendant `source.next` n'écrit aucun pas (plus de pas `authorized`
+  orphelin) ; (6) `maxObservationBytes` est respecté en octets (multi-octets compris) et
+  le message d'erreur est borné. Limite : le refus d'un nouvel appel vaut pour le
+  registre du processus ; après un redémarrage, l'outil coupé est de toute façon
+  `interrupted`. Détail :
   [DIRECTOR-TOOL-LOOP § 9](ai/DIRECTOR-TOOL-LOOP.md#9-implémentation-t129a-2026-11-11).

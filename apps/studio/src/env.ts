@@ -21,6 +21,16 @@ export const variables = defineEnvVars({
       'Access token required from LAN clients (32+ URL-safe characters). Never logged or displayed.',
     schema: z.string().optional()
   },
+  VEYRA_CODEX_COMMAND: {
+    description:
+      'Absolute path of the user-installed codex binary (codex-chatgpt); overrides codexChatgpt.command.',
+    schema: z.string().regex(/^\//, 'absolute path expected').optional()
+  },
+  VEYRA_CODEX_HOME: {
+    description:
+      'Absolute path of the dedicated CODEX_HOME (never ~/.codex); overrides codexChatgpt.codexHome.',
+    schema: z.string().regex(/^\//, 'absolute path expected').optional()
+  },
   VEYRA_AI_PROVIDER: {
     description:
       'Locks the AI provider (fake = labelled test-only simulator). Unset: chosen in /settings.',

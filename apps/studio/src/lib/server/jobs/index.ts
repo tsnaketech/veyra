@@ -8,7 +8,13 @@ import {
   type Provider,
   type ProviderId
 } from '@veyra/ai';
-import { ANTHROPIC_API_KEY, OPENAI_API_KEY, VEYRA_AI_PROVIDER } from '$app/env/private';
+import {
+  ANTHROPIC_API_KEY,
+  OPENAI_API_KEY,
+  VEYRA_AI_PROVIDER,
+  VEYRA_CODEX_COMMAND,
+  VEYRA_CODEX_HOME
+} from '$app/env/private';
 import { db } from '../db';
 import { createRepository } from '../db/repo';
 import { loadStudioSettings, Studio } from '../studio';
@@ -17,6 +23,12 @@ import { createRenderJobRunner, defaultConfigDir, loadRenderSettings } from './r
 const configDir = defaultConfigDir();
 export const repo = createRepository(db);
 export const settings = loadStudioSettings(loadRenderSettings(configDir), configDir);
+// Machine-specific Codex paths come from the (unversioned) environment first (T148).
+const codexConfig = settings.models.codexChatgpt;
+codexConfig.command = VEYRA_CODEX_COMMAND || codexConfig.command;
+codexConfig.codexHome = VEYRA_CODEX_HOME || codexConfig.codexHome;
+const NO_CODEX_HOME =
+  'CODEX_HOME dédié non configuré (VEYRA_CODEX_HOME) : ~/.codex n’est jamais utilisé.';
 
 /** The environment variable locks the choice; otherwise /settings decides. */
 export const providerLocked = Boolean(VEYRA_AI_PROVIDER);
@@ -31,11 +43,12 @@ function selectedProvider(): ProviderId | null {
 export const codexEnabled = () => repo.getSetting('codexChatgptEnabled') === '1';
 /** Codex child settings: HOME and CODEX_HOME only, never the server's environment. */
 function codexOptions(): CodexOptions | null {
-  const { command, codexHome, timeoutMs } = settings.models.codexChatgpt;
-  if (!codexEnabled() || !command) return null;
+  const { command, codexHome, timeoutMs } = codexConfig;
+  // Without a dedicated CODEX_HOME, Codex would fall back to ~/.codex: never.
+  if (!codexEnabled() || !command || !codexHome) return null;
   return {
     command,
-    env: { HOME: process.env.HOME, CODEX_HOME: codexHome ?? undefined },
+    env: { HOME: process.env.HOME, CODEX_HOME: codexHome },
     timeoutMs
   };
 }
@@ -87,8 +100,10 @@ export const studio = new Studio(
 
 export const claudeSubscribeStatus = () =>
   checkClaudeSubscribe({ command: settings.models.claudeSubscribe.command });
-export const codexStatus = () => {
-  const { command, codexHome } = settings.models.codexChatgpt;
+export const codexStatus = async () => {
+  const { command, codexHome } = codexConfig;
+  if (codexEnabled() && !codexHome)
+    return { available: false, reason: NO_CODEX_HOME, version: null };
   return checkCodexChatgpt({
     enabled: codexEnabled(),
     command,
@@ -147,7 +162,10 @@ export function setCodexEnabled(enabled: boolean) {
 }
 
 if (verify) providerError = `Vérification du fournisseur enregistré (${initial}) en cours…`;
-void (verify ? providerAvailability() : Promise.resolve(null)).then(
+// Providers chosen per project are probed too (audit m1), so knownAvailability is set.
+const probeAtStart =
+  verify || (!providerLocked && repo.listProjects().some((project) => project.aiProvider));
+void (probeAtStart ? providerAvailability() : Promise.resolve(null)).then(
   (all) => {
     // The user may have chosen again meanwhile: that choice wins.
     if (!all || !initial || selectedProvider() !== initial || studio.aiKind) return;

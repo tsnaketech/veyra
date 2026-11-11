@@ -15,7 +15,10 @@ vi.mock('$app/env/private', () => ({
   DATABASE_URL: env.DATABASE_URL,
   ANTHROPIC_API_KEY: '',
   OPENAI_API_KEY: '',
-  VEYRA_AI_PROVIDER: ''
+  VEYRA_AI_PROVIDER: '',
+  // Never executed: the missing CODEX_HOME refuses codex-chatgpt before any probe.
+  VEYRA_CODEX_COMMAND: '/nonexistent/veyra-test/codex',
+  VEYRA_CODEX_HOME: ''
 }));
 const probe = vi.hoisted(() => vi.fn());
 vi.mock('@veyra/ai', async (original) => ({
@@ -80,6 +83,47 @@ it('re-checks the stored provider at startup and resolves providers per project'
     expect(jobs.repo.getProject(project)!.aiProvider).toBeNull();
     expect(jobs.studio.providerFor(project)).toEqual({ kind: null, error: null });
   } finally {
+    jobs.stopAssistedWatch();
+  }
+});
+
+it('refuses to switch the global provider to an unavailable one, keeping the stored choice (audit)', async () => {
+  const jobs = await import('./index');
+  try {
+    // No key, codex-chatgpt not enabled (nothing is launched), Claude Code reported missing.
+    for (const [id, reason] of [
+      ['anthropic-api', 'ANTHROPIC_API_KEY'],
+      ['openai-api', 'OPENAI_API_KEY'],
+      ['codex-chatgpt', ''],
+      ['claude-subscribe', 'Claude Code non détecté']
+    ] as const) {
+      await expect(jobs.chooseProvider(id)).rejects.toThrow(`${id} indisponible : ${reason}`);
+      expect(jobs.repo.getSetting('aiProvider')).toBe('claude-subscribe');
+      expect(jobs.studio.aiKind).toBeNull();
+    }
+    await jobs.chooseProvider('fake');
+    expect(jobs.repo.getSetting('aiProvider')).toBe('fake');
+    expect(jobs.studio.aiKind).toBe('fake');
+  } finally {
+    jobs.stopAssistedWatch();
+  }
+});
+
+it('codex-chatgpt without a dedicated CODEX_HOME is unavailable, never ~/.codex (T148)', async () => {
+  const jobs = await import('./index');
+  try {
+    jobs.setCodexEnabled(true);
+    expect(await jobs.codexStatus()).toEqual({
+      available: false,
+      reason: expect.stringContaining('CODEX_HOME dédié non configuré'),
+      version: null
+    });
+    await expect(jobs.chooseProvider('codex-chatgpt')).rejects.toThrow(
+      'CODEX_HOME dédié non configuré'
+    );
+    expect(jobs.repo.getSetting('aiProvider')).not.toBe('codex-chatgpt');
+  } finally {
+    jobs.setCodexEnabled(false);
     jobs.stopAssistedWatch();
   }
 });

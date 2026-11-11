@@ -21,7 +21,7 @@ import { defaultConfigDir, loadRenderSettings, RenderJobRunner } from './jobs/ru
 import { Orchestrator } from './production';
 import { loadStudioSettings, Studio } from './studio';
 import { colorEngine } from './test-engines';
-import { decidePermission, loopState, toolLoopRunner, type LoopView } from './tool-loop';
+import { bounded, decidePermission, loopState, toolLoopRunner, type LoopView } from './tool-loop';
 import { createToolRegistry, defineTool, studioTools, type ToolContext } from './tools';
 
 vi.setConfig({ testTimeout: 180_000, hookTimeout: 180_000 });
@@ -166,8 +166,106 @@ const testTools = [
       billableRuns++;
       return { done: true as const };
     }
+  }),
+  defineTool({
+    meta: {
+      ...testMeta,
+      id: 'test.ignores-signal',
+      description: '[Simulé] Outil qui n’écoute pas ctx.signal (attente JS, aucun processus).',
+      permissions: ['local-compute'],
+      sideEffects: 'artefacts',
+      cost: { kind: 'local-cpu' },
+      limits: { timeoutMs: 60_000 }
+    },
+    simulated: true,
+    input: z.object({}).strict(),
+    output: z.object({}),
+    async run() {
+      await new Promise((r) => setTimeout(r, 1500));
+      ignoredSignalFinished = true;
+      return {};
+    }
+  }),
+  defineTool({
+    meta: {
+      ...testMeta,
+      id: 'test.codegen',
+      description: '[Simulé] Exécution de code généré (aucun code réellement exécuté).',
+      permissions: ['generated-code-execution'],
+      sideEffects: 'artefacts',
+      cost: { kind: 'local-cpu' },
+      limits: { timeoutMs: 5_000 }
+    },
+    simulated: true,
+    input: z.object({}).strict(),
+    output: z.object({}),
+    async run() {
+      codegenRuns++;
+      return {};
+    }
+  }),
+  defineTool({
+    meta: {
+      ...testMeta,
+      id: 'test.network',
+      description: '[Simulé] Action réseau de démonstration (aucun appel réseau).',
+      network: 'pinned-destination',
+      permissions: ['network-external'],
+      sideEffects: 'external',
+      cost: { kind: 'free' },
+      limits: { timeoutMs: 5_000 }
+    },
+    simulated: true,
+    input: z.object({}).strict(),
+    output: z.object({}),
+    async run() {
+      networkRuns++;
+      return {};
+    }
+  }),
+  defineTool({
+    meta: {
+      ...testMeta,
+      id: 'test.slow-deaf',
+      description: '[Simulé] Outil sourd au signal, délai court (attente JS, aucun processus).',
+      permissions: ['local-compute'],
+      sideEffects: 'artefacts',
+      cost: { kind: 'local-cpu' },
+      limits: { timeoutMs: 150 }
+    },
+    simulated: true,
+    input: z.object({}).strict(),
+    output: z.object({}),
+    async run() {
+      await new Promise((r) => setTimeout(r, 1200));
+      return {};
+    }
+  }),
+  defineTool({
+    meta: {
+      ...testMeta,
+      id: 'test.paid-lookup',
+      description:
+        '[Simulé] Consultation facturable, déterministe et sans effet (aucun appel réseau).',
+      permissions: ['billable'],
+      sideEffects: 'none',
+      deterministic: true,
+      cost: { kind: 'billable', microUsd: 10 },
+      limits: { timeoutMs: 5_000 }
+    },
+    simulated: true,
+    input: z.object({}).strict(),
+    output: z.object({}),
+    async run() {
+      paidLookups++;
+      return {};
+    }
   })
 ];
+let paidLookups = 0;
+let networkRuns = 0;
+let ignoredSignalFinished = false;
+let codegenRuns = 0;
 const tags = new Map<string, string>();
 
 let root: string, client: Database.Database;
@@ -593,4 +691,205 @@ it('[simulé] bornes : limite de pas, limite d’appels, échecs consécutifs, a
   await same.drive();
   expect(same.state().error).toBe('appel identique en échec répété (media.frame)');
   expect(same.steps()).toHaveLength(3);
+});
+
+it('[simulé] annulation d’un outil qui ignore le signal : la boucle se termine sans l’attendre (l’outil, lui, continue)', async () => {
+  const controller = new AbortController();
+  const loop = startLoop(
+    (view) =>
+      tried(view, 'test.ignores-signal').length
+        ? { action: 'stop', reason: 'x' }
+        : call(view, 'test.ignores-signal', {}),
+    { signal: controller.signal }
+  );
+  const started = Date.now();
+  const driving = loop.drive();
+  setTimeout(() => controller.abort(), 100);
+  expect((await driving).status).toBe('failed');
+  expect(Date.now() - started).toBeLessThan(1000);
+  expect(ignoredSignalFinished).toBe(false);
+  expect(loop.steps().map((s) => [s.status, s.error?.code ?? null])).toEqual([
+    ['cancelled', 'cancelled']
+  ]);
+  // T148: the record does not claim the tool stopped.
+  expect(loop.steps()[0].error?.message).toMatch(
+    /Annulation demandée ; effet possiblement en cours/
+  );
+  // Known limit (TASKS T129a): a tool without ctx.signal is not killed, it runs to its end.
+  expect(await until(() => ignoredSignalFinished, 5000)).toBe(true);
+  expect(loop.steps()).toHaveLength(1);
+});
+
+it('[simulé] code généré : une autorisation humaine ne l’accorde pas (D021, D026)', async () => {
+  const before = codegenRuns;
+  const loop = startLoop((view) =>
+    tried(view, 'test.codegen').length
+      ? { action: 'stop', reason: 'Refusé' }
+      : { ...call(view, 'test.codegen', {}), action: 'request_permission' }
+  );
+  expect((await loop.drive()).status).toBe('waiting');
+  const [pending] = loop.steps();
+  expect(pending.invocation!.grants).not.toContain('generated-code-execution');
+  decidePermission(repo, loop.phaseId, pending.id, true);
+  await orchestrator.wake(loop.run.id, 'plan', loop.runners);
+  expect(loop.steps()[0]).toMatchObject({ status: 'failed', error: { code: 'permission-denied' } });
+  expect(codegenRuns).toBe(before);
+});
+
+// Fixed in T148 (audit 2026-11-11): the phase grants are filtered before the call.
+it('[simulé] code généré : refusé même présent dans les autorisations de la phase', async () => {
+  const before = codegenRuns;
+  const loop = startLoop(
+    (view) =>
+      tried(view, 'test.codegen').length
+        ? { action: 'stop', reason: 'Fin' }
+        : call(view, 'test.codegen', {}),
+    { grants: [...LOCAL, 'generated-code-execution'] }
+  );
+  await loop.drive();
+  expect(codegenRuns).toBe(before);
+  expect(loop.steps()[0].status).not.toBe('done');
+});
+
+it('[simulé] réseau : pause même accordé à la phase ; version d’outil incohérente refusée sans exécution', async () => {
+  const network = startLoop(
+    (view) =>
+      tried(view, 'test.network').length
+        ? { action: 'stop', reason: 'Fin' }
+        : call(view, 'test.network', {}),
+    { grants: [...LOCAL, 'network-external'] }
+  );
+  expect((await network.drive()).status).toBe('waiting');
+  expect(network.steps()[0]).toMatchObject({ status: 'awaiting-permission', startedAt: null });
+  expect(networkRuns).toBe(0);
+
+  const stale = startLoop((view) =>
+    tried(view, 'media.inspect').length
+      ? { action: 'stop', reason: 'Fin' }
+      : { ...call(view, 'media.inspect', { revisionId: v1 }), toolVersion: 2 }
+  );
+  await stale.drive();
+  expect(stale.steps()[0]).toMatchObject({
+    status: 'failed',
+    startedAt: null,
+    error: { code: 'invalid-input', message: /Version 2 demandée, 1 inscrite/ }
+  });
+  expect(stale.registry.history).toEqual([]);
+});
+
+it('[simulé] T148 request_approval : révision d’un autre projet refusée, run sans revisionId', async () => {
+  const other = app.createProject('Autre projet').id;
+  await app.sendPrompt(other, saas);
+  const foreign = repo.listRevisions(other)[0].id;
+  const loop = startLoop((view) =>
+    view.history.length
+      ? { action: 'stop', reason: 'Révision refusée' }
+      : { action: 'request_approval', revisionId: foreign, summary: 'Prêt' }
+  );
+  const run = await loop.drive();
+  expect(run.status).toBe('failed');
+  expect(run.revisionId).not.toBe(foreign);
+  expect(loop.steps()[0]).toMatchObject({
+    action: 'request_approval',
+    status: 'failed',
+    error: { code: 'permission-denied' }
+  });
+  expect(loop.state().status).toBe('stopped');
+});
+
+it('[simulé] T148 outil sourd au délai : nouvel appel refusé tant que le premier n’a pas rendu la main', async () => {
+  const loop = startLoop((view) =>
+    tried(view, 'test.slow-deaf').length < 2
+      ? call(view, 'test.slow-deaf', {})
+      : { action: 'stop', reason: 'Fin' }
+  );
+  await loop.drive();
+  const [first, second] = loop.steps();
+  expect(first).toMatchObject({ status: 'failed', error: { code: 'timeout' } });
+  expect(first.error?.message).toMatch(/effet possiblement en cours/);
+  expect(second).toMatchObject({ status: 'failed', startedAt: null, error: { code: 'conflict' } });
+  expect(second.error?.message).toMatch(/non terminé/);
+  expect(loop.registry.busy('test.slow-deaf')).toBe(true);
+  expect(await until(() => !loop.registry.busy('test.slow-deaf'))).toBe(true);
+});
+
+it('[simulé] T148 reprise : un appel facturable déterministe et sans effet n’est jamais rejoué', async () => {
+  const before = paidLookups;
+  const loop = startLoop((view) =>
+    view.history.length
+      ? { action: 'stop', reason: 'Interrompu' }
+      : call(view, 'test.paid-lookup', {})
+  );
+  const now = Date.now();
+  repo.createLoopStep({
+    id: 'stp_paidcrash',
+    runId: loop.run.id,
+    phaseId: loop.phaseId,
+    step: 0,
+    origin: 'source',
+    action: 'tool_call',
+    request: { action: 'tool_call' },
+    invocation: {
+      stepId: 'stp_paidcrash',
+      runId: loop.run.id,
+      phaseId: loop.phaseId,
+      agent: 'director',
+      phase: 'plan',
+      toolId: 'test.paid-lookup',
+      toolVersion: 1,
+      input: {},
+      inputHash: 'b'.repeat(64),
+      grants: [...LOCAL, 'billable']
+    },
+    status: 'running',
+    startedAt: now,
+    createdAt: now,
+    updatedAt: now
+  });
+  await loop.drive();
+  expect(loop.steps()[0]).toMatchObject({ status: 'interrupted', error: { code: 'interrupted' } });
+  expect(loop.steps()[0].error?.message).toMatch(/nouvelle autorisation requise/);
+  expect(paidLookups).toBe(before);
+});
+
+it('[simulé] T148 annulation pendant source.next : aucun pas autorisé laissé à la reprise', async () => {
+  const controller = new AbortController();
+  const loop = startLoop(
+    (view) => {
+      controller.abort();
+      return call(view, 'media.inspect', { revisionId: v1 });
+    },
+    { signal: controller.signal }
+  );
+  expect((await loop.drive()).status).toBe('failed');
+  expect(loop.steps().filter((s) => s.status === 'authorized')).toEqual([]);
+  expect(loop.registry.history).toEqual([]);
+});
+
+it('[simulé] T148 bounded : borne en octets avec caractères multi-octets, message d’erreur borné', () => {
+  const base = {
+    toolId: 'test.x',
+    toolVersion: 1,
+    inputHash: null,
+    durationMs: 0,
+    artefacts: [],
+    simulated: true,
+    cost: { kind: 'free' as const, microUsd: 0 }
+  };
+  const size = (r: unknown) => Buffer.byteLength(JSON.stringify(r));
+  for (const char of ['😀', '€', '"']) {
+    const ok = bounded({ ...base, ok: true, output: char.repeat(5000) }, 1024);
+    expect(size(ok)).toBeLessThanOrEqual(1024);
+    expect(ok).toMatchObject({ output: { truncated: true } });
+    const ko = bounded(
+      {
+        ...base,
+        ok: false,
+        error: { code: 'failed', message: char.repeat(5000), retryable: false }
+      },
+      1024
+    );
+    expect(size(ko)).toBeLessThanOrEqual(1024);
+    expect(ko.ok || ko.error.message.length).toBeLessThan(5000);
+  }
 });

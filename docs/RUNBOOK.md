@@ -33,6 +33,8 @@ des politiques pnpm a été refaite par un `pnpm install` normal le 2026-10-28.
 | `VEYRA_AI_PROVIDER` | Optionnel, **verrouille** le fournisseur, y compris pour tous les projets : `fake` (simulateur de test étiqueté), `anthropic-api`, `claude-subscribe`, `openai-api`, `codex-chatgpt`. Absent : choix global dans `/settings` (revérifié au démarrage), remplaçable par projet depuis la page projet (D024) |
 | `ANTHROPIC_API_KEY` | Clé du seul fournisseur `anthropic-api` (jamais versionnée, jamais affichée) |
 | `OPENAI_API_KEY` | Clé du seul fournisseur `openai-api` (jamais versionnée, jamais affichée, jamais transmise à Codex) |
+| `VEYRA_CODEX_COMMAND` | Optionnel : chemin **absolu** du binaire Codex (`codex-chatgpt`) ; prioritaire sur `codexChatgpt.command` de `config/models.json` (versionné à `null`) |
+| `VEYRA_CODEX_HOME` | Optionnel : chemin **absolu** du `CODEX_HOME` dédié ; sans lui, `codex-chatgpt` est indisponible (« CODEX_HOME dédié non configuré », jamais `~/.codex`) |
 | `VEYRA_PROJECTS_ROOT` | Optionnel : racine des médias (défaut `projects/` du dépôt) |
 | `VEYRA_CONFIG_DIR` | Optionnel : répertoire `config/` absolu |
 
@@ -118,16 +120,22 @@ Version épinglée : **Codex 0.167.0** (npm, provenance SLSA vérifiable ;
    Ne pas définir `OPENAI_API_KEY` ni `CODEX_API_KEY` pour Codex. Une connexion par
    clé API n'est pas acceptée (« Connexion ChatGPT non confirmée »). Déconnexion :
    même `CODEX_HOME`, `codex logout`.
-4. `config/models.json` : `codexChatgpt.command` et `codexChatgpt.codexHome` sont
-   renseignés avec les deux chemins ci-dessus (`timeoutMs`, 300000 par défaut). Le
+4. Chemins propres à la machine, hors dépôt (T148) : dans `apps/studio/.env` (non
+   versionné), valeurs de cette machine :
+   ```
+   VEYRA_CODEX_COMMAND=/home/user/.local/share/veyra/codex-cli/node_modules/.bin/codex
+   VEYRA_CODEX_HOME=/home/user/.local/share/veyra/codex-home
+   ```
+   `config/models.json` garde `codexChatgpt.command` et `codexHome` à `null`
+   (`timeoutMs`, 300000 par défaut). Redémarrer le Studio après modification. Le
    fournisseur reste désactivé tant que l'utilisateur ne l'active pas.
 5. `/settings` → « Activer Codex », puis « Vérifier la disponibilité » (lance
    seulement `codex --version` et `codex -c cli_auth_credentials_store="file" login
    status` : code 0 et « ChatGPT » sur stderr) et choisir `codex-chatgpt`.
    « Désactiver Codex » le rend de nouveau indisponible.
 6. Démonstration réelle (T147), à lancer seulement après la connexion ; consomme le
-   quota du plan : `VEYRA_CODEX_REAL=1 pnpm --filter @veyra/ai exec vitest run src/codex.real.test.ts`.
-   Sans la variable, ce fichier est ignoré (y compris par `pnpm test`). Il vérifie la
+   quota du plan : `VEYRA_CODEX_REAL=1 VEYRA_CODEX_COMMAND=… VEYRA_CODEX_HOME=… pnpm --filter @veyra/ai exec vitest run src/codex.real.test.ts`
+   (chemins de l'étape 4). Sans ces trois variables, ce fichier est ignoré (y compris par `pnpm test`). Il vérifie la
    sonde, un storyboard validé, le refus d'un brief demandant une commande shell et
    l'écriture de `pwned.txt`, l'annulation après 2 s (groupe de processus tué) et
    l'absence de clé API dans l'environnement de Codex ; il affiche la durée de
