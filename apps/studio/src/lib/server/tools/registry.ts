@@ -50,6 +50,8 @@ export interface Tool {
   input: z.ZodType;
   output: z.ZodType;
   simulated: boolean;
+  /** What the tool guarantees when its call is cancelled or times out (said in the result). */
+  abortNote?: string;
   available(ctx: ToolContext): Availability | Promise<Availability>;
   run(input: unknown, ctx: CallContext): Promise<unknown>;
 }
@@ -60,6 +62,7 @@ export function defineTool<I extends z.ZodType, O extends z.ZodType>(def: {
   output: O;
   /** Set only by a tool whose output is a labelled demonstration. */
   simulated?: boolean;
+  abortNote?: string;
   available?(ctx: ToolContext): Availability | Promise<Availability>;
   run(input: z.output<I>, ctx: CallContext): Promise<z.input<O>>;
 }): Tool {
@@ -68,6 +71,7 @@ export function defineTool<I extends z.ZodType, O extends z.ZodType>(def: {
     input: def.input,
     output: def.output,
     simulated: def.simulated ?? false,
+    abortNote: def.abortNote,
     available: def.available ?? (() => ({ ok: true })),
     run: (input, ctx) => def.run(input as z.output<I>, ctx)
   };
@@ -129,6 +133,28 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
       input: z.toJSONSchema(tool.input, { io: 'input' }),
       output: z.toJSONSchema(tool.output)
     }));
+  }
+  /** Real availability: declared requirements probed, then the tool's own check. */
+  async function availability(tool: Tool): Promise<Availability> {
+    const unmet = missingRequirements(tool.meta.requires);
+    if (unmet.length)
+      return {
+        ok: false,
+        reason: `prérequis absent : ${unmet.join(', ')}`,
+        installHint: `Installer ${unmet.join(', ')} (voir docs/RUNBOOK.md)`
+      };
+    try {
+      return await tool.available(ctx);
+    } catch {
+      return { ok: false, reason: 'vérification de disponibilité en échec' };
+    }
+  }
+  /** The listing with each tool's availability, as a Director sees it (T129b-1). */
+  async function catalog() {
+    const items = list();
+    return Promise.all(
+      tools.map(async (tool, i) => ({ ...items[i], available: await availability(tool) }))
+    );
   }
 
   async function invoke(
@@ -196,22 +222,11 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
       return fail('permission-denied', `Permission non accordée : ${missing.join(', ')}`, {
         details: { missing }
       });
-    const unmet = missingRequirements(tool.meta.requires);
-    const availability = unmet.length
-      ? {
-          ok: false,
-          reason: `prérequis absent : ${unmet.join(', ')}`,
-          installHint: `Installer ${unmet.join(', ')} (voir docs/RUNBOOK.md)`
-        }
-      : await tool.available(ctx);
-    if (!availability.ok)
-      return fail(
-        'unavailable',
-        `Outil indisponible : ${availability.reason ?? 'raison inconnue'}`,
-        {
-          ...(availability.installHint ? { installHint: availability.installHint } : {})
-        }
-      );
+    const available = await availability(tool);
+    if (!available.ok)
+      return fail('unavailable', `Outil indisponible : ${available.reason ?? 'raison inconnue'}`, {
+        ...(available.installHint ? { installHint: available.installHint } : {})
+      });
 
     if (options.signal?.aborted) return fail('cancelled', 'Appel annulé avant exécution');
     const callId = newId('tcl');
@@ -267,7 +282,9 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
         })
       ]);
     } catch (error) {
-      if (error instanceof ToolCancelled) return fail('cancelled', 'Appel annulé par la boucle');
+      const note = tool.abortNote ? ` ; ${tool.abortNote}` : '';
+      if (error instanceof ToolCancelled)
+        return fail('cancelled', `Appel annulé par la boucle${note}`);
       if (error instanceof ToolDenied) return fail('permission-denied', error.message);
       if (error instanceof ToolFailure)
         return fail(error.code, safeMessage(error, ctx.storage.root));
@@ -277,7 +294,7 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
         return fail(
           'timeout',
           `Délai dépassé (${tool.meta.limits.timeoutMs} ms)` +
-            (tool.meta.sideEffects === 'none' ? '' : ' ; l’opération peut se poursuivre'),
+            (tool.meta.sideEffects === 'none' ? '' : note || ' ; l’opération peut se poursuivre'),
           { retryable: tool.meta.sideEffects === 'none' }
         );
       return fail('failed', `Échec de l’outil : ${safeMessage(error, ctx.storage.root)}`);
@@ -297,6 +314,6 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
     return done({ output: checked.data });
   }
 
-  return { list, invoke, history, meta, busy };
+  return { list, catalog, invoke, history, meta, busy };
 }
 export type ToolRegistry = ReturnType<typeof createToolRegistry>;

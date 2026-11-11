@@ -23,6 +23,12 @@ import {
   type QualityEvaluator,
 } from "./evaluation";
 import { providerCapabilities } from "./capabilities";
+import {
+  decisionToStep,
+  directorDecisionSchema,
+  directorPrompt,
+  type DirectorView,
+} from "./director";
 
 /** A PNG sent to the model, introduced by a text label. */
 export type AskImage = { label: string; path: string };
@@ -47,6 +53,13 @@ export abstract class StructuredProvider {
     call?: CallOptions,
   ): Promise<z.infer<T>>;
 
+  /** One Director step through the same `ask` path (openai-api, codex-chatgpt). */
+  async decideStep(view: DirectorView, call?: CallOptions) {
+    const { system, text } = directorPrompt(view);
+    return decisionToStep(
+      await this.ask(directorDecisionSchema, system, text, [], call),
+    );
+  }
   generateStoryboard(
     prompt: string,
     options: { targetDurationMs: number; styleInstructions: string },

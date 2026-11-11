@@ -6,6 +6,9 @@ export const providerCapabilitiesSchema = z.object({
   structured: z.boolean(),
   images: z.boolean(),
   tools: z.enum(["no", "later"]),
+  // T129b-1: decideStep (Director of the tool loop) by reliable structured output only.
+  director: z.boolean(),
+  directorNote: z.string().min(1),
   streaming: z.boolean(),
   cancel: z.boolean(),
   resume: z.boolean(),
@@ -38,6 +41,9 @@ export const providerCapabilities = z
       structured: true,
       images: false,
       tools: "no",
+      director: true,
+      directorNote:
+        "Director simulé à règles déterministes, étiqueté « [Simulé] Director » ; ne prouve aucune capacité IA.",
       streaming: false,
       cancel: false,
       resume: false,
@@ -52,6 +58,9 @@ export const providerCapabilities = z
       structured: true,
       images: true,
       tools: "no",
+      director: true,
+      directorNote:
+        "Sortie structurée (messages.parse + Zod), chaque pas réservé dans l'enveloppe D022.",
       streaming: false,
       cancel: true,
       resume: false,
@@ -67,6 +76,9 @@ export const providerCapabilities = z
       structured: true,
       images: true,
       tools: "no",
+      director: false,
+      directorNote:
+        "Mode assisté (D010) : pas d'appel automatique par pas ; non pris en charge en T129b.",
       streaming: false,
       cancel: false,
       resume: false,
@@ -83,6 +95,9 @@ export const providerCapabilities = z
       // Image token cost is not sourced yet: images are refused (T140).
       images: false,
       tools: "no",
+      director: true,
+      directorNote:
+        "Même chemin ask que codex-chatgpt, réponse revalidée par Zod ; jamais appelé réellement.",
       streaming: false,
       cancel: true,
       resume: false,
@@ -99,6 +114,9 @@ export const providerCapabilities = z
       structured: true,
       images: true,
       tools: "no",
+      director: true,
+      directorNote:
+        "Sortie stricte (--output-schema), coût abonnement, annulable ; jamais appelé réellement pour le Director.",
       streaming: false,
       cancel: true,
       resume: false,
@@ -114,6 +132,8 @@ export const providerCapabilities = z
       structured: false,
       images: false,
       tools: "no",
+      director: false,
+      directorNote: "Préparé : aucun modèle local implémenté (T142).",
       streaming: false,
       cancel: false,
       resume: false,

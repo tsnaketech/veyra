@@ -673,6 +673,8 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
         Pick<
           ToolExecutionRecord,
           | 'status'
+          // Only an ask_user step gets its answer added to its request (T129b-1).
+          | 'request'
           | 'invocation'
           | 'result'
           | 'error'

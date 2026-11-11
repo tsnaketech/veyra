@@ -154,8 +154,18 @@ Les autres lignes du § 3 restent au statut indiqué : non enregistrées dans le
   table `loop_steps` de la boucle ([DIRECTOR-TOOL-LOOP § 9](DIRECTOR-TOOL-LOOP.md)).
 - Codes d'erreur ajoutés : `cancelled` (appelant), `interrupted` (pas coupé par un arrêt).
 
-Limites connues : la sonde vérifie la présence, pas la version ; `composition.check` et
-`audio.track.update` ignorent `ctx.signal` ; `movie=` dans un graphe lavfi construit par
+### Ajouts T129b-1 (2026-11-11)
+
+- **`catalog()`** : la liste du registre avec la disponibilité réelle de chaque outil
+  (sondes puis `available()` ; une vérification qui lève une exception vaut indisponible) ;
+  c'est ce que voit le Director ([DIRECTOR-TOOL-LOOP § 10](DIRECTOR-TOOL-LOOP.md)).
+- **`abortNote`** (facultatif, `defineTool`) : ce que l'outil garantit à l'annulation ou au
+  délai, ajouté au message du résultat. `audio.track.update` arrête son run de révision
+  entre phases et rejette toute révision enfant produite (`changes_requested`).
+
+Limites connues : la sonde vérifie la présence, pas la version ; `composition.check`
+transmet `ctx.signal` depuis T148 ; `audio.track.update` ne l'interrompt pas en cours de
+rendu (la file de rendu n'est pas annulable) mais n'en laisse aucun enfant validable ; `movie=` dans un graphe lavfi construit par
 le code reste hors du contrôle N7 (résiduel).
 
 ## 4. Classes de permission

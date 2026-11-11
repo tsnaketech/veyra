@@ -14,8 +14,16 @@ import {
   audioMixPatchSchema,
   type AudioComposition,
   aiProviderIdSchema,
+  type DirectorStep,
 } from "@veyra/schemas";
 import { AssistedProvider } from "./assisted";
+import {
+  decisionToStep,
+  directorDecisionSchema,
+  directorPrompt,
+  simulatedDecision,
+  type DirectorView,
+} from "./director";
 import {
   checkTiming,
   componentCatalog,
@@ -169,6 +177,8 @@ export interface AiProvider {
   ): Promise<ReviewFinding[]>;
   /** Expert QA of corrections, with this provider's real capabilities. */
   qualityEvaluator(call?: CallOptions): QualityEvaluator;
+  /** One step of the tool loop's Director (T129b-1), when the `director` capability is declared. */
+  decideStep?(view: DirectorView, call?: CallOptions): Promise<DirectorStep>;
 }
 
 export function toStoryboard(
@@ -328,6 +338,9 @@ export class FakeAiProvider implements AiProvider {
   readonly mode = "direct" as const;
   qualityEvaluator() {
     return new FakeQualityEvaluator();
+  }
+  async decideStep(view: DirectorView, _call?: CallOptions) {
+    return simulatedDecision(view);
   }
   async generateStoryboard(
     prompt: string,
@@ -566,6 +579,17 @@ export class AnthropicProvider implements AiProvider {
       if (reserved) settleSafely(meter, usage);
     }
   }
+  async decideStep(view: DirectorView, call?: CallOptions) {
+    const { system, text } = directorPrompt(view);
+    return decisionToStep(
+      await this.parse(
+        directorDecisionSchema,
+        system,
+        [{ type: "text", text }],
+        call,
+      ),
+    );
+  }
   generateStoryboard(
     prompt: string,
     options: { targetDurationMs: number; styleInstructions: string },
@@ -739,6 +763,7 @@ export * from "./capabilities";
 export * from "./structured";
 export * from "./openai";
 export * from "./codex";
+export * from "./director";
 import { CODEX_DEFAULT_REASON } from "./capabilities";
 import { OpenAiProvider, openaiClient } from "./openai";
 import { CodexExecProvider, type CodexOptions } from "./codex";

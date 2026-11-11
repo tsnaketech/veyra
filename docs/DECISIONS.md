@@ -315,9 +315,9 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
 
 ## D021 — Director outillé par pas structurés bornés (complète D007 et D019)
 
-- Date : 2026-11-04
-- Statut : **proposée** (architecture validée sur le principe par l'utilisateur ;
-  implémentation en T128–T129)
+- Date : 2026-11-04 ; acceptée le 2026-11-11
+- Statut : **acceptée** par l'utilisateur le 2026-11-11 (implémentation T128, T129a,
+  T129b-1 ; Studio et affichage en T129b-2/T129c)
 - Contexte : Veyra doit devenir un studio de montage où l'IA choisit et utilise les
   outils disponibles, sans enchaînement de phases imposé. D007 exclut toute boucle
   agentique côté serveur ; D019 exclut tout cache entre runs et définit un orchestrateur
@@ -514,8 +514,8 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
 ## D026 — Boucle d'outils T129a : pas persistés et pause par action
 
 - Date : 2026-11-11
-- Statut : acceptée pour T129a (moteur sans IA) ; met en œuvre D021, qui reste proposée
-  pour la partie Director IA (T129b)
+- Statut : acceptée pour T129a (moteur sans IA), complétée pour T129b-1 (source de pas
+  IA) ; met en œuvre D021 (acceptée le 2026-11-11)
 - Contexte : D021 demande une boucle bornée dans une phase d'un run (D019), persistée à
   chaque transition, avec confirmation humaine de chaque action payante ou réseau.
 - Décision : la boucle est le `PhaseRunner` d'une phase (par défaut `plan`, agent
@@ -554,3 +554,19 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   registre du processus ; après un redémarrage, l'outil coupé est de toute façon
   `interrupted`. Détail :
   [DIRECTOR-TOOL-LOOP § 9](ai/DIRECTOR-TOOL-LOOP.md#9-implémentation-t129a-2026-11-11).
+- Mise à jour 2026-11-11 (T129b-1) : (1) `ask_user` met la boucle en pause « question »
+  (`paused-awaiting-answer`) ; le pas est stocké `awaiting-permission` (la contrainte
+  CHECK de la migration 0008 n'est pas modifiée, aucune migration 0009) et se distingue
+  par son action : `decidePermission` le refuse, seul `answerQuestion` y répond, et une
+  réponse n'accorde aucune permission ; `revise_plan` est un pas `done` dont le plan est
+  repris dans `LoopState.plan` ; (2) délai mural `maxWallMs` (30 min) par exécution de la
+  boucle, pauses humaines exclues : il avorte l'appel ou la décision en cours, puis pas
+  `stop` d'origine `engine` ; (3) un même appel (outil + `inputHash`) trois fois de suite,
+  quel que soit son résultat, force un `stop` ; (4) une erreur de la source de pas est
+  observée comme pas `invalid` en échec (`invalid-output` pour une décision inutilisable)
+  et compte dans les échecs consécutifs, sauf un refus de budget (`maxAiCalls` ou
+  enveloppe D022), qui arrête la boucle ; (5) `audio.track.update` : à l'annulation ou au
+  délai, le run de révision est arrêté entre phases et toute révision enfant produite est
+  rejetée (`changes_requested`), ce que dit le résultat du pas (`abortNote`) ; la file de
+  rendu, elle, ne s'interrompt pas en cours de travail. Détail :
+  [DIRECTOR-TOOL-LOOP § 10](ai/DIRECTOR-TOOL-LOOP.md#10-implémentation-t129b-1-2026-11-11).

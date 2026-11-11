@@ -1,8 +1,9 @@
 # Boucle d'outils bornée du Director (architecture, T129)
 
-Statut : **architecture proposée le 2026-11-04** ; moteur de pas **sans IA implémenté le
-2026-11-11** (T129a, § 9) ; Director IA (T129b) et affichage (T129c) à faire. Décisions :
-D021 (proposée) et [D026](../DECISIONS.md#d026--boucle-doutils-t129a--pas-persistés-et-pause-par-action)
+Statut : architecture **acceptée le 2026-11-11** (D021) ; moteur de pas **sans IA
+implémenté le 2026-11-11** (T129a, § 9) ; **source de pas IA et Director simulé** (T129b-1,
+§ 10) ; point d'entrée Studio complet (T129b-2) et affichage (T129c) à faire. Décisions :
+D021 (acceptée) et [D026](../DECISIONS.md#d026--boucle-doutils-t129a--pas-persistés-et-pause-par-action)
 dans [DECISIONS](../DECISIONS.md). Outils : [TOOL-REGISTRY](TOOL-REGISTRY.md).
 Agents : [AGENT-ARCHITECTURE](AGENT-ARCHITECTURE.md).
 
@@ -174,3 +175,56 @@ dans les tests ; un Director la remplacera en T129b sans changer le moteur.
 Preuves : `apps/studio/src/lib/server/tool-loop.test.ts`, `tool-loop.slow.test.ts`,
 `packages/schemas/src/loop.test.ts`, `tools/registry.test.ts` ; détail dans
 [TASKS](../TASKS.md) (T129a).
+
+## 10. Implémentation T129b-1 (2026-11-11)
+
+Sécurité, annulation et source de pas IA, sans changer l'orchestrateur ni le registre.
+
+- **Contrats** (`packages/schemas/src/loop.ts`) : actions `revise_plan { plan { goal,
+  steps[] } }` et `ask_user { question }` ajoutées à `directorStepSchema` ; `LoopState.plan`
+  et statut `paused-awaiting-answer` ; `loopLimits.maxWallMs` (30 min).
+- **Fournisseurs** (`packages/ai/src/director.ts`) : `decideStep(view, call)` →
+  `DirectorStep`. Le modèle répond au schéma « fil » `directorDecisionSchema` : objet racine,
+  union discriminée (`anyOf` après `strictSchema`, aucun `oneOf`), entrée d'outil en texte
+  JSON (`inputJson`) car un objet JSON libre n'est pas exprimable en sortie stricte ;
+  `decisionToStep` convertit puis valide par `directorStepSchema`, sinon
+  `DirectorOutputError`. Même prompt pour `anthropic-api` (`messages.parse`), `openai-api`
+  et `codex-chatgpt` (chemin `ask` de `StructuredProvider`). Capacité `director`
+  déclarée : vraie pour `fake` (simulé), `anthropic-api`, `openai-api`, `codex-chatgpt` ;
+  fausse pour `claude-subscribe` (mode assisté D010, non pris en charge en T129b) et
+  `local` (préparé, rien d'implémenté).
+- **Prompt** : objectif de l'utilisateur, budget restant, plan, catalogue du registre
+  (schémas JSON des outils disponibles ; outils indisponibles avec leur raison), état du
+  projet (révision courante résumée), 20 derniers pas. L'objectif, l'état du projet, le
+  plan et chaque observation sont dans des blocs `<donnees_non_fiables>` : `<` et `>` y sont
+  échappés (le contenu ne peut pas fermer le bloc), 4 000 octets au plus par bloc. Les
+  permissions ne dépendent jamais de ce contenu (elles viennent des métadonnées du
+  registre et des décisions humaines persistées).
+- **Director simulé** (`fake`) : `simulatedDecision(view)`, règles déterministes étiquetées
+  « [Simulé] Director » qui lisent les observations : plan initial, outil choisi d'après les
+  mots de l'objectif, entrée corrigée d'après les bornes du schéma de l'outil après un
+  `invalid-input`, `ask_user` si l'outil est indisponible, `stop` après un refus humain,
+  `request_approval` de la révision produite. Ne prouve aucune capacité IA.
+- **Studio** : `Studio.directorSource(runId, goal)` construit la source de pas avec le
+  fournisseur effectif du projet (aucune substitution ; refus explicite sans capacité
+  `director`). Chaque décision compte dans `maxAiCalls` (refus avant l'appel) et passe par
+  `callFor` : réservation D022 avant la requête pour un fournisseur facturable, signal
+  d'annulation de « Arrêter » (Codex compris), combiné au signal de la boucle.
+- **Boucle** (`tool-loop.ts`) : vue `LoopView.tools` = `registry.catalog()` (disponibilité
+  réelle) ; `directorView`/`directorStepSource` ; `answerQuestion` ; erreurs de source
+  observées et bornées (§ D026, mise à jour T129b-1) ; délai mural global ; appel identique
+  trois fois de suite → `stop`.
+- **`audio.track.update`** : la file de rendu ne s'interrompt pas en cours de travail
+  (raccourci signalé dans le code). À l'annulation ou au délai, le run de révision est
+  arrêté entre phases ; une fois son travail terminé, toute révision enfant de ce run en
+  `awaiting_approval` passe `changes_requested` (jamais validable) ; le résultat du pas le
+  dit (`abortNote` du registre). La révision source garde son contenu ; son statut reste
+  `changes_requested`, comme dans le flux `reviseAudio` existant.
+- **Pas encore** : création du run de boucle par le Studio sur son orchestrateur, `grants`
+  depuis le plan validé, routes `decidePermission`/`answerQuestion` + `wake` (T129b-2) ;
+  affichage (T129c) ; décompte `maxRenders` dans la boucle ; débit D022 d'un outil
+  `billable` réel ; délai mural cumulé entre redémarrages (il vaut par exécution) ;
+  aucun appel IA réel du Director (fournisseurs testés avec client et binaire simulés).
+
+Preuves : `packages/ai/src/director.test.ts`, `apps/studio/src/lib/server/director-loop.test.ts`,
+`packages/schemas/src/loop.test.ts` ; détail dans [TASKS](../TASKS.md) (T129b-1).

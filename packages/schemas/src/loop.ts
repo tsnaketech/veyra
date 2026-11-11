@@ -16,9 +16,17 @@ const callFields = {
   input: z.json(),
   justification,
 };
+/** Working plan of the Director (T129b): text only, never executed as such. */
+export const directorPlanSchema = z
+  .object({
+    goal: z.string().min(1).max(500),
+    steps: z.array(z.string().min(1).max(300)).min(1).max(20),
+  })
+  .strict();
 /**
- * One decision of a step source (scripted now, the Director in T129b): call a tool,
- * ask a human to authorize one call before it runs, finish for human approval, or stop.
+ * One decision of a step source (scripted or the Director): call a tool, ask a human to
+ * authorize one call before it runs, revise the working plan, ask the user a question
+ * (a pause distinct from a permission), finish for human approval, or stop.
  * The tool input is validated afterwards by the tool's own schema (double validation).
  */
 export const directorStepSchema = z.discriminatedUnion("action", [
@@ -29,6 +37,20 @@ export const directorStepSchema = z.discriminatedUnion("action", [
       action: z.literal("request_approval"),
       revisionId: idSchema("rev").nullable(),
       summary: justification,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("revise_plan"),
+      plan: directorPlanSchema,
+      justification,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("ask_user"),
+      question: z.string().min(1).max(1000),
+      justification,
     })
     .strict(),
   z.object({ action: z.literal("stop"), reason: justification }).strict(),
@@ -49,6 +71,10 @@ export const toolInvocationSchema = z
     grants: z.array(permissionClassSchema),
   })
   .strict();
+/**
+ * "awaiting-permission" is stored for every human pause (migration 0008 checks the
+ * status): an `ask_user` step in that status waits for an answer, not for a permission.
+ */
 export const loopStepStatusSchema = z.enum([
   "awaiting-permission",
   "authorized",
@@ -72,6 +98,8 @@ export const toolExecutionRecordSchema = z.object({
     "tool_call",
     "request_permission",
     "request_approval",
+    "revise_plan",
+    "ask_user",
     "stop",
     "invalid",
   ]),
@@ -98,11 +126,18 @@ export const loopLimitsSchema = z
       .int()
       .min(1024)
       .default(16 * 1024),
+    // Active wall time of one drive of the loop (human pauses excluded).
+    maxWallMs: z
+      .number()
+      .int()
+      .min(1000)
+      .default(30 * 60_000),
   })
   .strict();
 export const loopStatusSchema = z.enum([
   "running",
   "paused-awaiting-permission",
+  "paused-awaiting-answer",
   "stopped",
   "failed",
   "completed",
@@ -120,6 +155,8 @@ export const loopStateSchema = z.object({
   }),
   limits: loopLimitsSchema,
   costMicroUsd: z.number().int().nonnegative(),
+  // Last plan of a done revise_plan step.
+  plan: directorPlanSchema.nullable().default(null),
   pendingStepId: idSchema("stp").nullable(),
   error: z.string().nullable(),
 });
@@ -132,6 +169,7 @@ export const toolLoopOutcomeSchema = z
   })
   .strict();
 export type DirectorStep = z.infer<typeof directorStepSchema>;
+export type DirectorPlan = z.infer<typeof directorPlanSchema>;
 export type ToolInvocation = z.infer<typeof toolInvocationSchema>;
 export type ToolExecutionRecord = z.infer<typeof toolExecutionRecordSchema>;
 export type LoopLimits = z.infer<typeof loopLimitsSchema>;

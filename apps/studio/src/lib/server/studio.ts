@@ -80,7 +80,8 @@ import {
   type StoryboardDraft,
   planProduction,
   planRevisionPhases,
-  proposeAudio
+  proposeAudio,
+  providerCapabilities
 } from '@veyra/ai';
 import { visualTimeline, getComponent, registryVersion } from '@veyra/motion';
 import {
@@ -94,6 +95,7 @@ import {
 import type { createRepository } from './db/repo';
 import type { RenderJobRunner, RenderSettings } from './jobs/runner';
 import { Orchestrator, type RevisionEdit, type Runners } from './production';
+import { directorStepSource, LoopBudgetError, type StepSource } from './tool-loop';
 
 type Repository = ReturnType<typeof createRepository>;
 type RevisionRow = ReturnType<Repository['getRevision']>;
@@ -1393,6 +1395,69 @@ export class Studio {
     this.orchestrator.stop(runId);
     this.controllers.get(runId)?.abort();
     this.controllers.delete(runId);
+  }
+
+  /**
+   * Director of a tool loop run on this run (T129b-1): the project's effective provider,
+   * never another one. Each decision counts in maxAiCalls and, when billable, is reserved
+   * on the run's envelope before the request (callFor, D022); « Arrêter » aborts it.
+   */
+  directorSource(runId: string, goal: string): StepSource {
+    const run = this.repo.getRun(runId);
+    const ai = this.aiFor(run.projectId);
+    const capability = ai ? providerCapabilities[ai.kind] : null;
+    if (!ai || ai.mode !== 'direct' || !capability?.director || !ai.decideStep)
+      throw new Error(
+        `Director indisponible pour ${ai?.kind ?? 'aucun fournisseur'}${capability ? ` : ${capability.directorNote}` : ''}`
+      );
+    const decide = ai.decideStep.bind(ai);
+    const left = () => {
+      const current = this.repo.getRun(runId);
+      return current.plan.budget.maxAiCalls - current.aiCalls;
+    };
+    return directorStepSource({
+      goal,
+      aiCallsLeft: left,
+      project: () => {
+        const current = this.repo.getRun(runId);
+        const id = current.revisionId ?? current.sourceRevisionId;
+        if (!id) return { revisionId: null, summary: null };
+        const revision = this.repo.getRevision(id);
+        return {
+          revisionId: id,
+          summary: {
+            status: revision.status,
+            durationMs: endOf(revision),
+            scenes: revision.storyboard.scenes.map((scene) => ({
+              id: scene.id,
+              start: scene.start,
+              duration: scene.duration
+            })),
+            tracks: (revision.audio?.tracks ?? []).map((t) => ({
+              id: t.id,
+              label: t.label,
+              category: t.category,
+              gainDb: t.gainDb
+            })),
+            captions: Boolean(revision.captions)
+          }
+        };
+      },
+      decide: async (view, signal) => {
+        if (left() <= 0)
+          throw new LoopBudgetError(
+            `Budget d'appels IA épuisé (${this.repo.getRun(runId).plan.budget.maxAiCalls})`
+          );
+        this.repo.updateRun(runId, { aiCalls: this.repo.getRun(runId).aiCalls + 1 });
+        // Throws BudgetExceededError before any request when the envelope cannot pay.
+        const call = this.callFor(ai, runId);
+        const signals = [call.signal, signal].filter((s): s is AbortSignal => Boolean(s));
+        return decide(view, {
+          ...call,
+          ...(signals.length ? { signal: AbortSignal.any(signals) } : {})
+        });
+      }
+    });
   }
 
   resumeProduction(runId: string) {

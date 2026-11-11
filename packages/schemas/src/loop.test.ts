@@ -13,12 +13,22 @@ const call = {
   justification: "Mesurer la vidéo",
 };
 
-it("accepts the four step actions and refuses anything else", () => {
+it("accepts the six step actions and refuses anything else", () => {
   for (const step of [
     { action: "tool_call", ...call },
     { action: "request_permission", ...call },
     { action: "request_approval", revisionId: "rev_1", summary: "Prêt" },
     { action: "stop", reason: "Rien à faire" },
+    {
+      action: "revise_plan",
+      plan: { goal: "Baisser la musique", steps: ["Inspecter", "Modifier"] },
+      justification: "Plan initial",
+    },
+    {
+      action: "ask_user",
+      question: "Quelle voix ?",
+      justification: "Aucune voix",
+    },
   ])
     expect(directorStepSchema.safeParse(step).success).toBe(true);
   for (const step of [
@@ -28,6 +38,12 @@ it("accepts the four step actions and refuses anything else", () => {
     { action: "tool_call", ...call, justification: "" },
     { action: "tool_call", ...call, input: { f: () => 1 } },
     { action: "stop" },
+    { action: "ask_user", question: "", justification: "x" },
+    {
+      action: "revise_plan",
+      plan: { goal: "g", steps: [] },
+      justification: "x",
+    },
   ])
     expect(directorStepSchema.safeParse(step).success).toBe(false);
 });
@@ -38,6 +54,7 @@ it("defaults the loop limits to DIRECTOR-TOOL-LOOP § 4 and keeps invocations st
     maxToolCalls: 40,
     maxConsecutiveFailures: 3,
     maxObservationBytes: 16384,
+    maxWallMs: 1_800_000,
   });
   const invocation = {
     stepId: "stp_1",

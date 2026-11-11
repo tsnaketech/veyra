@@ -164,6 +164,8 @@ export const audioTrackUpdate = defineTool({
   input: z
     .object({ revisionId: idSchema('rev'), trackId: idSchema('atr'), patch: audioMixPatchSchema })
     .strict(),
+  abortNote:
+    'production de la révision enfant arrêtée ; toute révision enfant produite malgré tout est rejetée (changes_requested), jamais validable ; la révision source garde son contenu mais reste « modifications demandées »',
   output: z.object({
     runId: idSchema('run'),
     revisionId: idSchema('rev'),
@@ -183,7 +185,30 @@ export const audioTrackUpdate = defineTool({
     const run = ctx.repo
       .listRuns(source.projectId)
       .findLast((r) => r.kind === 'revision' && r.sourceRevisionId === source.id)!;
-    await done;
+    // The render queue cannot be aborted mid-job (shortcut: no job cancellation in
+    // RenderJobRunner yet). On cancel or timeout the run stops between phases, and once its
+    // work has settled every child it produced is rejected: none can be approved.
+    const stop = () => {
+      try {
+        ctx.studio.stopProduction(run.id);
+      } catch {
+        // Already finished: the rejection below still applies.
+      }
+    };
+    ctx.signal.addEventListener('abort', stop, { once: true });
+    try {
+      await done;
+    } finally {
+      ctx.signal.removeEventListener('abort', stop);
+      if (ctx.signal.aborted)
+        for (const r of ctx.repo.listRevisions(source.projectId))
+          if (
+            (r.resolvedConfig.origin as { runId?: string } | undefined)?.runId === run.id &&
+            r.status === 'awaiting_approval'
+          )
+            ctx.repo.transitionRevision(r.id, 'changes_requested');
+    }
+    if (ctx.signal.aborted) throw new Error('Opération annulée : révision enfant rejetée');
     const finished = ctx.repo.getRun(run.id);
     if (!finished.revisionId)
       throw new Error(`Révision enfant non créée : ${finished.error ?? finished.status}`);

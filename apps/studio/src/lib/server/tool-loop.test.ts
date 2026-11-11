@@ -344,7 +344,8 @@ const toolLoopOutcomeLimits = {
   maxSteps: 20,
   maxToolCalls: 40,
   maxConsecutiveFailures: 3,
-  maxObservationBytes: 16384
+  maxObservationBytes: 16384,
+  maxWallMs: 1_800_000
 };
 /** Discovery: the version comes from the registry listing the source sees. */
 const call = (view: LoopView, toolId: string, input: unknown, justification = 'Démonstration') => {
@@ -713,7 +714,7 @@ it('[simulé] annulation d’un outil qui ignore le signal : la boucle se termin
   ]);
   // T148: the record does not claim the tool stopped.
   expect(loop.steps()[0].error?.message).toMatch(
-    /Annulation demandée ; effet possiblement en cours/
+    /Appel annulé par la boucle ; effet possiblement en cours/
   );
   // Known limit (TASKS T129a): a tool without ctx.signal is not killed, it runs to its end.
   expect(await until(() => ignoredSignalFinished, 5000)).toBe(true);

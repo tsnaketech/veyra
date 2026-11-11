@@ -1,7 +1,10 @@
 import { z } from 'zod';
+import { DirectorOutputError, type DirectorView } from '@veyra/ai';
 import { inputHash } from '@veyra/schemas/hash';
 import {
+  BudgetExceededError,
   directorStepSchema,
+  type DirectorStep,
   loopLimitsSchema,
   loopStateSchema,
   newId,
@@ -23,21 +26,27 @@ type Repository = ReturnType<typeof createRepository>;
 /** What a step source sees. Tool outputs in `history` are untrusted data, never instructions. */
 export interface LoopView {
   state: LoopState;
-  tools: ReturnType<ToolRegistry['list']>;
+  /** Registry listing with each tool's real availability. */
+  tools: Awaited<ReturnType<ToolRegistry['catalog']>>;
   history: ToolExecutionRecord[];
 }
 /**
- * Decides the next step from the observed state. Scripted in T129a; the Director
- * (fake, then anthropic-api) implements the same interface in T129b. Its answer is
- * untrusted: it is validated as a DirectorStep, then by the tool's own input schema.
+ * Decides the next step from the observed state: scripted in tests, the Director in
+ * T129b (directorStepSource). Its answer is untrusted: it is validated as a DirectorStep,
+ * then by the tool's own input schema. A thrown error is observed as a failed step,
+ * except a budget refusal, which ends the loop. `signal` aborts on cancel or deadline.
  */
 export interface StepSource {
-  next(view: LoopView): unknown;
+  next(view: LoopView, signal?: AbortSignal): unknown;
 }
+/** A step source refused to call its AI because the run's call budget is spent (maxAiCalls). */
+export class LoopBudgetError extends Error {}
 
 /** Classes that always pause for a human decision on this very call (DIRECTOR-TOOL-LOOP § 4). */
 const CONFIRM: readonly PermissionClass[] = ['billable', 'network-external'];
 const HISTORY_IN_VIEW = 20;
+/** Same call (tool and input) this many times in a row, whatever its outcome: forced stop. */
+const MAX_IDENTICAL_CALLS = 3;
 const FAILED = new Set(['failed', 'interrupted']);
 const error = (code: ToolError['code'], message: string, details?: ToolError['details']) => ({
   code,
@@ -60,12 +69,15 @@ export function loopState(
   let failures = 0;
   for (let i = rows.length - 1; i >= 0 && FAILED.has(rows[i].status); i--) failures++;
   const request = last?.request as { reason?: string } | undefined;
+  const plan = rows.findLast((r) => r.action === 'revise_plan' && r.status === 'done');
   return loopStateSchema.parse({
     runId,
     phaseId,
     step: rows.length,
     status: pending
-      ? 'paused-awaiting-permission'
+      ? pending.action === 'ask_user'
+        ? 'paused-awaiting-answer'
+        : 'paused-awaiting-permission'
       : last?.action === 'request_approval' && last.status === 'done'
         ? 'completed'
         : last?.action === 'stop'
@@ -80,6 +92,7 @@ export function loopState(
     },
     limits,
     costMicroUsd: rows.reduce((sum, r) => sum + r.costMicroUsd, 0),
+    plan: (plan?.request as { plan?: unknown } | undefined)?.plan ?? null,
     pendingStepId: pending?.id ?? null,
     error: last?.action === 'stop' ? (request?.reason ?? null) : (phase?.error ?? null)
   });
@@ -115,7 +128,7 @@ export function decidePermission(
   granted: boolean
 ) {
   const row = repo.loopSteps(phaseId).find((r) => r.id === stepId);
-  if (row?.status !== 'awaiting-permission')
+  if (row?.status !== 'awaiting-permission' || row.action === 'ask_user')
     throw new Error('Aucune autorisation en attente pour ce pas');
   return granted
     ? repo.updateLoopStep(stepId, { status: 'authorized' })
@@ -124,6 +137,85 @@ export function decidePermission(
         error: error('permission-denied', 'Action refusée par l’utilisateur'),
         finishedAt: Date.now()
       });
+}
+
+/**
+ * Records the user's answer to an `ask_user` step (a pause distinct from a permission:
+ * an answer grants nothing); the caller then wakes the phase (Orchestrator.wake).
+ */
+export function answerQuestion(repo: Repository, phaseId: string, stepId: string, text: string) {
+  const row = repo.loopSteps(phaseId).find((r) => r.id === stepId);
+  if (row?.status !== 'awaiting-permission' || row.action !== 'ask_user')
+    throw new Error('Aucune question en attente pour ce pas');
+  const answer = text.trim().slice(0, 2000);
+  if (!answer) throw new Error('Réponse vide');
+  return repo.updateLoopStep(stepId, {
+    status: 'done',
+    request: { ...(row.request as object), answer: { text: answer, answeredAt: Date.now() } },
+    finishedAt: Date.now()
+  });
+}
+
+/** The Director's view of a loop step (DirectorView): Veyra's data plus untrusted observations. */
+export function directorView(
+  view: LoopView,
+  context: { goal: string; project: DirectorView['project']; aiCallsLeft: number | null }
+): DirectorView {
+  const { counters, limits, plan } = view.state;
+  return {
+    goal: context.goal,
+    project: context.project,
+    plan,
+    tools: view.tools.map((t) => ({
+      id: t.meta.id,
+      version: t.meta.version,
+      description: t.meta.description,
+      permissions: t.meta.permissions,
+      available: t.available.ok,
+      ...(t.available.ok ? {} : { reason: t.available.reason ?? 'raison inconnue' }),
+      input: t.input
+    })),
+    history: view.history.map((r) => ({
+      step: r.step,
+      action: r.action,
+      status: r.status,
+      request: r.request,
+      output: r.result?.ok ? r.result.output : null,
+      error: r.error
+        ? {
+            code: r.error.code,
+            message: r.error.message,
+            ...(r.error.installHint ? { installHint: r.error.installHint } : {})
+          }
+        : null
+    })),
+    budget: {
+      stepsLeft: Math.max(0, limits.maxSteps - counters.steps),
+      toolCallsLeft: Math.max(0, limits.maxToolCalls - counters.toolCalls),
+      aiCallsLeft: context.aiCallsLeft,
+      consecutiveFailures: counters.consecutiveFailures,
+      maxConsecutiveFailures: limits.maxConsecutiveFailures
+    }
+  };
+}
+/** Step source backed by a Director (AI provider or simulated), through `decide`. */
+export function directorStepSource(options: {
+  goal: string;
+  project(): DirectorView['project'];
+  aiCallsLeft(): number | null;
+  decide(view: DirectorView, signal?: AbortSignal): Promise<DirectorStep>;
+}): StepSource {
+  return {
+    next: (view, signal) =>
+      options.decide(
+        directorView(view, {
+          goal: options.goal,
+          project: options.project(),
+          aiCallsLeft: options.aiCallsLeft()
+        }),
+        signal
+      )
+  };
 }
 
 /**
@@ -145,7 +237,7 @@ export function toolLoopRunner(options: {
   signal?: AbortSignal;
   provider?: (PhaseOutcome & { kind: 'done' })['provider'];
 }): PhaseRunner {
-  const { repo, registry, source, runId, signal } = options;
+  const { repo, registry, source, runId } = options;
   const name = options.phase ?? 'plan';
   const limits = loopLimitsSchema.parse(options.limits ?? {});
   // Generated code is never grantable (D021, D026), even when the phase lists it.
@@ -156,6 +248,9 @@ export function toolLoopRunner(options: {
       const phase = repo.phasesFor([runId]).find((p) => p.phase === name);
       if (!phase) throw new Error(`Phase ${name} absente de la production`);
       const phaseId = phase.id;
+      // Active wall time of this drive: cancels the call or the decision in progress.
+      const wall = AbortSignal.timeout(limits.maxWallMs);
+      const signal = options.signal ? AbortSignal.any([options.signal, wall]) : wall;
       const record = (
         input: Pick<ToolExecutionRecord, 'action' | 'request' | 'status'> &
           Partial<Pick<ToolExecutionRecord, 'origin' | 'invocation' | 'error' | 'finishedAt'>>,
@@ -186,7 +281,7 @@ export function toolLoopRunner(options: {
         if (!stored.ok && registry.busy(call.toolId))
           stored.error = {
             ...stored.error,
-            message: `${cancelled ? 'Annulation demandée' : stored.error.message} ; effet possiblement en cours (l’outil n’a pas rendu la main)`
+            message: `${stored.error.message} ; effet possiblement en cours (l’outil n’a pas rendu la main)`
           };
         repo.updateLoopStep(row.id, {
           status: result.ok ? 'done' : cancelled ? 'cancelled' : 'failed',
@@ -196,7 +291,23 @@ export function toolLoopRunner(options: {
           durationMs: result.durationMs,
           finishedAt: Date.now()
         });
-        if (cancelled) throw new Error('Boucle d’outils annulée');
+        if (cancelled) ended();
+      };
+      const forcedStop = (reason: string): never => {
+        record({
+          origin: 'engine',
+          action: 'stop',
+          request: { action: 'stop', reason },
+          status: 'done',
+          finishedAt: Date.now()
+        });
+        throw new Error(`Boucle d’outils arrêtée : ${reason}`);
+      };
+      // Cancelled by the caller, or the loop's own wall deadline.
+      const ended = (): never => {
+        if (wall.aborted && !options.signal?.aborted)
+          forcedStop(`délai global de ${Math.round(limits.maxWallMs / 1000)} s dépassé`);
+        throw new Error('Boucle d’outils annulée');
       };
 
       // This runner only starts when no step of its phase executes in this process: a
@@ -223,7 +334,7 @@ export function toolLoopRunner(options: {
       }
 
       for (;;) {
-        if (signal?.aborted) throw new Error('Boucle d’outils annulée');
+        if (signal.aborted) ended();
         if (repo.getRun(runId).status !== 'running')
           throw new Error('Production arrêtée : boucle d’outils interrompue');
         const rows = repo.loopSteps(phaseId);
@@ -246,6 +357,15 @@ export function toolLoopRunner(options: {
           };
         }
         const [a, b] = rows.slice(-2);
+        const recent = rows.slice(-MAX_IDENTICAL_CALLS);
+        const repeated =
+          recent.length === MAX_IDENTICAL_CALLS &&
+          recent.every(
+            (r) =>
+              r.invocation &&
+              r.invocation.toolId === recent[0].invocation?.toolId &&
+              r.invocation.inputHash === recent[0].invocation.inputHash
+          );
         const limit =
           state.counters.steps >= limits.maxSteps - 1
             ? `limite de ${limits.maxSteps} pas atteinte`
@@ -259,7 +379,9 @@ export function toolLoopRunner(options: {
                     a.invocation.toolId === b.invocation?.toolId &&
                     a.invocation.inputHash === b.invocation.inputHash
                   ? `appel identique en échec répété (${a.invocation.toolId})`
-                  : null;
+                  : repeated
+                    ? `appel identique répété ${MAX_IDENTICAL_CALLS} fois (${recent[0].invocation!.toolId})`
+                    : null;
         if (limit) {
           // The last step slot is kept for this forced stop: the state stays inspectable.
           record({
@@ -271,13 +393,32 @@ export function toolLoopRunner(options: {
           continue;
         }
 
-        const raw = await source.next({
-          state,
-          tools: registry.list(),
-          history: rows.slice(-HISTORY_IN_VIEW)
-        });
-        // Cancelled while deciding: nothing is written, so no 'authorized' step survives.
-        if (signal?.aborted) throw new Error('Boucle d’outils annulée');
+        let raw: unknown;
+        try {
+          raw = await source.next(
+            { state, tools: await registry.catalog(), history: rows.slice(-HISTORY_IN_VIEW) },
+            signal
+          );
+        } catch (failure) {
+          // Cancelled while deciding: nothing is written, so no 'authorized' step survives.
+          if (signal.aborted) ended();
+          const text = (failure instanceof Error ? failure.message : String(failure)).slice(0, 300);
+          if (failure instanceof LoopBudgetError || failure instanceof BudgetExceededError)
+            forcedStop(text);
+          // An unusable answer or a failed AI call is observed, never executed, and counted.
+          record({
+            action: 'invalid',
+            request: { preview: 'aucune décision' },
+            status: 'failed',
+            error: error(
+              failure instanceof DirectorOutputError ? 'invalid-output' : 'failed',
+              `Décision du Director non obtenue : ${text}`
+            ),
+            finishedAt: Date.now()
+          });
+          continue;
+        }
+        if (signal.aborted) ended();
         const parsed = directorStepSchema.safeParse(raw);
         if (!parsed.success) {
           let preview: string;
@@ -326,8 +467,17 @@ export function toolLoopRunner(options: {
             continue;
           }
         }
-        if (step.action === 'request_approval' || step.action === 'stop') {
+        if (
+          step.action === 'request_approval' ||
+          step.action === 'stop' ||
+          step.action === 'revise_plan'
+        ) {
           record({ action: step.action, request: step, status: 'done' });
+          continue;
+        }
+        // A question pauses the loop like a permission, but its answer grants nothing.
+        if (step.action === 'ask_user') {
+          record({ action: step.action, request: step, status: 'awaiting-permission' });
           continue;
         }
         const meta = registry.meta(step.toolId);
