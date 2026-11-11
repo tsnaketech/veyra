@@ -8,6 +8,8 @@
     id: string;
     step: number;
     origin: 'source' | 'engine';
+    /** Provider that took this decision (frozen per run), or « boucle » for a forced stop. */
+    provider: string;
     action: string;
     status: string;
     justification: string;
@@ -26,7 +28,13 @@
     runs,
     phases
   }: {
-    history: { runId: string; goal: string; provider: string; steps: Step[] }[];
+    history: {
+      runId: string;
+      goal: string;
+      provider: string;
+      model: string | null;
+      steps: Step[];
+    }[];
     runs: ProductionRun[];
     phases: ProductionPhase[];
   } = $props();
@@ -72,7 +80,7 @@
         <summary class="cursor-pointer">
           {entry.provider === 'fake' ? '[Simulé] ' : ''}Director — {providerLabels[
             entry.provider
-          ] ?? entry.provider}
+          ] ?? entry.provider}{entry.model ? ` (${entry.model})` : ''}
           {#if run}· <StatusBadge status={run.status} />{/if}
         </summary>
         <p class="mt-1 text-muted">Demande : {entry.goal}</p>
@@ -90,7 +98,7 @@
               <p>
                 <span class="badge {step.origin === 'source' ? 'bg-violet/30' : 'bg-raised'}"
                   >{step.origin === 'source'
-                    ? 'Décision du modèle'
+                    ? `Décision du modèle — ${providerLabels[step.provider] ?? step.provider}`
                     : 'Arrêt imposé par la boucle'}</span
                 >
                 #{step.step + 1} · {actions[step.action] ?? step.action}{#if step.toolId}

@@ -109,8 +109,12 @@
   );
   const nowMs = $derived(frameTimestampMs(frame, rate));
   const scene = $derived(revision ? sceneAt(revision.storyboard, nowMs) : undefined);
-  // A chat message edits this revision through the Director (T129b-2), unless « nouvelle vidéo ».
-  const editable = $derived(data.revisions.some((r) => r.status === 'awaiting_approval'));
+  // A chat message edits the pending revision through the Director (T129b-2), unless
+  // « nouvelle vidéo », and only when the effective provider has the director capability.
+  const pendingVersion = $derived(
+    data.revisions.findLastIndex((r) => r.status === 'awaiting_approval') + 1
+  );
+  const editable = $derived(pendingVersion > 0 && data.directorEdits);
   const canCorrect = $derived(revision?.status === 'awaiting_approval' && data.aiKind !== null);
 
   // Waiting on Claude Code or a human: slower refresh so an automatic import shows up.
@@ -282,10 +286,20 @@
           required
           disabled={!!data.activity || data.aiKind === null}></textarea>
         {#if editable}
+          <p class="text-xs text-muted" data-testid="director-edit-notice">
+            Ce message sera traité comme une demande de montage de la révision v{pendingVersion}
+            par le Director : il crée une nouvelle version à partir d’elle. La v{pendingVersion}
+            reste validable ; elle n’est remplacée que si vous validez la nouvelle version.
+          </p>
           <label class="flex items-center gap-2 text-xs text-muted">
             <input type="checkbox" name="fresh" class="accent-cyan" />
-            Produire une nouvelle vidéo au lieu de modifier la révision en attente
+            Produire plutôt une nouvelle vidéo indépendante (la révision en attente n’est pas modifiée)
           </label>
+        {:else if pendingVersion > 0}
+          <p class="text-xs text-muted" data-testid="director-edit-notice">
+            Ce fournisseur ne pilote pas le Director : ce message produira une nouvelle vidéo ; la
+            révision v{pendingVersion} en attente reste inchangée.
+          </p>
         {/if}
         {#if data.aiKind === 'anthropic-api' || data.aiKind === 'openai-api'}
           <label for="budgetUsd" class="block text-xs text-muted">Enveloppe autorisée (USD)</label>

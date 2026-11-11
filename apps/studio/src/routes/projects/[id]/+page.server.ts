@@ -22,6 +22,8 @@ export const load: PageServerLoad = async ({ params }) => {
   return {
     ...snapshot,
     aiKind: provider.kind,
+    // A chat message edits the pending revision only when this provider drives the Director.
+    directorEdits: studio.directorEdits(params.id),
     // Project provider unavailable, or the global one when the project has none.
     providerError: provider.error ?? (provider.kind ? null : providerError),
     providerChoice: providerLocked
@@ -128,6 +130,7 @@ export const actions: Actions = {
     if (granted !== 'grant' && granted !== 'deny') return fail(400, { error: 'Décision inconnue' });
     return attempt(() =>
       studio.decideDirector(
+        params.id,
         ownedRun(params.id, str(data, 'runId')),
         str(data, 'stepId'),
         granted === 'grant'
@@ -138,6 +141,7 @@ export const actions: Actions = {
     const data = await request.formData();
     return attempt(() =>
       studio.answerDirector(
+        params.id,
         ownedRun(params.id, str(data, 'runId')),
         str(data, 'stepId'),
         str(data, 'answer')

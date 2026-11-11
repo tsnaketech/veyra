@@ -219,8 +219,9 @@ Sécurité, annulation et source de pas IA, sans changer l'orchestrateur ni le r
   (raccourci signalé dans le code). À l'annulation ou au délai, le run de révision est
   arrêté entre phases ; une fois son travail terminé, toute révision enfant de ce run en
   `awaiting_approval` passe `changes_requested` (jamais validable) ; le résultat du pas le
-  dit (`abortNote` du registre). La révision source garde son contenu ; son statut reste
-  `changes_requested`, comme dans le flux `reviseAudio` existant.
+  dit (`abortNote` du registre). La révision source garde son contenu ; son statut restait
+  `changes_requested` (flux `reviseAudio` de l'interface) jusqu'à T129b-3 : dans une boucle,
+  elle reste désormais validable (§ 12).
 - **Pas encore** : création du run de boucle par le Studio sur son orchestrateur, `grants`
   depuis le plan validé, routes `decidePermission`/`answerQuestion` + `wake` (T129b-2) ;
   affichage (T129c) ; décompte `maxRenders` dans la boucle ; débit D022 d'un outil
@@ -259,11 +260,11 @@ Le Director dans le Studio, sur l'orchestrateur unique, sans migration ni nouvea
   (`status: 'reused'`). `maxRenders` compte aussi les rendus des révisions produites par la
   boucle (`loopRevisions`). L'expertise QA (`requestEvaluation`) exige un plan de
   correction : elle n'est pas lancée pour un enfant du Director.
-- **Sort du parent** : même règle que l'application d'un plan de correction — quand
-  l'enfant rendu est `awaiting_approval` et le parent encore `awaiting_approval`, le parent
-  passe `changes_requested` et sa phase de validation se termine (`supersede`). Rendu en
-  échec : le parent reste validable (mais garde son enfant `failed`, ce qui fait refuser un
-  nouveau `revision.apply` sur lui).
+- **Sort du parent** : jusqu'à T129b-3, le parent passait `changes_requested` dès que
+  l'enfant rendu était validable (`supersede`). Remplacé par la règle du § 12 : le parent
+  reste validable jusqu'à la validation de l'enfant. Rendu en échec : le parent reste
+  validable (mais garde son enfant `failed`, ce qui fait refuser un nouveau `revision.apply`
+  sur lui).
 - **Décisions humaines** : `Studio.decideDirector(runId, stepId, accordé)` et
   `Studio.answerDirector(runId, stepId, texte)` → `decidePermission`/`answerQuestion` puis
   `Orchestrator.wake`. Run arrêté : la décision est gardée, « Reprendre » continue.
@@ -290,12 +291,64 @@ Le Director dans le Studio, sur l'orchestrateur unique, sans migration ni nouvea
   absente », comme avant. Le prompt du Director indique qu'après `request_approval` le rendu, la
   QA et la validation humaine sont automatiques (étapes fixes), et recommande d'inspecter
   l'état avant de modifier quand c'est utile.
-- **Pas encore** : appel réel du Director non exécuté (démo préparée :
-  `apps/studio/src/lib/server/director.real.test.ts`, RUNBOOK) ; `maxRenders` non vérifié
-  avant un appel d'`audio.track.update` (décompté au rendu final seulement) ; pas de choix
-  de la révision à modifier (la plus récente en attente) ; T129c (historique filtrable,
-  coûts affichés, artefacts téléchargeables).
+- **Démo réelle exécutée le 2026-11-11** (commit 6febdcd) avec `codex-chatgpt` et HyperFrames
+  réel (`apps/studio/src/lib/server/director.real.test.ts`, RUNBOOK) : décisions du modèle
+  `revision.apply` (scène 2 : `slide-up`, 450 ms), `composition.check` HyperFrames OK, puis
+  `request_approval` ; rendu, QA (23 contrôles, 2 échecs mineurs) et attente de validation.
+  Limites : le modèle n'a rien inspecté avant de modifier, voix off simulée, un seul essai
+  (n=1). Détail et journal : [TASKS](../TASKS.md) (T129b-2) ; revue :
+  [2026-11-11-t129b](../reviews/2026-11-11-t129b.md).
+- **Pas encore** : pas de choix de la révision à modifier (la plus récente en attente) ;
+  T129c (historique filtrable, coûts affichés, artefacts téléchargeables). `maxRenders`
+  avant `audio.track.update` : traité par T129b-3 (§ 12).
 
 Preuves : `apps/studio/src/lib/server/director-studio.test.ts`,
 `packages/ai/src/director.test.ts`, `packages/ai/src/agents.test.ts`,
 `apps/studio/tests/mvp.e2e.ts` ; détail dans [TASKS](../TASKS.md) (T129b-2).
+
+## 12. Suites des revues T129b (T129b-3, 2026-11-11)
+
+Corrections des défauts confirmés par la [revue indépendante](../reviews/2026-11-11-t129b.md)
+et par la revue de sécurité du même jour. Aucune migration ; aucune transition de révision
+ajoutée (`awaiting_approval → approved | changes_requested` suffit).
+
+- **Parent validable jusqu'à la validation de l'enfant** (I2) : le rendu de l'enfant du
+  Director ne remplace plus le parent (`supersede` supprimé). `Studio.approve` ferme les autres
+  versions en attente de la même lignée (ancêtres et descendants) : valider l'enfant fait
+  passer le parent `changes_requested` et termine sa phase de validation ; valider l'original
+  (donc refuser l'enfant) ferme l'enfant. Un enfant annulé ou rejeté laisse le parent
+  validable. Le fil l'annonce (« La révision vN reste validable… ») ; le champ de la page
+  l'annonce avant envoi, explique la case « nouvelle vidéo indépendante », et n'annonce un
+  montage que si le fournisseur effectif a la capacité `director` (`Studio.directorEdits`,
+  M1) ; sinon il dit qu'une nouvelle vidéo sera produite.
+- **`audio.track.update` dans une boucle** : `reviseAudio(…, { maxRenders })` ne touche ni au
+  statut de la source ni à l'activité du projet ; la source reste validable après annulation
+  ou rejet de l'enfant. Hors boucle (interface), comportement inchangé.
+- **`maxRenders`** : `Studio.directorInLoop(projectId)` donne le run Director dont la boucle
+  tourne ; avant l'appel, `audio.track.update` est refusé si ses rendus (révisions de la
+  boucle et re-rendus automatiques, `rendersUsed`) ont épuisé `plan.budget.maxRenders`, et le
+  run enfant reçoit le reste comme plafond.
+- **`composition.check`** : chemins de l'hôte retirés de la sortie (modèle, base, page) :
+  dossier vérifié → `composition`, racine de stockage → `<stockage>`, autre chemin personnel
+  ou temporaire → `<chemin hôte>`, révision rendue comprise.
+- **Réponse à `ask_user`** : bloc distinct `<reponse_utilisateur pas="N">` (2 000 octets au
+  plus, `<`/`>` échappés), hors des blocs `<donnees_non_fiables>` ; la règle 3 du prompt dit
+  qu'elle sert la tâche et n'accorde aucune permission.
+- **Troncature UTF-8** : `untrusted()` coupe à la frontière d'un caractère.
+- **Fournisseur figé par run** : `brief.provider` (`kind`, `model`) enregistré au démarrage ;
+  `decideDirector`, `answerDirector`, `resumeProduction` et la phase `plan` refusent la reprise
+  si le fournisseur effectif a changé (message : revenir au fournisseur d'origine ou arrêter
+  puis faire une nouvelle demande). Le panneau affiche le fournisseur du run et celui de
+  chaque pas (« boucle » pour un arrêt imposé) ; un ancien run sans `brief.provider` affiche
+  le fournisseur enregistré par la phase, sinon « inconnu », jamais le fournisseur courant.
+- **Appartenance du run** : `decideDirector(projectId, …)` et `answerDirector(projectId, …)`
+  vérifient eux-mêmes que le run appartient au projet (en plus de la route).
+- **Provenance** (M3) : l'enfant de `revision.apply` décidé dans une boucle enregistre le
+  fournisseur du run dans `resolvedConfig.aiProvider` (`none` hors boucle).
+- **Limites** : le run enfant d'`audio.track.update` garde sa propre phase de validation
+  (en plus de celle du run Director ; non vérifié de bout en bout en réel) ; `captionDelivery`
+  absent vaut toujours `burned`.
+
+Preuves : `apps/studio/src/lib/server/director-studio.test.ts`, `director-loop.test.ts`,
+`tools/tools.test.ts`, `packages/ai/src/director.test.ts` ; détail dans
+[TASKS](../TASKS.md) (T129b-3).

@@ -31,6 +31,10 @@ export const productionBriefSchema = z.object({
   }),
   audio: z.object({ wanted: z.boolean(), assetIds: z.array(idSchema("ast")) }),
   constraints: z.array(z.string()),
+  /** AI provider frozen at the start of a Director run (T129b-3): its steps never mix providers. */
+  provider: z
+    .object({ kind: z.string().min(1), model: z.string().nullable() })
+    .optional(),
 });
 export const productionPlanSchema = z.object({
   phases: z.array(

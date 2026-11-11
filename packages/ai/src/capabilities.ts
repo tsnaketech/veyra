@@ -116,7 +116,7 @@ export const providerCapabilities = z
       tools: "no",
       director: true,
       directorNote:
-        "Sortie stricte (--output-schema), coût abonnement, annulable ; jamais appelé réellement pour le Director.",
+        "Sortie stricte (--output-schema), coût abonnement, annulable ; démontré réellement le 2026-11-11 (une démo : revision.apply, composition.check, request_approval).",
       streaming: false,
       cancel: true,
       resume: false,

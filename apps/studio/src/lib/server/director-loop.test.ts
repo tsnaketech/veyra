@@ -172,6 +172,7 @@ function loop(
     limits?: object;
     signal?: AbortSignal;
     maxAiCalls?: number;
+    maxRenders?: number;
     tools?: Tool[];
   },
   on = orchestrator()
@@ -187,7 +188,7 @@ function loop(
     sourceRevisionId: options.revision ?? v1,
     plan: {
       phases: [{ phase: 'plan', agent: 'director', dependsOn: [], maxAttempts: 1 }],
-      budget: { maxAiCalls: options.maxAiCalls ?? 20, maxRenders: 0 },
+      budget: { maxAiCalls: options.maxAiCalls ?? 20, maxRenders: options.maxRenders ?? 10 },
       reason: 'Boucle d’outils pilotée par le Director (T129b-1)'
     }
   });
@@ -283,11 +284,10 @@ it('[réel ffmpeg][simulé Director] argument malformé puis corrigé ; intégri
   const child = repo.getRevision(run.revisionId!);
   expect(child).toMatchObject({ parentRevisionId: musicParent, status: 'awaiting_approval' });
   expect(child.audio!.tracks[0].gainDb).toBe(12);
-  // Parent content untouched (its review status moves, as with reviseAudio in the UI).
-  const { status, updatedAt, ...kept } = repo.getRevision(musicParent);
-  const { status: s0, updatedAt: u0, ...was } = parent;
-  expect([s0, status, updatedAt >= u0]).toEqual(['awaiting_approval', 'changes_requested', true]);
-  expect(kept).toStrictEqual(was);
+  // Parent untouched and still validable (T129b-3): approving the child closes it, not the call.
+  expect(repo.getRevision(musicParent)).toStrictEqual(parent);
+  // The child's render counted in the Director run's maxRenders.
+  expect(repo.getRevision(child.id).videoPath).toBeTruthy();
   musicParent = child.id;
 });
 
@@ -335,11 +335,36 @@ it('[réel ffmpeg] audio.track.update annulé pendant le mixage : aucun enfant v
     expect(['changes_requested', 'draft', 'failed']).toContain(c.status);
     expect(() => app.approve(c.id)).toThrow();
   }
-  expect(repo.listRevisions(projectId).filter((r) => r.status === 'awaiting_approval')).toEqual([]);
-  const { status, updatedAt, ...kept } = repo.getRevision(musicParent);
-  const { status: s0, updatedAt: u0, ...was } = parent;
-  expect([s0, status, updatedAt >= u0]).toEqual(['awaiting_approval', 'changes_requested', true]);
-  expect(kept).toStrictEqual(was);
+  // T129b-3: the source is untouched and stays validable after the cancellation.
+  expect(repo.getRevision(musicParent)).toStrictEqual(parent);
+  expect(parent.status).toBe('awaiting_approval');
+});
+
+it('[réel ffmpeg] audio.track.update : maxRenders du run Director vérifié avant l’appel, aucun run ni enfant créé', async () => {
+  const parent = repo.getRevision(musicParent);
+  const runsBefore = repo.listRuns(projectId).length;
+  const revisionsBefore = repo.listRevisions(projectId).length;
+  const l = loop({
+    source: model((view) =>
+      view.history.length
+        ? stop
+        : callWire('audio.track.update', {
+            revisionId: musicParent,
+            trackId: 'atr_music',
+            patch: { gainDb: -12 }
+          })
+    ),
+    revision: musicParent,
+    maxRenders: 0
+  });
+  await l.drive();
+  const step = l.steps().find((s) => s.invocation?.toolId === 'audio.track.update')!;
+  expect(step.status).toBe('failed');
+  expect(step.error?.message).toMatch(/Budget de rendus du Director épuisé \(0\)/);
+  // Only the loop's own run: no nested revision run, no child, source unchanged.
+  expect(repo.listRuns(projectId)).toHaveLength(runsBefore + 1);
+  expect(repo.listRevisions(projectId)).toHaveLength(revisionsBefore);
+  expect(repo.getRevision(musicParent)).toStrictEqual(parent);
 });
 
 it('[simulé] permission refusée : pause, refus humain, jamais exécuté même redemandé', async () => {

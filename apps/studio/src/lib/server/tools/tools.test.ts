@@ -550,3 +550,58 @@ it('composition.check: an unrendered draft child is composed (burned captions) i
   expect(existsSync(revisionDir) ? tree(revisionDir) : null).toStrictEqual(filesBefore);
   expect(readdirSync(callsDir)).toEqual(callsBefore);
 });
+
+it('composition.check: no host path in the output (draft child and rendered revision), sent to the model as relative paths', async () => {
+  const draft = repo
+    .listRevisions(projectId)
+    .filter((r) => r.status === 'draft')
+    .at(-1)!;
+  const rendered = repo.getRevision(v1);
+  expect(existsSync(join(storage.revision(projectId, v1), 'composition', 'index.html'))).toBe(true);
+  // Stand-in for HyperFramesEngine.check, reporting files the way `hyperframes check` does.
+  const engine = {
+    kind: 'hyperframes',
+    async check(dir: string) {
+      const finding = (file: string) => ({
+        code: 'x',
+        severity: 'warning',
+        message: `Avertissement dans ${file}`,
+        sourceFile: file
+      });
+      return {
+        ok: false,
+        engine: 'hyperframes',
+        sections: {
+          lint: {
+            ok: false,
+            errorCount: 0,
+            warningCount: 3,
+            findings: [
+              finding(join(dir, 'index.html')),
+              finding(join(storage.root, projectId, 'autre.html')),
+              finding('/home/someone/.cache/hyperframes/runtime.js')
+            ]
+          }
+        }
+      };
+    }
+  } as never;
+  const settings = loadStudioSettings(loadRenderSettings(), defaultConfigDir());
+  const checking = studioToolRegistry({ repo, storage, settings, engine, studio: app, projectId });
+  for (const revision of [draft, rendered]) {
+    const result = await checking.invoke(
+      'composition.check',
+      { revisionId: revision.id },
+      { grants: ['local-compute'] }
+    );
+    const text = JSON.stringify(result);
+    if (!result.ok) throw new Error(text);
+    expect(text).not.toContain(storage.root);
+    expect(text).not.toContain(root);
+    expect(text).not.toContain('/home/');
+    expect(text).toContain('"sourceFile":"composition/index.html"');
+    expect(text).toContain('Avertissement dans composition/index.html');
+    expect(text).toContain('Avertissement dans <chemin hôte>');
+    expect(text).toContain(`"sourceFile":"<stockage>/${projectId}/autre.html"`);
+  }
+});

@@ -5,7 +5,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FakeAiProvider, type CallOptions, type DirectorView } from '@veyra/ai';
+import { AssistedProvider, FakeAiProvider, type CallOptions, type DirectorView } from '@veyra/ai';
 import type { DirectorStep } from '@veyra/schemas';
 import { ProjectStorage } from '@veyra/storage';
 import { createRepository } from './db/repo';
@@ -152,8 +152,11 @@ it('[simulé Director, réel ffmpeg] edit request in the chat: real tools, rende
   expect(phase(run.id, 'qa').status).toBe('done');
   expect(phase(run.id, 'human-approval').status).toBe('waiting');
   expect(repo.getRun(run.id).status).toBe('waiting');
-  // Parent superseded, as with an applied correction plan.
-  expect(repo.getRevision(parent.id).status).toBe('changes_requested');
+  // T129b-3 (I2): the parent stays validable until the child is approved.
+  expect(repo.getRevision(parent.id).status).toBe('awaiting_approval');
+  // M3: the child records the provider that decided it; the run froze it at its start.
+  expect(child.resolvedConfig.aiProvider).toBe('fake');
+  expect(repo.getRun(run.id).brief?.provider).toEqual({ kind: 'fake', model: null });
 
   // Scene 2 changed; every other scene, every narration and the voice-off are identical.
   const before = parent.storyboard.scenes;
@@ -172,6 +175,7 @@ it('[simulé Director, réel ffmpeg] edit request in the chat: real tools, rende
   // Page data: model decisions, labelled, apart from the fixed steps.
   const history = app.snapshot(projectId)!.director.at(-1)!;
   expect(history.provider).toBe('fake');
+  expect(history.steps.every((s) => s.provider === 'fake')).toBe(true);
   expect(history.steps.map((s) => s.toolId ?? s.action)).toEqual([
     'revise_plan',
     'media.inspect',
@@ -298,4 +302,149 @@ it('[simulé] provider without the director capability: current behaviour (new v
     expect.stringMatching(/Montage par le Director indisponible pour fake/)
   );
   app.setProvider(new FakeAiProvider());
+});
+
+it('[simulé stub] decideDirector/answerDirector: a paused run of another project is refused, its step untouched', async () => {
+  app.setProvider(new Scripted());
+  const other = app.createProject('Projet étranger').id;
+  await app.sendPrompt(other, saas);
+  await app.sendPrompt(other, 'Vérifie la vidéo');
+  const foreign = repo.listRuns(other).at(-1)!;
+  await vi.waitFor(() => expect(repo.getRun(foreign.id).status).toBe('waiting'), {
+    timeout: 120_000
+  });
+  const step = repo.loopSteps(planPhase(foreign.id).id).at(-1)!;
+  expect(step).toMatchObject({ action: 'request_permission', status: 'awaiting-permission' });
+  // Posted from this project's page with the other project's real run and step ids.
+  for (const [action, fields] of [
+    ['decideDirector', { decision: 'grant' }],
+    ['answerDirector', { answer: 'oui' }]
+  ] as const)
+    expect(await post(action, { runId: foreign.id, stepId: step.id, ...fields })).toMatchObject({
+      status: 400
+    });
+  expect(repo.loopSteps(planPhase(foreign.id).id).find((s) => s.id === step.id)).toMatchObject({
+    status: 'awaiting-permission',
+    startedAt: null
+  });
+  expect(repo.getRun(foreign.id).status).toBe('waiting');
+  app.stopProduction(foreign.id);
+  app.setProvider(new FakeAiProvider());
+});
+
+it('[simulé] assisted mode (claude-subscribe): an edit request is never routed to the Director, nothing runs', async () => {
+  const project = app.createProject('Mode assisté').id;
+  await app.sendPrompt(project, saas);
+  expect(repo.listRevisions(project).at(-1)!.status).toBe('awaiting_approval');
+  expect(app.directorEdits(project)).toBe(true);
+  app.setProvider(new AssistedProvider());
+  try {
+    // M1: the page does not announce an edit of the pending video for this provider.
+    expect(app.directorEdits(project)).toBe(false);
+    await app.sendPrompt(project, goal);
+    expect(repo.listRuns(project).map((r) => r.kind)).toEqual(['production', 'production']);
+    expect(app.snapshot(project)!.director).toEqual([]);
+    expect(app.snapshot(project)!.messages.map((m) => m.text)).toContainEqual(
+      expect.stringMatching(/Montage par le Director indisponible pour claude-subscribe/)
+    );
+  } finally {
+    app.setProvider(new FakeAiProvider());
+  }
+});
+
+/** Fresh project with a rendered revision awaiting approval, then an edit by the simulated Director. */
+async function directorChild(name: string) {
+  const project = app.createProject(name).id;
+  await app.sendPrompt(project, saas);
+  const parent = repo.listRevisions(project).at(-1)!;
+  await app.sendPrompt(project, 'Rends la scène 2 plus dynamique');
+  const run = repo.listRuns(project).at(-1)!;
+  await vi.waitFor(
+    () => {
+      if (app.activityFor(project) || repo.getRun(run.id).status === 'running')
+        throw new Error('en cours');
+    },
+    { timeout: 120_000, interval: 50 }
+  );
+  const child = repo.getRevision(repo.getRun(run.id).revisionId!);
+  expect(child).toMatchObject({ parentRevisionId: parent.id, status: 'awaiting_approval' });
+  return { project, parent: repo.getRevision(parent.id), child, run };
+}
+
+it('[simulé, réel ffmpeg] I2: the original stays validable while the child waits; approving one closes the other', async () => {
+  // Refusing the child = approving the original: the child is closed, never the other way.
+  const a = await directorChild('I2 original');
+  expect(a.parent.status).toBe('awaiting_approval');
+  expect(app.snapshot(a.project)!.messages.map((m) => m.text)).toContainEqual(
+    expect.stringMatching(/reste validable : elle n'est remplacée que si vous validez/)
+  );
+  app.approve(a.parent.id);
+  expect(repo.getRevision(a.parent.id).status).toBe('approved');
+  expect(repo.getRevision(a.child.id).status).toBe('changes_requested');
+  await vi.waitFor(() => expect(repo.getRun(a.run.id).status).toBe('completed'));
+
+  // Approving the child closes the original and completes its production's approval.
+  const b = await directorChild('I2 enfant');
+  const production = repo.listRuns(b.project)[0];
+  expect(repo.getRun(production.id).status).toBe('waiting');
+  app.approve(b.child.id);
+  expect(repo.getRevision(b.parent.id).status).toBe('changes_requested');
+  await vi.waitFor(() => expect(repo.getRun(production.id).status).toBe('completed'));
+  await vi.waitFor(() => expect(repo.getRun(b.run.id).status).toBe('completed'));
+});
+
+it('[simulé stub] provider frozen per run: resuming or answering with another provider is refused; direct calls check the project', async () => {
+  class Model extends Scripted {
+    constructor(readonly model: string) {
+      super();
+    }
+  }
+  app.setProvider(new Model('modele-a'));
+  try {
+    const project = app.createProject('Fournisseur figé').id;
+    await app.sendPrompt(project, saas);
+    await app.sendPrompt(project, 'Vérifie la vidéo');
+    const run = repo.listRuns(project).at(-1)!;
+    await vi.waitFor(() => expect(repo.getRun(run.id).status).toBe('waiting'), {
+      timeout: 120_000
+    });
+    expect(repo.getRun(run.id).brief?.provider).toEqual({ kind: 'fake', model: 'modele-a' });
+    const step = repo.loopSteps(planPhase(run.id).id).at(-1)!;
+    expect(step).toMatchObject({ action: 'request_permission', status: 'awaiting-permission' });
+
+    // Item 8: a direct call with another project's id is refused before any change.
+    expect(() => app.decideDirector(projectId, run.id, step.id, true)).toThrow(
+      /étrangère au projet/
+    );
+    expect(() => app.answerDirector(projectId, run.id, step.id, 'oui')).toThrow(
+      /étrangère au projet/
+    );
+    expect(repo.loopSteps(planPhase(run.id).id).at(-1)).toMatchObject({
+      status: 'awaiting-permission'
+    });
+
+    // Item 6: another model now: the decision cannot wake the run, resume is refused too.
+    app.setProvider(new Model('modele-b'));
+    expect(() => app.decideDirector(project, run.id, step.id, true)).toThrow(
+      /Reprise refusée : ce montage a été commencé avec fake \(modele-a\).*fake \(modele-b\)/
+    );
+    app.stopProduction(run.id);
+    await vi.waitFor(() => expect(repo.getRun(run.id).status).toBe('stopped'));
+    expect(() => app.resumeProduction(run.id)).toThrow(/Reprise refusée/);
+    expect(repo.getRun(run.id).status).toBe('stopped');
+    // Every displayed step carries the run's provider, not the current one.
+    const history = app.snapshot(project)!.director.at(-1)!;
+    expect(history.provider).toBe('fake');
+    expect(history.model).toBe('modele-a');
+    expect(history.steps.filter((s) => s.origin === 'source').length).toBeGreaterThan(0);
+    expect(new Set(history.steps.map((s) => s.provider))).toEqual(new Set(['fake']));
+
+    // Back to the run's own provider: resuming works.
+    app.setProvider(new Model('modele-a'));
+    await app.resumeProduction(run.id);
+    expect(repo.getRun(run.id).status).not.toBe('stopped');
+    app.stopProduction(run.id);
+  } finally {
+    app.setProvider(new FakeAiProvider());
+  }
 });

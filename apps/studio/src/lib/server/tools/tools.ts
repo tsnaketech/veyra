@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
@@ -48,6 +48,28 @@ function revisionVideo(ctx: CallContext, revisionId: string) {
   const root = ctx.storage.root;
   if (!revision.videoPath.startsWith(root + '/')) throw new Error('Chemin refusé');
   return { revision, path: safePath(root, relative(root, revision.videoPath)) };
+}
+
+/**
+ * Engine reports name host files (findings[].sourceFile…); the output goes to the model, the
+ * database and the page. The checked folder becomes `composition`, the storage root
+ * `<stockage>`, any other home or temporary path `<chemin hôte>`.
+ */
+function withoutHostPaths<T>(report: T, dir: string, root: string): T {
+  const real = (path: string) => (existsSync(path) ? realpathSync(path) : path);
+  let text = JSON.stringify(report);
+  for (const [path, label] of [
+    [real(dir), 'composition'],
+    [dir, 'composition'],
+    [real(root), '<stockage>'],
+    [root, '<stockage>']
+  ])
+    text = text.replaceAll(JSON.stringify(path).slice(1, -1), label);
+  text = text.replace(
+    /(?<![\w.<>-])\/(?:home|root|tmp|Users|var\/folders)\/[^"\s]*/g,
+    '<chemin hôte>'
+  );
+  return JSON.parse(text) as T;
 }
 
 export const mediaInspect = defineTool({
@@ -167,7 +189,7 @@ export const audioTrackUpdate = defineTool({
     .object({ revisionId: idSchema('rev'), trackId: idSchema('atr'), patch: audioMixPatchSchema })
     .strict(),
   abortNote:
-    'production de la révision enfant arrêtée ; toute révision enfant produite malgré tout est rejetée (changes_requested), jamais validable ; la révision source garde son contenu mais reste « modifications demandées »',
+    'production de la révision enfant arrêtée ; toute révision enfant produite malgré tout est rejetée (changes_requested), jamais validable ; la révision source reste intacte et validable',
   output: z.object({
     runId: idSchema('run'),
     revisionId: idSchema('rev'),
@@ -182,8 +204,19 @@ export const audioTrackUpdate = defineTool({
       ...source.audio,
       tracks: source.audio.tracks.map((t) => (t.id === trackId ? { ...t, ...patch } : t))
     });
+    // In a Director's loop the child's render counts in the run's maxRenders, checked before
+    // the call; the source stays awaiting approval until the child is approved.
+    const loop = ctx.studio.directorInLoop(source.projectId);
+    if (loop && loop.rendersLeft <= 0)
+      throw new Error(
+        `Budget de rendus du Director épuisé (${loop.maxRenders}) : révision audio non produite`
+      );
     // reviseAudio validates and creates the run synchronously; its promise ends with the run.
-    const done = ctx.studio.reviseAudio(revisionId, composition);
+    const done = ctx.studio.reviseAudio(
+      revisionId,
+      composition,
+      loop ? { maxRenders: loop.rendersLeft } : undefined
+    );
     const run = ctx.repo
       .listRuns(source.projectId)
       .findLast((r) => r.kind === 'revision' && r.sourceRevisionId === source.id)!;
@@ -269,6 +302,8 @@ export const revisionApply = defineTool({
     const invalidation = invalidationPlan(parent.id, before, child);
     const now = Date.now();
     const id = newId('rev');
+    // The provider of the Director run deciding this edit (none outside a loop).
+    const provider = ctx.studio.directorInLoop(parent.projectId)?.provider ?? 'none';
     // Re-checked in the write transaction: a concurrent child makes this call a conflict.
     ctx.repo.transaction(() => {
       isHead();
@@ -282,7 +317,7 @@ export const revisionApply = defineTool({
         resolvedConfig: {
           ...(child.delivery ? { captionDelivery: child.delivery } : {}),
           origin: { tool: 'revision.apply', parentRevisionId: parent.id, operations, invalidation },
-          aiProvider: 'none'
+          aiProvider: provider
         },
         videoPath: null,
         error: null,
@@ -395,8 +430,10 @@ export const compositionCheck = defineTool({
     const revision = ctx.revision(revisionId);
     const revisionDir = ctx.storage.revision(revision.projectId, revision.id);
     // safePath realpaths its root: test existence first (an unrendered revision has no folder).
-    if (existsSync(join(revisionDir, 'composition', 'index.html')))
-      return ctx.engine.check(safePath(revisionDir, 'composition'), ctx.signal);
+    if (existsSync(join(revisionDir, 'composition', 'index.html'))) {
+      const dir = safePath(revisionDir, 'composition');
+      return withoutHostPaths(await ctx.engine.check(dir, ctx.signal), dir, ctx.storage.root);
+    }
     if (ctx.engine.kind !== 'hyperframes') throw new Error('Composition absente');
     // Unrendered revision (e.g. a draft child of revision.apply): compose it like the render's
     // main picture in this call's own folder under the storage root (bwrap masks /tmp), never
@@ -427,7 +464,7 @@ export const compositionCheck = defineTool({
       );
       ctx.signal.throwIfAborted();
       writeComposition(work, files);
-      return await ctx.engine.check(work, ctx.signal);
+      return withoutHostPaths(await ctx.engine.check(work, ctx.signal), work, ctx.storage.root);
     } finally {
       rmSync(dirname(work), { recursive: true, force: true });
     }

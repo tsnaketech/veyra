@@ -38,9 +38,23 @@ export const sandboxOptionsSchema = z.object({
 });
 function writableSize(root: string): number {
   let total = 0;
-  for (const entry of readdirSync(root)) {
-    const path = join(root, entry),
+  let entries: string[];
+  try {
+    entries = readdirSync(root);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
+  }
+  for (const entry of entries) {
+    const path = join(root, entry);
+    let info;
+    try {
       info = lstatSync(path);
+    } catch (error) {
+      // The renderer deletes its transient files while we measure: a vanished entry weighs nothing.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
     if (info.isSymbolicLink())
       throw new Error("Symlink in render workspace refused");
     total += info.isDirectory() ? writableSize(path) : info.size;

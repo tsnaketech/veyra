@@ -524,8 +524,7 @@ export class Studio {
       ? undefined
       : this.repo.listRevisions(projectId).findLast((r) => r.status === 'awaiting_approval');
     const capability = providerCapabilities[ai.kind];
-    if (head && ai.mode === 'direct' && capability?.director && ai.decideStep)
-      return this.startDirector(head, text, budgetUsd);
+    if (head && this.directs(ai)) return this.startDirector(head, text, budgetUsd);
     const parent = this.repo.listRevisions(projectId).at(-1) ?? null;
     if (ai.mode !== 'assisted') this.busy(projectId, 'generating');
     this.say(projectId, 'user', text);
@@ -551,6 +550,22 @@ export class Studio {
     });
   }
 
+  /** The provider can drive the Director's tool loop (capability and structured decisions). */
+  private directs(ai: Provider) {
+    return (
+      ai.mode === 'direct' && Boolean(providerCapabilities[ai.kind]?.director && ai.decideStep)
+    );
+  }
+  /** A chat message would be an edit of the pending revision by the Director (page hint). */
+  directorEdits(projectId: string) {
+    try {
+      const ai = this.aiFor(projectId);
+      return Boolean(ai && this.directs(ai));
+    } catch {
+      return false;
+    }
+  }
+
   private productionBudget() {
     return { maxAiCalls: 3, maxRenders: this.settings.quality.maxAutoFixAttempts + 1 };
   }
@@ -571,6 +586,30 @@ export class Studio {
     };
   }
 
+  /**
+   * Renders spent by a run: the given revisions, the revisions its tool loop produced (a
+   * Director run) and their automatic re-render children.
+   */
+  private rendersUsed(run: ProductionRun, revisionIds: string[]) {
+    const owned = new Set([...revisionIds, ...this.loopRevisions(run.id)]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const r of this.repo.listRevisions(run.projectId)) {
+        const origin = r.resolvedConfig.origin as Record<string, unknown> | undefined;
+        if (
+          !owned.has(r.id) &&
+          r.parentRevisionId &&
+          owned.has(r.parentRevisionId) &&
+          (origin?.autoFix !== undefined || origin?.renderRetry !== undefined)
+        ) {
+          owned.add(r.id);
+          grew = true;
+        }
+      }
+    }
+    return this.repo.renderJobsFor([...owned]).length;
+  }
+
   private phasePayload<T>(runId: string, phase: string): T {
     const result = this.orchestrator.phases(runId).find((p) => p.phase === phase)?.result;
     return (result as { payload: T } | null)?.payload as T;
@@ -581,26 +620,8 @@ export class Studio {
       render: {
         run: async (inputs) => {
           const { revisionId } = inputs.composition as { revisionId: string };
-          // Renders of this run: its composed revision and the automatic re-render children.
-          // A Director run also counts the renders of revisions its tool loop produced.
-          const owned = new Set([revisionId, ...this.loopRevisions(run.id)]);
-          for (let grew = true; grew;) {
-            grew = false;
-            for (const r of this.repo.listRevisions(run.projectId)) {
-              const origin = r.resolvedConfig.origin as Record<string, unknown> | undefined;
-              if (
-                !owned.has(r.id) &&
-                r.parentRevisionId &&
-                owned.has(r.parentRevisionId) &&
-                (origin?.autoFix !== undefined || origin?.renderRetry !== undefined)
-              ) {
-                owned.add(r.id);
-                grew = true;
-              }
-            }
-          }
           const { maxRenders } = run.plan.budget;
-          const remaining = maxRenders - this.repo.renderJobsFor([...owned]).length;
+          const remaining = maxRenders - this.rendersUsed(run, [revisionId]);
           if (remaining <= 0) throw new Error(`Budget de rendus épuisé (${maxRenders})`);
           let target = this.repo.getRevision(this.repo.getRun(run.id).revisionId ?? revisionId);
           // Failed revisions are immutable; retry the render in a child, keeping completed phases.
@@ -1262,7 +1283,8 @@ export class Studio {
   private createRevisionRun(
     source: RevisionRow,
     payload: RevisionPlan | AudioComposition | RevisionEdit,
-    provider: Provider['kind'] | 'rules'
+    provider: Provider['kind'] | 'rules',
+    maxRenders?: number
   ) {
     const edit = 'edit' in payload ? payload : null;
     const manual = 'tracks' in payload || Boolean(edit);
@@ -1276,7 +1298,7 @@ export class Studio {
         : 'tracks' in payload
           ? { changes: [], audioChanges: [payload] }
           : payload,
-      this.productionBudget(),
+      { ...this.productionBudget(), ...(maxRenders === undefined ? {} : { maxRenders }) },
       source.audio
     );
     if (edit) routing.warnings.push(...edit.warnings);
@@ -1542,7 +1564,7 @@ export class Studio {
     const run = this.orchestrator.create({
       projectId,
       kind: 'revision',
-      brief: this.productionBrief(projectId, text),
+      brief: { ...this.productionBrief(projectId, text), provider: this.providerId(ai) },
       plan: planDirectorRevision({
         maxAiCalls: DIRECTOR_AI_CALLS,
         maxRenders: this.productionBudget().maxRenders
@@ -1555,7 +1577,7 @@ export class Studio {
       projectId,
       'assistant',
       this.label(
-        `Demande de montage confiée au Director (révision v${version}). Ses décisions et les outils exécutés s'affichent dans le panneau Production ; rendu, contrôle qualité et votre validation restent des étapes fixes.`,
+        `Demande de montage confiée au Director (révision v${version}). Ses décisions et les outils exécutés s'affichent dans le panneau Production ; rendu, contrôle qualité et votre validation restent des étapes fixes. La révision v${version} reste validable : elle n'est remplacée que si vous validez la nouvelle version.`,
         ai.kind,
         isBillable(ai) ? ai.model : null
       )
@@ -1565,8 +1587,56 @@ export class Studio {
     });
   }
 
-  private loopPhase(runId: string) {
+  /**
+   * The Director run whose tool loop is running in this project (one at a time, see
+   * startDirector): its renders left and its provider; null outside a loop.
+   */
+  directorInLoop(projectId: string) {
+    const run = this.repo
+      .listRuns(projectId)
+      .find(
+        (r) =>
+          isDirectorRun(r) &&
+          r.status === 'running' &&
+          this.orchestrator.phases(r.id).find((p) => p.phase === 'plan')?.status === 'running'
+      );
+    if (!run) return null;
+    const { maxRenders } = run.plan.budget;
+    return {
+      runId: run.id,
+      maxRenders,
+      rendersLeft: maxRenders - this.rendersUsed(run, []),
+      provider: run.brief?.provider?.kind ?? this.aiFor(projectId)?.kind ?? 'none'
+    };
+  }
+
+  /** Provider identity frozen in a Director run (kind and model). */
+  private providerId(ai: Provider) {
+    return { kind: ai.kind, model: ('model' in ai && ai.model) || null };
+  }
+  private providerName(p: { kind: string; model: string | null }) {
+    return p.model ? `${p.kind} (${p.model})` : p.kind;
+  }
+  /**
+   * A Director run continues only with the provider it started with: resuming with another
+   * one would mix decisions of two providers in one run. Refused with the reason.
+   */
+  private assertRunProvider(run: ProductionRun) {
+    const frozen = run.brief?.provider;
+    if (!frozen) return;
+    const ai = this.aiFor(run.projectId);
+    const now = ai ? this.providerId(ai) : null;
+    if (now?.kind === frozen.kind && now.model === frozen.model) return;
+    throw new Error(
+      `Reprise refusée : ce montage a été commencé avec ${this.providerName(frozen)}, le fournisseur du projet est maintenant ${now ? this.providerName(now) : 'aucun'}. Revenez à ${this.providerName(frozen)} pour le reprendre, ou arrêtez-le puis faites une nouvelle demande.`
+    );
+  }
+
+  /** The run's loop phase; the run must belong to `projectId` (checked here, not only by the route). */
+  private loopPhase(runId: string, projectId?: string) {
     const run = this.repo.getRun(runId);
+    if (projectId !== undefined && run?.projectId !== projectId)
+      throw new Error('Production étrangère au projet');
     const phase = this.orchestrator.phases(runId).find((p) => p.phase === 'plan');
     if (!isDirectorRun(run) || !phase) throw new Error('Production sans Director');
     return { run, phase };
@@ -1585,18 +1655,6 @@ export class Studio {
     });
   }
 
-  /**
-   * A rendered child ready for approval supersedes its parent, as an applied correction
-   * plan does: the parent goes `changes_requested` and its own approval phase completes.
-   */
-  private supersede(parentId: string, childId: string) {
-    if (parentId === childId) return;
-    if (this.repo.getRevision(childId).status !== 'awaiting_approval') return;
-    if (this.repo.getRevision(parentId).status !== 'awaiting_approval') return;
-    this.repo.transitionRevision(parentId, 'changes_requested');
-    this.finishApproval(parentId, { decision: 'changes_requested' });
-  }
-
   private directorRunners(run: ProductionRun): Runners {
     const { projectId } = run;
     const base = this.renderRunners(run);
@@ -1604,7 +1662,9 @@ export class Studio {
       ...base,
       plan: {
         run: async (inputs) => {
-          // Built at each drive: the project's provider now, never another (no fallback).
+          // Built at each drive: the project's provider now, never another (no fallback),
+          // and the run's own provider only.
+          this.assertRunProvider(this.repo.getRun(run.id));
           const source = this.directorSource(run.id, run.brief!.prompt);
           const ai = this.aiFor(projectId)!;
           const outcome = await toolLoopRunner({
@@ -1649,7 +1709,6 @@ export class Studio {
             ['awaiting_approval', 'changes_requested', 'approved'].includes(current.status)
           ) {
             this.repo.updateRun(run.id, { revisionId: current.id });
-            this.supersede(run.sourceRevisionId!, current.id);
             return {
               kind: 'done',
               payload: { revisionId: current.id, status: 'reused' },
@@ -1657,18 +1716,16 @@ export class Studio {
               provider: 'engine'
             };
           }
-          const outcome = await base.render!.run({ composition: { revisionId: produced } });
-          if (outcome.kind === 'done' && outcome.revisionId)
-            this.supersede(run.sourceRevisionId!, outcome.revisionId);
-          return outcome;
+          // The source stays awaiting approval: approving the child closes it (approve).
+          return base.render!.run({ composition: { revisionId: produced } });
         }
       }
     };
   }
 
   /** Human decision on a call the Director paused on; the loop then continues. */
-  decideDirector(runId: string, stepId: string, granted: boolean) {
-    const { run, phase } = this.loopPhase(runId);
+  decideDirector(projectId: string, runId: string, stepId: string, granted: boolean) {
+    const { run, phase } = this.loopPhase(runId, projectId);
     decidePermission(this.repo, phase.id, stepId, granted);
     this.say(
       run.projectId,
@@ -1679,8 +1736,8 @@ export class Studio {
   }
 
   /** The user's answer to the Director's question (it grants nothing); the loop continues. */
-  answerDirector(runId: string, stepId: string, text: string) {
-    const { run, phase } = this.loopPhase(runId);
+  answerDirector(projectId: string, runId: string, stepId: string, text: string) {
+    const { run, phase } = this.loopPhase(runId, projectId);
     answerQuestion(this.repo, phase.id, stepId, text);
     this.say(run.projectId, 'user', text.trim().slice(0, 2000));
     return this.wakeDirector(run);
@@ -1689,6 +1746,7 @@ export class Studio {
   private wakeDirector(run: ProductionRun) {
     // A stopped run keeps the decision; « Reprendre » continues from it.
     if (this.repo.getRun(run.id).status === 'stopped') return Promise.resolve();
+    this.assertRunProvider(run);
     this.busy(run.projectId, 'generating');
     let work: Promise<unknown>;
     try {
@@ -1704,6 +1762,7 @@ export class Studio {
 
   resumeProduction(runId: string) {
     const run = this.repo.getRun(runId);
+    if (isDirectorRun(run)) this.assertRunProvider(run);
     const runners =
       run.kind === 'production'
         ? this.productionRunners(run)
@@ -1726,6 +1785,27 @@ export class Studio {
     const revision = this.repo.getRevision(revisionId);
     this.repo.transitionRevision(revisionId, 'approved');
     this.finishApproval(revisionId, { approvedRevisionId: revisionId });
+    // Only one version of a lineage is approved: its other pending versions (a Director's
+    // source or child, kept validable until now) are closed.
+    const all = this.repo.listRevisions(revision.projectId);
+    const parentOf = new Map(all.map((r) => [r.id, r.parentRevisionId]));
+    const lineage = new Set<string>();
+    for (let id = revision.parentRevisionId; id; id = parentOf.get(id) ?? null) lineage.add(id);
+    const below = new Set([revisionId]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const r of all)
+        if (r.parentRevisionId && below.has(r.parentRevisionId) && !below.has(r.id)) {
+          below.add(r.id);
+          lineage.add(r.id);
+          grew = true;
+        }
+    }
+    for (const r of all)
+      if (lineage.has(r.id) && r.status === 'awaiting_approval') {
+        this.repo.transitionRevision(r.id, 'changes_requested');
+        this.finishApproval(r.id, { decision: 'changes_requested' });
+      }
     this.say(revision.projectId, 'system', 'Révision validée par l’utilisateur.');
   }
 
@@ -2605,8 +2685,11 @@ export class Studio {
   /**
    * New soundtrack for a revision awaiting approval: the source stays as it is, a child
    * revision with the same storyboard and the new audio is rendered (picture reused).
+   * `loop` (audio.track.update in a Director's tool loop): the source stays awaiting
+   * approval until the child is approved (approve closes it), the child's renders are
+   * bounded by what the Director run has left, and the loop's activity is left alone.
    */
-  reviseAudio(revisionId: string, composition: unknown) {
+  reviseAudio(revisionId: string, composition: unknown, loop?: { maxRenders: number }) {
     const parsed = audioCompositionSchema.parse(composition);
     const source = this.repo.getRevision(revisionId);
     if (source.status !== 'awaiting_approval')
@@ -2615,6 +2698,10 @@ export class Studio {
       const asset = this.repo.getAsset(track.assetId);
       if (asset?.projectId !== source.projectId || asset.audio?.status !== 'valid')
         throw new Error(`Piste « ${track.label} » : fichier audio absent ou refusé`);
+    }
+    if (loop) {
+      const run = this.createRevisionRun(source, parsed, 'rules', loop.maxRenders);
+      return this.orchestrator.drive(run.id, this.revisionRunners(run)).then(() => undefined);
     }
     this.busy(source.projectId, 'generating');
     const run = this.repo.transaction(() => {
@@ -2893,16 +2980,20 @@ export class Studio {
    * and justifications are untrusted text, shown escaped and cut.
    */
   private directorHistory(projectId: string, runs: ProductionRun[]) {
-    const current = this.providerFor(projectId).kind;
     return runs.filter(isDirectorRun).map((run) => {
       const phase = this.orchestrator.phases(run.id).find((p) => p.phase === 'plan');
       const registry = this.toolRegistry(projectId);
+      // Frozen at the start of the run (T129b-3); older runs: the provider the phase recorded.
+      const provider = String(
+        run.brief?.provider?.kind ??
+          (phase?.result as { provider?: string } | null)?.provider ??
+          'inconnu'
+      );
       return {
         runId: run.id,
         goal: clip(run.brief?.prompt ?? '', 500),
-        provider: String(
-          (phase?.result as { provider?: string } | null)?.provider ?? current ?? 'aucun'
-        ),
+        provider,
+        model: run.brief?.provider?.model ?? null,
         steps: (phase ? this.repo.loopSteps(phase.id) : []).map((r) => {
           const q = (r.request ?? {}) as Record<string, unknown>;
           const toolId = r.invocation?.toolId ?? (typeof q.toolId === 'string' ? q.toolId : null);
@@ -2910,6 +3001,8 @@ export class Studio {
           return {
             id: r.id,
             step: r.step,
+            // A forced stop is the loop's, never the model's.
+            provider: r.origin === 'engine' ? 'boucle' : provider,
             origin: r.origin,
             action: r.action,
             status: r.status,
