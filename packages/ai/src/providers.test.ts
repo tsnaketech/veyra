@@ -472,3 +472,31 @@ else {
     }
   });
 });
+
+describe("codex strict output schema (T147, real API constraint)", () => {
+  it("makes every property required, optional ones nullable, and oneOf anyOf", async () => {
+    const { strictSchema, dropNulls } = await import("./codex");
+    const out = strictSchema({
+      $schema: "x",
+      type: "object",
+      properties: {
+        a: { type: "string" },
+        b: { oneOf: [{ type: "number" }, { type: "string" }] },
+      },
+      required: ["a"],
+    }) as Record<string, unknown>;
+    expect(out.$schema).toBeUndefined();
+    expect(out.required).toEqual(["a", "b"]);
+    expect(out.additionalProperties).toBe(false);
+    expect((out.properties as Record<string, unknown>).b).toEqual({
+      anyOf: [
+        { anyOf: [{ type: "number" }, { type: "string" }] },
+        { type: "null" },
+      ],
+    });
+    expect(dropNulls({ a: "x", b: null, c: [{ d: null, e: 1 }] })).toEqual({
+      a: "x",
+      c: [{ e: 1 }],
+    });
+  });
+});

@@ -435,6 +435,14 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   prompt ne sont pas documentés dans le rapport : à vérifier à l'installation. Les
   surcharges `-c` sont tirées de la référence de configuration, sans test réel de
   leur effet. Tarifs OpenAI et coût des images : non sourcés.
+- Mise à jour 2026-11-11 (T147) : `codex-chatgpt` démontré réellement avec Codex
+  0.167.0 (npm épinglé, attestations vérifiées), `CODEX_HOME` dédié et connexion
+  ChatGPT faite par l'utilisateur : `login status` (stderr « Logged in using
+  ChatGPT », code 0), `--` accepté, storyboard validé par Zod, brief hostile sans
+  exécution ni écriture, annulation effective. Le schéma de sortie est converti au
+  format strict exigé par l'API (toutes les clés requises, champs facultatifs
+  nullables, `oneOf` → `anyOf`). `openai-api` reste non appelé réellement. Le statut
+  contractuel reste AMBIGU (Terms of Use toujours en 403).
 
 ## D024 — Fournisseur IA par projet
 

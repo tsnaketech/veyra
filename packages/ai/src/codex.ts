@@ -46,6 +46,41 @@ function assertSafe(options: Pick<CodexOptions, "command" | "env">) {
     );
 }
 
+type JsonSchema = { [key: string]: unknown };
+/**
+ * OpenAI strict structured output (used by `--output-schema`) requires every property in
+ * `required` and `additionalProperties: false`: optional properties become nullable.
+ */
+export function strictSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(strictSchema);
+  if (!node || typeof node !== "object") return node;
+  const out: JsonSchema = {};
+  for (const [key, value] of Object.entries(node as JsonSchema))
+    // Strict mode refuses oneOf; our unions are discriminated, so anyOf is equivalent.
+    if (key !== "$schema")
+      out[key === "oneOf" ? "anyOf" : key] = strictSchema(value);
+  const props = out.properties as JsonSchema | undefined;
+  if (props && typeof props === "object") {
+    const required = new Set((out.required as string[] | undefined) ?? []);
+    for (const key of Object.keys(props))
+      if (!required.has(key))
+        props[key] = { anyOf: [props[key], { type: "null" }] };
+    out.required = Object.keys(props);
+    out.additionalProperties = false;
+  }
+  return out;
+}
+/** Removes null-valued object properties (strict-mode stand-ins for omitted fields). */
+export function dropNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(dropNulls);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, v]) => v !== null)
+      .map(([k, v]) => [k, dropNulls(v)]),
+  );
+}
+
 /** Process failures without any model or prompt content (stderr is never surfaced). */
 function codexError(error: unknown, signal?: AbortSignal) {
   if (signal?.aborted) return new Error("Appel IA annulé (production arrêtée)");
@@ -102,7 +137,10 @@ export class CodexExecProvider extends StructuredProvider {
       mkdirSync(work);
       const schemaFile = join(root, "schema.json");
       const lastMessage = join(root, "last-message.json");
-      writeFileSync(schemaFile, JSON.stringify(z.toJSONSchema(schema)));
+      writeFileSync(
+        schemaFile,
+        JSON.stringify(strictSchema(z.toJSONSchema(schema))),
+      );
       const args = [
         "exec",
         "--json",
@@ -152,7 +190,9 @@ export class CodexExecProvider extends StructuredProvider {
       } catch {
         throw new Error("Codex : réponse finale absente ou non JSON");
       }
-      const parsed = schema.safeParse(raw);
+      // Strict mode answers null for optional fields: retry without them if needed.
+      let parsed = schema.safeParse(raw);
+      if (!parsed.success) parsed = schema.safeParse(dropNulls(raw));
       if (!parsed.success)
         throw new Error("Codex : réponse non conforme au schéma Veyra");
       return parsed.data;
