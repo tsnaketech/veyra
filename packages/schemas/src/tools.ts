@@ -23,11 +23,15 @@ export const toolMetaSchema = z
     cost: z.object({
       kind: z.enum(["free", "local-cpu", "billable"]),
       estimate: z.string().optional(),
+      // Declared cost of one call in integer micro-dollars (D022 unit); 0 when omitted.
+      microUsd: z.number().int().nonnegative().optional(),
     }),
     limits: z.object({
       timeoutMs: z.number().int().positive(),
       cpuSeconds: z.number().positive().optional(),
       outputBytes: z.number().int().positive().optional(),
+      // RLIMIT_AS of the tool's child processes (prlimit --as); executor default otherwise.
+      memoryBytes: z.number().int().positive().optional(),
     }),
     produces: z.array(z.string().min(1)),
     validation: z.array(z.string().min(1)),
@@ -45,6 +49,9 @@ export const toolErrorSchema = z.object({
     "invalid-output",
     // T128: stale parent, missing target or incompatible operations.
     "conflict",
+    // T129a: call aborted by its caller; call left running by a crash.
+    "cancelled",
+    "interrupted",
   ]),
   message: z.string().min(1),
   details: z.json().optional(),
@@ -73,6 +80,11 @@ const resultBase = {
   durationMs: z.number().nonnegative(),
   artefacts: z.array(toolArtefactSchema),
   simulated: z.boolean(),
+  // Declared by the tool (meta.cost), not measured: billing stays the provider's.
+  cost: z.object({
+    kind: z.enum(["free", "local-cpu", "billable"]),
+    microUsd: z.number().int().nonnegative(),
+  }),
 };
 export const toolResultSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), ...resultBase, output: z.unknown() }),

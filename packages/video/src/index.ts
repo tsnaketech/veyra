@@ -13,6 +13,7 @@ import {
   mediaPath,
   runProcess,
   VIDEO_FORMATS,
+  type ProcessOptions,
 } from "./process";
 export {
   runProcess,
@@ -65,21 +66,30 @@ export const probeSchema = z.object({
   ),
 });
 export type VideoProbe = z.infer<typeof probeSchema>;
-export async function probe(file: string): Promise<VideoProbe> {
+/** Caller controls of a media helper: abort (kills the process group) and prlimit bounds. */
+export type MediaRunOptions = Pick<ProcessOptions, "signal" | "limits">;
+export async function probe(
+  file: string,
+  run: MediaRunOptions = {},
+): Promise<VideoProbe> {
   const path = mediaPath(file);
-  const { stdout } = await runProcess("ffprobe", [
-    "-v",
-    "error",
-    "-protocol_whitelist",
-    "file",
-    "-format_whitelist",
-    VIDEO_FORMATS,
-    "-show_streams",
-    "-show_format",
-    "-of",
-    "json",
-    path,
-  ]);
+  const { stdout } = await runProcess(
+    "ffprobe",
+    [
+      "-v",
+      "error",
+      "-protocol_whitelist",
+      "file",
+      "-format_whitelist",
+      VIDEO_FORMATS,
+      "-show_streams",
+      "-show_format",
+      "-of",
+      "json",
+      path,
+    ],
+    run,
+  );
   const raw = z
     .object({
       streams: z.array(
@@ -121,6 +131,7 @@ export async function probe(file: string): Promise<VideoProbe> {
       "-",
     ],
     {
+      ...run,
       timeoutMs: 120000,
       onLine: (line) => {
         const match = /black_start:([\d.]+)\s+black_end:([\d.]+)/.exec(line);
@@ -290,6 +301,7 @@ export async function extractFrameByIndex(
   file: string,
   index: number,
   output: string,
+  run: MediaRunOptions = {},
 ): Promise<string> {
   const frame = z.number().int().nonnegative().parse(index);
   // shortcut: decodes from the start (fine for ≤ 60 s renders); seek near the frame for long media.
@@ -311,7 +323,7 @@ export async function extractFrameByIndex(
       "1",
       resolve(output),
     ],
-    { timeoutMs: 60000 },
+    { ...run, timeoutMs: 60000 },
   );
   if (!statSync(output, { throwIfNoEntry: false })?.size)
     throw new Error(`Frame ${frame} not found`);

@@ -491,3 +491,32 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   fin, lignes), leurs identifiants étant renumérotés au regroupement. Pas de cache par
   scène (T130) : la liste des scènes touchées est informative. Détail :
   [EDIT-OPERATIONS](ai/EDIT-OPERATIONS.md).
+
+## D026 — Boucle d'outils T129a : pas persistés et pause par action
+
+- Date : 2026-11-11
+- Statut : acceptée pour T129a (moteur sans IA) ; met en œuvre D021, qui reste proposée
+  pour la partie Director IA (T129b)
+- Contexte : D021 demande une boucle bornée dans une phase d'un run (D019), persistée à
+  chaque transition, avec confirmation humaine de chaque action payante ou réseau.
+- Décision : la boucle est le `PhaseRunner` d'une phase (par défaut `plan`, agent
+  `director`) d'un run de l'`Orchestrator` existant, sans second orchestrateur. Chaque pas
+  est une ligne de la table additive `loop_steps` (migration 0008), écrite avant et après
+  l'appel ; l'état de la boucle est dérivé de ces lignes. Tout appel passe par le registre
+  T127. Un outil `billable` ou `network-external` met **toujours** l'appel en
+  `awaiting-permission` (phase `waiting`), même si la classe est dans les autorisations de
+  la phase ; l'autorisation porte sur cet appel (outil + `inputHash`) et n'élargit rien
+  d'autre ; un refus est définitif pour cette action. `generated-code-execution` n'est
+  jamais accordable. Réveil par `Orchestrator.wake` : nouvelle transition de phase
+  `waiting → pending`, tentatives remises à 0 (une pause n'est pas un échec). Délai et
+  annulation avortent un `AbortSignal` propagé jusqu'à `runProcess` (groupe de processus
+  tué) ; limites prlimit par outil (`cpuSeconds`, `memoryBytes`). Au redémarrage, un pas
+  `running` n'est rejoué que pour un outil déterministe sans effet de bord, sinon
+  `interrupted`.
+- Justification : réutilise la reprise et les enveloppes de D019 ; une ligne par pas rend
+  la reprise vérifiable (aucun pas terminé rejoué) et l'historique borné (une ligne par
+  pas, résultat tronqué à `maxObservationBytes`).
+- Conséquences : un outil qui ignore `ctx.signal` (`audio.track.update`, `composition.check`)
+  n'est pas tué au délai ; le coût d'un outil est déclaré, pas débité de l'enveloppe D022 ;
+  aucune route ni interface avant T129c. Détail :
+  [DIRECTOR-TOOL-LOOP § 9](ai/DIRECTOR-TOOL-LOOP.md#9-implémentation-t129a-2026-11-11).

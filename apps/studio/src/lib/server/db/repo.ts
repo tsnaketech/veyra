@@ -16,10 +16,12 @@ import {
   qualityEvaluationSchema,
   productionRunSchema,
   productionPhaseSchema,
+  toolExecutionRecordSchema,
   microUsdSchema,
   BudgetExceededError,
   type ProductionRun,
   type ProductionPhase,
+  type ToolExecutionRecord,
   type QualityEvaluation,
   type AiTask,
   type CorrectionBatch,
@@ -648,6 +650,44 @@ export function createRepository(db: BetterSQLite3Database<typeof tables>) {
           .set(next)
           .where(eq(tables.productionPhases.id, id))
           .run();
+        return next;
+      });
+    },
+    createLoopStep(input: unknown) {
+      const row = toolExecutionRecordSchema.parse(input);
+      db.insert(tables.loopSteps).values(row).run();
+      return row;
+    },
+    loopSteps(phaseId: string) {
+      return db
+        .select()
+        .from(tables.loopSteps)
+        .where(eq(tables.loopSteps.phaseId, phaseId))
+        .orderBy(asc(tables.loopSteps.step))
+        .all()
+        .map((row) => toolExecutionRecordSchema.parse(row));
+    },
+    updateLoopStep(
+      id: string,
+      patch: Partial<
+        Pick<
+          ToolExecutionRecord,
+          | 'status'
+          | 'invocation'
+          | 'result'
+          | 'error'
+          | 'costMicroUsd'
+          | 'durationMs'
+          | 'startedAt'
+          | 'finishedAt'
+        >
+      >
+    ) {
+      return db.transaction(() => {
+        const row = db.select().from(tables.loopSteps).where(eq(tables.loopSteps.id, id)).get();
+        if (!row) throw new Error('Pas de boucle introuvable');
+        const next = toolExecutionRecordSchema.parse({ ...row, ...patch, updatedAt: Date.now() });
+        db.update(tables.loopSteps).set(next).where(eq(tables.loopSteps.id, id)).run();
         return next;
       });
     },

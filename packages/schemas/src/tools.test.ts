@@ -49,6 +49,7 @@ it("discriminates ok and error results", () => {
     durationMs: 3,
     artefacts: [],
     simulated: false,
+    cost: { kind: "local-cpu", microUsd: 0 },
   };
   expect(
     toolResultSchema.parse({ ...base, ok: true, output: { a: 1 } }).ok,

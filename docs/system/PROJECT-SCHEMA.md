@@ -58,6 +58,12 @@ passer par ce dépôt ; une connexion SQL directe n’applique pas les règles m
 - CorrectionBatch : queued → submitted | awaiting_import → planned → applied |
   rejected ; queued | submitted | awaiting_import → failed → queued.
 - AiTask : awaiting_import → imported | failed.
+- ProductionPhase : `waiting → pending` ajouté (D026) pour réveiller une phase dont la
+  boucle d'outils attendait une décision humaine (`Orchestrator.wake`).
+- Pas de boucle (`loop_steps.status`, D026) : authorized → running → done | failed |
+  cancelled ; awaiting-permission → authorized | denied ; running → interrupted (reprise
+  après arrêt du Studio) ou → authorized (rejeu, outil déterministe sans effet de bord).
+  Contrôlé par le moteur de boucle, pas par `assertTransition`.
 - QualityEvaluation : pending → awaiting_import | completed | failed | unavailable ;
   awaiting_import → completed | failed. États finaux : une relance crée une nouvelle évaluation.
 
@@ -105,6 +111,12 @@ Dans `apps/studio/drizzle/` (snapshot et journal), appliquées au démarrage :
   `projects.ai_provider` (`text`, nullable) ; projets existants à null (choix global).
   Valeurs contrôlées par `aiProviderIdSchema` (Zod) à l'écriture. Test :
   `jobs/providers.test.ts` (base fichier migrée, choix enregistré puis remis à null).
+- `0008_loop_steps` (D026, T129a) : table ajoutée uniquement — `loop_steps` (un pas de
+  boucle d'outils : `run_id`, `phase_id`, `step` unique par phase, `origin`, `action`,
+  `request`, `invocation`, `status` sous CHECK, `result` borné, `error`, `cost_micro_usd`,
+  `duration_ms`, horodatages). Aucune donnée existante touchée. Contrat :
+  `toolExecutionRecordSchema` (`packages/schemas/src/loop.ts`). Test : migrations appliquées
+  par chaque test de `tool-loop.test.ts`.
 - `0002_quality_evaluations` (D015) : table `quality_evaluations` ; reconstruction
   de `ai_tasks` (CHECK `kind` + `evaluation`), lignes copiées telles quelles.
 

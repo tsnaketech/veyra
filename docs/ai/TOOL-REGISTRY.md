@@ -133,13 +133,30 @@ Les autres lignes du § 3 restent au statut indiqué : non enregistrées dans le
 - **Permissions validées à l'exécution** (`permissionClassSchema`), sans correspondance de
   sous-chaîne.
 - **Délai** : seul un outil sans effet de bord est `retryable` ; pour les autres, le message
-  précise que l'opération peut se poursuivre (pas encore d'`AbortSignal` dans l'exécuteur).
+  précise que l'opération peut se poursuivre. Depuis T129a, le délai et l'annulation par
+  l'appelant avortent `ctx.signal` : un outil qui le transmet à `runProcess` voit son groupe
+  de processus tué (`media.inspect`, `media.frame`) ; les autres ne sont pas interrompus.
 - **Messages d'erreur** : secrets masqués avant troncature avec la règle de l'exécuteur
   (`isSecretEnvKey`), racine des projets remplacée par `<projets>`.
 
-Limites connues : `requires` reste déclaratif (un binaire absent donne `failed`, pas
-`unavailable`) ; `ToolResult` ne porte pas encore de coût ; historique en mémoire non borné ;
-`movie=` dans un graphe lavfi construit par le code reste hors du contrôle N7 (résiduel).
+### Ajouts T129a (2026-11-11)
+
+- **Sondes réelles** (`missingRequirements`) avant `available()` de l'outil, sans lancer de
+  processus : un nom simple de `requires` (`ffmpeg`, `ffprobe`, `prlimit`, `bwrap`) est
+  cherché par `systemBinary` aux mêmes emplacements que l'exécuteur ; `chrome` = cache
+  Chrome de HyperFrames lié par la sandbox ; `engine:…` reste à `available()`. Absent →
+  `unavailable` avec `installHint`, l'outil n'est pas lancé.
+- **Coût** : `ToolResult.cost { kind, microUsd }`, déclaré par `meta.cost` (`microUsd`
+  optionnel, 0 sinon) ; jamais mesuré ni débité de l'enveloppe D022.
+- **Limites de processus par outil** : `limits.cpuSeconds` et `limits.memoryBytes` →
+  `ctx.processLimits` (prlimit `--cpu`, `--as`), `MEDIA_LIMITS` par défaut.
+- **Historique** : mémoire bornée à 200 résultats ; l'historique persistant et borné est la
+  table `loop_steps` de la boucle ([DIRECTOR-TOOL-LOOP § 9](DIRECTOR-TOOL-LOOP.md)).
+- Codes d'erreur ajoutés : `cancelled` (appelant), `interrupted` (pas coupé par un arrêt).
+
+Limites connues : la sonde vérifie la présence, pas la version ; `composition.check` et
+`audio.track.update` ignorent `ctx.signal` ; `movie=` dans un graphe lavfi construit par
+le code reste hors du contrôle N7 (résiduel).
 
 ## 4. Classes de permission
 

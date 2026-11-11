@@ -57,6 +57,13 @@
       "when": 1794326181755,
       "tag": "0007_project_ai_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794352856427,
+      "tag": "0008_loop_steps",
+      "breakpoints": true
     }
   ]
 }

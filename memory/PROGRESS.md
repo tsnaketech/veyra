@@ -99,3 +99,9 @@ docs/research/AI-PROVIDER-INTEGRATIONS.md, OPENAI-CODEX-INTEGRATIONS.md,
 LOCAL-AI-AND-CHATGPT-APPS.md. Revues : docs/reviews/2026-11-10-provider-integration.md.
 À revérifier : tarifs (grille locale), comportement réel de `codex exec` et de
 `codex login status` à l'installation. Prochaine étape : T128 puis T129a.
+
+2026-11-11 — T129a (boucle d'outils sans IA, D026) faite, non commitée, non relue :
+contrats `packages/schemas/src/loop.ts`, moteur `apps/studio/src/lib/server/tool-loop.ts`
+dans la phase `plan` d'un run, migration additive 0008 `loop_steps`, `Orchestrator.wake`.
+Preuves et prérequis exacts de T129b : [TASKS](../docs/TASKS.md) (T129a, T129b).
+Prochaine étape : revue indépendante de T129a, puis T129b.

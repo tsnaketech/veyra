@@ -224,3 +224,21 @@ it('review D4: grants are validated at runtime (no substring match)', async () =
 it('review D5: a registry serves one project', () => {
   expect(() => createToolRegistry({ ...ctx, projectId: 'nope' } as ToolContext, [echo])).toThrow();
 });
+
+it('(T129a) requirements are probed for real: a missing binary answers unavailable before run', async () => {
+  runs = 0;
+  const needy = defineTool({
+    ...{ meta: { ...meta, id: 'test.needy', requires: ['veyra-absent-binary', 'ffmpeg'] } },
+    input: z.object({}),
+    output: z.object({}),
+    run: async () => (runs++, {})
+  });
+  const result = await createToolRegistry(ctx, [needy]).invoke('test.needy', {}, { grants: all });
+  expect(result).toMatchObject({
+    ok: false,
+    cost: { kind: 'free', microUsd: 0 },
+    error: { code: 'unavailable', message: expect.stringMatching(/veyra-absent-binary$/) }
+  });
+  expect(result.ok ? '' : result.error.message).not.toMatch(/ffmpeg/);
+  expect(runs).toBe(0);
+});

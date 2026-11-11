@@ -15,7 +15,8 @@ import {
   type ProductionPlan,
   type ProductionRun,
   productionPlanSchema,
-  reviewPlanSchema
+  reviewPlanSchema,
+  toolLoopOutcomeSchema
 } from '@veyra/schemas';
 import type { createRepository } from './db/repo';
 
@@ -65,7 +66,13 @@ const payloadSchemas: Record<ProductionRun['kind'], Partial<Record<Phase, z.ZodT
     audio: audioCompositionSchema
   },
   revision: {
-    plan: z.union([reviewPlanSchema, audioCompositionSchema, revisionEditSchema]),
+    // toolLoopOutcomeSchema: the Director's plan phase run as a tool loop (T129a).
+    plan: z.union([
+      reviewPlanSchema,
+      audioCompositionSchema,
+      revisionEditSchema,
+      toolLoopOutcomeSchema
+    ]),
     motion: motionCompositionSchema,
     audio: audioCompositionSchema
   }
@@ -157,6 +164,22 @@ export class Orchestrator {
     if (row.status !== 'waiting') throw new Error(`La phase ${name} n'attend pas de résultat`);
     this.finish(run, row, outcome, row.inputHash ?? inputHash({ phase: name }));
     if (run.status === 'waiting') this.repo.updateRun(runId, { status: 'running' });
+  }
+
+  /**
+   * Wakes a phase whose runner paused itself (`waiting`) after an outside decision, such
+   * as a human authorization in a tool loop: the runner runs again and reads the decision
+   * from its persisted state. A pause is not a failed attempt: attempts restart at 0.
+   */
+  wake(runId: string, name: Phase, runners: Runners) {
+    const row = this.phase(runId, name);
+    if (row.status !== 'waiting') throw new Error(`La phase ${name} n'attend pas de décision`);
+    this.repo.transaction(() => {
+      this.repo.updatePhase(row.id, { status: 'pending', attempts: 0 });
+      if (this.repo.getRun(runId).status === 'waiting')
+        this.repo.updateRun(runId, { status: 'running' });
+    });
+    return this.drive(runId, runners);
   }
 
   /** Manual stop: the phase in progress finishes, no further phase starts. */

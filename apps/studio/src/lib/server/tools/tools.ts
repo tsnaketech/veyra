@@ -64,7 +64,8 @@ export const mediaInspect = defineTool({
   },
   input: revisionInput,
   output: probeSchema,
-  run: async ({ revisionId }, ctx) => probe(revisionVideo(ctx, revisionId).path)
+  run: async ({ revisionId }, ctx) =>
+    probe(revisionVideo(ctx, revisionId).path, { signal: ctx.signal, limits: ctx.processLimits })
 });
 
 export const mediaFrame = defineTool({
@@ -90,7 +91,10 @@ export const mediaFrame = defineTool({
   async run({ revisionId, frameIndex }, ctx) {
     const { revision, path } = revisionVideo(ctx, revisionId);
     const out = ctx.artefactPath(revision.projectId, `frame-${frameIndex}.png`);
-    await extractFrameByIndex(path, frameIndex, out);
+    await extractFrameByIndex(path, frameIndex, out, {
+      signal: ctx.signal,
+      limits: ctx.processLimits
+    });
     ctx.recordArtefact('png', out);
     return { frameIndex, path: relative(ctx.storage.root, out) };
   }

@@ -108,7 +108,8 @@ export const transitions = {
   ProductionPhase: {
     pending: ["running", "skipped"],
     running: ["done", "failed", "waiting"],
-    waiting: ["done", "failed"],
+    // waiting → pending: a paused tool loop is woken after a human decision (T129a).
+    waiting: ["done", "failed", "pending"],
     failed: ["pending"],
     done: [],
     skipped: [],

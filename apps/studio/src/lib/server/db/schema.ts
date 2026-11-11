@@ -16,6 +16,7 @@ import type {
   CaptionTrack,
   ProductionPhase,
   ProductionRun,
+  ToolExecutionRecord,
   CorrectionBatch,
   ExpertFinding,
   ExpertVerdict,
@@ -407,6 +408,40 @@ export const productionPhases = sqliteTable(
     check(
       'phase_status',
       sql`${t.status} in ('pending','running','done','failed','waiting','skipped')`
+    )
+  ]
+);
+// T129a: one row per step of a tool loop running inside a phase (DIRECTOR-TOOL-LOOP § 5).
+export const loopSteps = sqliteTable(
+  'loop_steps',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id')
+      .notNull()
+      .references(() => productionRuns.id),
+    phaseId: text('phase_id')
+      .notNull()
+      .references(() => productionPhases.id),
+    step: integer('step').notNull(),
+    origin: text('origin').notNull(),
+    action: text('action').notNull(),
+    request: text('request', { mode: 'json' }).$type<ToolExecutionRecord['request']>().notNull(),
+    invocation: text('invocation', { mode: 'json' }).$type<ToolExecutionRecord['invocation']>(),
+    status: text('status').notNull(),
+    result: text('result', { mode: 'json' }).$type<ToolExecutionRecord['result']>(),
+    error: text('error', { mode: 'json' }).$type<ToolExecutionRecord['error']>(),
+    costMicroUsd: integer('cost_micro_usd').notNull().default(0),
+    durationMs: integer('duration_ms'),
+    startedAt: integer('started_at'),
+    finishedAt: integer('finished_at'),
+    ...timestamps()
+  },
+  (t) => [
+    unique('loop_step_unique').on(t.phaseId, t.step),
+    index('loop_steps_run_idx').on(t.runId),
+    check(
+      'loop_step_status',
+      sql`${t.status} in ('awaiting-permission','authorized','denied','running','done','failed','interrupted','cancelled')`
     )
   ]
 );

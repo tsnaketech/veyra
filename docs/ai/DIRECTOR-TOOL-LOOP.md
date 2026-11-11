@@ -1,7 +1,9 @@
 # Boucle d'outils bornée du Director (architecture, T129)
 
-Statut : **architecture proposée le 2026-11-04**, non implémentée. Décision associée :
-D021 (proposée) dans [DECISIONS](../DECISIONS.md). Outils : [TOOL-REGISTRY](TOOL-REGISTRY.md).
+Statut : **architecture proposée le 2026-11-04** ; moteur de pas **sans IA implémenté le
+2026-11-11** (T129a, § 9) ; Director IA (T129b) et affichage (T129c) à faire. Décisions :
+D021 (proposée) et [D026](../DECISIONS.md#d026--boucle-doutils-t129a--pas-persistés-et-pause-par-action)
+dans [DECISIONS](../DECISIONS.md). Outils : [TOOL-REGISTRY](TOOL-REGISTRY.md).
 Agents : [AGENT-ARCHITECTURE](AGENT-ARCHITECTURE.md).
 
 ## 1. Ce qui ne change pas
@@ -125,3 +127,44 @@ simulées restent marquées « [Simulé] ».
    brief contrasté → outils différents, outil indisponible → `ask_user`, action payante →
    pause.
 4. **T129c** : affichage Studio des pas et des confirmations.
+
+## 9. Implémentation T129a (2026-11-11)
+
+Moteur de pas sans IA ; la source de pas est injectable (`StepSource.next(view)`), scriptée
+dans les tests ; un Director la remplacera en T129b sans changer le moteur.
+
+- **Contrats** (`packages/schemas/src/loop.ts`) : `directorStepSchema` (`tool_call`,
+  `request_permission`, `request_approval`, `stop` ; `revise_plan` et `ask_user` reportés
+  à T129b), `toolInvocationSchema` (champs `agent`/`phase` de `agentResultSchema`, `grants`
+  de cet appel seul), `toolExecutionRecordSchema` (ligne persistée), `loopLimitsSchema`
+  (20 pas, 40 appels, 3 échecs consécutifs, 16 Kio par résultat), `loopStateSchema`,
+  `toolLoopOutcomeSchema` (payload de la phase). Codes d'erreur ajoutés : `cancelled`,
+  `interrupted` ; `ToolResult.cost { kind, microUsd }` déclaré.
+- **Exécution dans un run** : `toolLoopRunner(...)` (`apps/studio/src/lib/server/tool-loop.ts`)
+  est le `PhaseRunner` d'une phase (par défaut `plan`, agent `director`) d'un run `revision`
+  piloté par l'`Orchestrator` existant ; son résultat est une enveloppe `agentResultSchema`
+  validée (`toolLoopOutcomeSchema` ajouté à l'union du payload `plan`). Tout appel passe
+  par `registry.invoke` (validation, permissions, disponibilité, délai, sortie).
+- **Persistance** : table additive `loop_steps` (migration 0008), une ligne par pas, écrite
+  avant et après l'appel ; `loopState()` est dérivé de ces lignes (aucun état en mémoire).
+- **Pause** : un outil `billable` ou `network-external`, ou `request_permission`, crée un pas
+  `awaiting-permission` et la phase passe `waiting`, même si la classe figure dans les
+  `grants` de la phase. `decidePermission(repo, phaseId, stepId, accordé)` puis
+  `Orchestrator.wake(runId, phase, runners)` (transition `waiting → pending`, tentatives
+  remises à 0). Une action refusée (même outil, même `inputHash`) n'est **jamais** exécutée,
+  même redemandée. `generated-code-execution` n'est jamais accordable.
+- **Bornes** : pas, appels, échecs consécutifs, appel identique en échec répété deux fois →
+  pas `stop` d'origine `engine`, phase en échec, état conservé. Délai par outil : le registre
+  avorte `ctx.signal`, ce qui tue le groupe de processus (`runProcess`). Limites prlimit par
+  outil : `limits.cpuSeconds`, `limits.memoryBytes` → `ctx.processLimits`.
+- **Annulation** : `signal` du runner propagé jusqu'au processus ; pas `cancelled`, phase en
+  échec. **Reprise** : au redémarrage, un pas `running` est rejoué seulement si l'outil est
+  `deterministic` et `sideEffects: none`, sinon `interrupted` et observation à la source ;
+  les pas terminés ne sont jamais rejoués.
+- **Pas encore** : aucune route ni interface (T129c) ; aucune source IA (T129b) ; budget
+  `maxAiCalls`/enveloppe D022 non débité par un outil `billable` (coût déclaré seulement) ;
+  pas de délai mural global de 30 min ; `revise_plan`/`ask_user` non implémentés.
+
+Preuves : `apps/studio/src/lib/server/tool-loop.test.ts`, `tool-loop.slow.test.ts`,
+`packages/schemas/src/loop.test.ts`, `tools/registry.test.ts` ; détail dans
+[TASKS](../TASKS.md) (T129a).

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync } from 'node:fs';
-import { relative } from 'node:path';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, relative } from 'node:path';
 import { z } from 'zod';
 import type { VideoEngine } from '@veyra/hyperframes-adapter';
 import { inputHash } from '@veyra/schemas/hash';
@@ -16,7 +17,7 @@ import {
   type ToolResult
 } from '@veyra/schemas';
 import { safePath, validateId, type ProjectStorage } from '@veyra/storage';
-import { isSecretEnvKey } from '@veyra/video';
+import { isSecretEnvKey, MEDIA_LIMITS, systemBinary, type ProcessLimits } from '@veyra/video';
 import type { createRepository } from '../db/repo';
 import type { Studio, StudioSettings } from '../studio';
 
@@ -38,6 +39,10 @@ export interface CallContext extends ToolContext {
   artefactPath(projectId: string, name: string): string;
   /** Adds a written file to the call's manifest (sha256, path relative to the storage root). */
   recordArtefact(kind: string, path: string): void;
+  /** Aborted on timeout or by the caller: tools pass it to runProcess (kills the process group). */
+  signal: AbortSignal;
+  /** prlimit bounds of this tool's child processes (meta.limits over MEDIA_LIMITS). */
+  processLimits: ProcessLimits;
 }
 export type Availability = { ok: boolean; reason?: string; installHint?: string };
 export interface Tool {
@@ -68,7 +73,23 @@ export function defineTool<I extends z.ZodType, O extends z.ZodType>(def: {
   };
 }
 
+/**
+ * Real presence probe of declared requirements, without running anything: a plain name
+ * ("ffmpeg", "bwrap") is a system binary looked up where the executor resolves it;
+ * "chrome" is the HyperFrames Chrome cache the sandbox binds; "engine:…" is left to the
+ * tool's own available().
+ */
+export function missingRequirements(requires: readonly string[]) {
+  return requires.filter((name) =>
+    name === 'chrome'
+      ? !existsSync(join(homedir(), '.cache/hyperframes/chrome'))
+      : !name.includes(':') && !systemBinary(name)
+  );
+}
+/** In-memory history kept by a registry; the persisted, bounded history is loop_steps (T129a). */
+export const MAX_HISTORY = 200;
 class ToolTimeout extends Error {}
+class ToolCancelled extends Error {}
 class ToolDenied extends Error {}
 /** Typed refusal raised by a tool after parsing (T128): stale parent, missing target, invalid edit. */
 export class ToolFailure extends Error {
@@ -97,6 +118,7 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
   if (byId.size !== tools.length) throw new Error('Duplicate tool id');
   /** In-memory call log for tests and the future Director loop (persisted with T129). */
   const history: ToolResult[] = [];
+  const meta = (id: string) => byId.get(id)?.meta;
 
   function list() {
     return tools.map((tool) => ({
@@ -109,7 +131,7 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
   async function invoke(
     id: string,
     rawInput: unknown,
-    options: { grants: readonly PermissionClass[] }
+    options: { grants: readonly PermissionClass[]; signal?: AbortSignal }
   ): Promise<ToolResult> {
     const started = performance.now();
     const tool = byId.get(id);
@@ -132,9 +154,11 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
         durationMs: performance.now() - started,
         artefacts,
         simulated: tool?.simulated ?? false,
+        cost: { kind: tool?.meta.cost.kind ?? 'free', microUsd: tool?.meta.cost.microUsd ?? 0 },
         ...outcome
       });
       history.push(result);
+      if (history.length > MAX_HISTORY) history.shift();
       return result;
     };
     const fail = (code: ToolError['code'], message: string, extra: Partial<ToolError> = {}) =>
@@ -169,7 +193,14 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
       return fail('permission-denied', `Permission non accordée : ${missing.join(', ')}`, {
         details: { missing }
       });
-    const availability = await tool.available(ctx);
+    const unmet = missingRequirements(tool.meta.requires);
+    const availability = unmet.length
+      ? {
+          ok: false,
+          reason: `prérequis absent : ${unmet.join(', ')}`,
+          installHint: `Installer ${unmet.join(', ')} (voir docs/RUNBOOK.md)`
+        }
+      : await tool.available(ctx);
     if (!availability.ok)
       return fail(
         'unavailable',
@@ -179,7 +210,10 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
         }
       );
 
+    if (options.signal?.aborted) return fail('cancelled', 'Appel annulé avant exécution');
     const callId = newId('tcl');
+    const controller = new AbortController();
+    const { limits } = tool.meta;
     const call: CallContext = {
       ...ctx,
       revision(revisionId) {
@@ -201,20 +235,32 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
           path: relative(ctx.storage.root, checked),
           sha256: createHash('sha256').update(readFileSync(checked)).digest('hex')
         });
+      },
+      signal: controller.signal,
+      processLimits: {
+        cpuSeconds: limits.cpuSeconds ?? MEDIA_LIMITS.cpuSeconds,
+        fileSizeBytes: MEDIA_LIMITS.fileSizeBytes,
+        addressSpaceBytes: limits.memoryBytes ?? MEDIA_LIMITS.addressSpaceBytes
       }
     };
     let timer: NodeJS.Timeout | undefined;
     let output: unknown;
+    const onAbort = () => controller.abort(new ToolCancelled());
+    options.signal?.addEventListener('abort', onAbort, { once: true });
     try {
-      // shortcut: the timeout ends the call, not a child already started (bounded by its own
-      // runProcess timeout); pass an AbortSignal through the executor when T129 needs it.
+      // Timeout and caller abort both abort `call.signal`: a tool that passes it to
+      // runProcess has its process group killed; the call itself ends at once either way.
       output = await Promise.race([
         tool.run(parsed.data, call),
         new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new ToolTimeout()), tool.meta.limits.timeoutMs);
+          timer = setTimeout(() => controller.abort(new ToolTimeout()), limits.timeoutMs);
+          controller.signal.addEventListener('abort', () => reject(controller.signal.reason), {
+            once: true
+          });
         })
       ]);
     } catch (error) {
+      if (error instanceof ToolCancelled) return fail('cancelled', 'Appel annulé par la boucle');
       if (error instanceof ToolDenied) return fail('permission-denied', error.message);
       if (error instanceof ToolFailure)
         return fail(error.code, safeMessage(error, ctx.storage.root));
@@ -230,6 +276,7 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
       return fail('failed', `Échec de l’outil : ${safeMessage(error, ctx.storage.root)}`);
     } finally {
       clearTimeout(timer);
+      options.signal?.removeEventListener('abort', onAbort);
     }
     const checked = tool.output.safeParse(output);
     if (!checked.success)
@@ -243,6 +290,6 @@ export function createToolRegistry(ctx: ToolContext, tools: Tool[]) {
     return done({ output: checked.data });
   }
 
-  return { list, invoke, history };
+  return { list, invoke, history, meta };
 }
 export type ToolRegistry = ReturnType<typeof createToolRegistry>;
