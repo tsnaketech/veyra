@@ -314,7 +314,10 @@ ajoutée (`awaiting_approval → approved | changes_requested` suffit).
 
 - **Parent validable jusqu'à la validation de l'enfant** (I2) : le rendu de l'enfant du
   Director ne remplace plus le parent (`supersede` supprimé). `Studio.approve` ferme les autres
-  versions en attente de la même lignée (ancêtres et descendants) : valider l'enfant fait
+  versions en attente de la même **vidéo** (D027, T149 : identité dérivée de l'origine ; une
+  vidéo indépendante n'est jamais fermée, même reliée par un parent technique ; un enfant dont
+  la source est validée pendant son rendu est fermé à la fin de sa QA, sans correction
+  automatique) : valider l'enfant fait
   passer le parent `changes_requested` et termine sa phase de validation ; valider l'original
   (donc refuser l'enfant) ferme l'enfant. Un enfant annulé ou rejeté laisse le parent
   validable. Le fil l'annonce (« La révision vN reste validable… ») ; le champ de la page

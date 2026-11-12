@@ -106,6 +106,7 @@ import {
   type StepSource
 } from './tool-loop';
 import { studioToolRegistry, type ToolRegistry } from './tools';
+import { otherVersions } from './videos';
 
 type Repository = ReturnType<typeof createRepository>;
 type RevisionRow = ReturnType<Repository['getRevision']>;
@@ -128,6 +129,7 @@ const endOf = (revision: Pick<VideoRevision, 'storyboard'>) =>
   revision.storyboard.scenes.reduce((max, s) => Math.max(max, s.start + s.duration), 0);
 const originOf = (revision: Pick<RevisionRow, 'resolvedConfig'>) =>
   (revision.resolvedConfig.origin ?? {}) as { planId?: string; batchId?: string; runId?: string };
+
 const verdictLabels: Record<CorrectionVerdict, string> = {
   applied: 'appliquée',
   partially_applied: 'partiellement appliquée',
@@ -879,6 +881,16 @@ export class Studio {
     this.repo.touchProject(projectId);
     if (done.status !== 'succeeded') {
       this.say(projectId, 'system', `Échec du rendu : ${done.error ?? 'inconnu'}`);
+      return revision.id;
+    }
+    // Closed by the runner (another version of this video was approved while it rendered,
+    // D027): no automatic fix, no expert QA, no "awaiting your approval".
+    if (this.repo.getRevision(revision.id).status !== 'awaiting_approval') {
+      this.say(
+        projectId,
+        'system',
+        'Rendu terminé, mais une autre version de cette vidéo a été validée entre-temps : cette version est close.'
+      );
       return revision.id;
     }
     const report = this.repo.reportsFor([revision.id]).at(-1);
@@ -1781,28 +1793,25 @@ export class Studio {
     });
   }
 
-  approve(revisionId: string) {
+  /** `projectId` (the page's project) is checked here, not only by the route. */
+  approve(revisionId: string, projectId?: string) {
     const revision = this.repo.getRevision(revisionId);
+    if (projectId !== undefined && revision.projectId !== projectId)
+      throw new Error('Révision étrangère au projet');
+    // One approved version per video, never across videos: other independent videos of the
+    // project (even linked by a technical parent) are left untouched.
+    const versions = otherVersions(this.repo.listRevisions(revision.projectId), revisionId);
+    if (
+      revision.status === 'awaiting_approval' &&
+      versions.some((r) => r.status === 'approved' || r.status === 'published')
+    )
+      throw new Error('Une autre version de cette vidéo est déjà validée');
     this.repo.transitionRevision(revisionId, 'approved');
     this.finishApproval(revisionId, { approvedRevisionId: revisionId });
-    // Only one version of a lineage is approved: its other pending versions (a Director's
-    // source or child, kept validable until now) are closed.
-    const all = this.repo.listRevisions(revision.projectId);
-    const parentOf = new Map(all.map((r) => [r.id, r.parentRevisionId]));
-    const lineage = new Set<string>();
-    for (let id = revision.parentRevisionId; id; id = parentOf.get(id) ?? null) lineage.add(id);
-    const below = new Set([revisionId]);
-    for (let grew = true; grew;) {
-      grew = false;
-      for (const r of all)
-        if (r.parentRevisionId && below.has(r.parentRevisionId) && !below.has(r.id)) {
-          below.add(r.id);
-          lineage.add(r.id);
-          grew = true;
-        }
-    }
-    for (const r of all)
-      if (lineage.has(r.id) && r.status === 'awaiting_approval') {
+    // Its other pending versions (a Director's source or child, kept validable until now)
+    // are closed.
+    for (const r of versions)
+      if (r.status === 'awaiting_approval') {
         this.repo.transitionRevision(r.id, 'changes_requested');
         this.finishApproval(r.id, { decision: 'changes_requested' });
       }

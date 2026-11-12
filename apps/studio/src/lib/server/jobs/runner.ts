@@ -39,6 +39,7 @@ import {
 import type { ReviewFinding } from '@veyra/ai';
 import { mixToWav, muxAudio, resolveAudioComposition, type AudioMetadata } from '@veyra/audio';
 import { audioQualityChecks } from './audio-qa';
+import { otherVersions } from '../videos';
 import { visualTimeline } from '@veyra/motion';
 import type { createRepository } from '../db/repo';
 type Repository = ReturnType<typeof createRepository>;
@@ -388,6 +389,14 @@ export class RenderJobRunner {
       this.repo.createQualityReport(report);
       // QA findings are reviewable even when checks fail; no automatic human approval.
       this.repo.transitionRevision(revision.id, 'awaiting_approval');
+      // Another version of this video was approved while this one rendered (an edit in
+      // flight, D027): it is closed, never left pending and unapprovable.
+      if (
+        otherVersions(this.repo.listRevisions(revision.projectId), revision.id).some(
+          (r) => r.status === 'approved' || r.status === 'published'
+        )
+      )
+        this.repo.transitionRevision(revision.id, 'changes_requested');
       this.repo.transitionRenderJob(jobId, 'succeeded', {
         outputPath,
         stderrTail,

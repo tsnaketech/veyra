@@ -570,3 +570,34 @@ local et bwrap sans réseau. Rendu réel sous bwrap validé le 2026-10-28
   rejetée (`changes_requested`), ce que dit le résultat du pas (`abortNote`) ; la file de
   rendu, elle, ne s'interrompt pas en cours de travail. Détail :
   [DIRECTOR-TOOL-LOOP § 10](ai/DIRECTOR-TOOL-LOOP.md#10-implémentation-t129b-1-2026-11-11).
+
+## D027 — Identité d'une vidéo et validation
+
+- Date : 2026-11-12
+- Statut : acceptée (correction du bloquant 1 de l'audit T129b, T149)
+- Contexte : un projet contient plusieurs vidéos indépendantes. Chaque nouvelle production
+  (nouveau prompt, case « nouvelle vidéo indépendante ») enregistre la tête précédente du
+  projet comme `parentRevisionId` : ce lien est technique, il ne dit pas que la nouvelle
+  révision est une version de la même vidéo. T129b-3 fermait à la validation toute version en
+  attente de la chaîne des parents, donc aussi les vidéos indépendantes.
+- Décision : une révision **commence une vidéo** si elle n'a pas de parent, ou si elle est la
+  composition d'un nouveau prompt (`origin.prompt` sans `autoFix` ni `renderRetry`). Les
+  autres (plans de correction, narration et voix, piste audio, `revision.apply` du Director,
+  re-rendus, corrections automatiques) appartiennent à la vidéo de leur parent
+  (`videoOf`, `startsVideo`, `otherVersions` dans `apps/studio/src/lib/server/videos.ts`). Valider une version :
+  (1) refusé si une autre version de la même vidéo est déjà validée ou publiée ; (2) ferme
+  (`changes_requested`) les autres versions en attente de la même vidéo (ancêtres,
+  descendants, versions concurrentes), jamais celles d'une autre vidéo ni d'un autre projet ;
+  (3) la révision doit appartenir au projet de la page ; (4) une version qui termine son
+  rendu et sa QA alors qu'une autre version de la même vidéo a été validée entre-temps (édition
+  en vol, ex. enfant du Director) est fermée aussitôt par le runner ; `Studio.render` ne lance alors ni
+  correction automatique ni expertise QA, et la phase de validation du run se termine :
+  aucune version ne reste en attente sans pouvoir être validée.
+- Justification : correctif local, sans migration ; l'origine est déjà écrite par chaque
+  chemin de création, et un test unitaire classe chaque forme d'origine.
+- Conséquences et dette : l'identité de vidéo est dérivée, pas stockée. Un futur chemin de
+  création qui recopierait `prompt` sans marque serait classé « nouvelle vidéo » : le test
+  « every origin written by the Studio is classified » doit alors être complété. Évolution si
+  cela devient fragile : colonne `video_id` (migration additive) remplie à la création. La
+  chaîne `parentRevisionId` d'une nouvelle vidéo reste trompeuse pour tout autre code qui la
+  parcourrait comme une lignée.

@@ -211,8 +211,8 @@ export const actions: Actions = {
     const data = await request.formData();
     return attempt(() => studio.applyPlan(str(data, 'planId')));
   },
-  approve: async ({ request }) => {
+  approve: async ({ params, request }) => {
     const data = await request.formData();
-    return attempt(() => studio.approve(str(data, 'revisionId')));
+    return attempt(() => studio.approve(str(data, 'revisionId'), params.id));
   }
 };
